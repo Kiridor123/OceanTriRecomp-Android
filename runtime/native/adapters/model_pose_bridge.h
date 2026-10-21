@@ -1,0 +1,91 @@
+#pragma once
+#include "runtime/native/mh3_model_pose.h"
+#include "runtime/include/native_owner.h"
+#include "runtime/include/status.h"
+#ifdef MH3_DEVELOPMENT
+#include <atomic>
+#endif
+/* Typed producer/publication boundary. Getters declare allocation extents;
+ * completed CPU writes establish pose revisions. A bind alone does neither. */
+bool PublishNativeModelPose(uint32_t position, uint32_t normal, uint32_t environment, uint32_t count, uint32_t model_reference);
+/* The same with the model's resource address resolved from its reference. */
+bool PublishNativeModelPoseFor(uint32_t position, uint32_t normal, uint32_t environment, uint32_t count, uint32_t model);
+void RetireNativeModelPose(uint32_t address, uint32_t bytes);
+void ClearNativeModelPose();
+mh3_matrix_sources ReadNativeModelPose(const uint32_t addresses[3], uint32_t model_address = 0);
+Status TryReadNativeModelPose(const uint32_t addresses[3], uint32_t model_address, mh3_matrix_sources& sources);
+/* An immutable copy of one binding's view arrays (positions, normals,
+ * environment) as their producer left them; the tables of `sources` point
+ * into it. Model draws reference it instead of copying the arrays: a binding
+ * captured again with the same producer revision, or with a new revision but
+ * equal contents (an unmoved camera over an unmoved model), keeps its
+ * version. A replaced version is reused once every packet recorded while it
+ * was current has rendered or been replaced unrendered. */
+struct NativePoseVersion {
+    mh3_matrix_sources sources;
+    uint8_t* bytes;
+    uint8_t size_class;
+
+    // GPU skinning (docs/optimizations/rendering/gpu-skinning.md): skin bones whose matrix IDs lie
+    // beyond the view matrices have only world matrices. Rows [bone_first,
+    // bone_first + bone_count) of the model's world array (host order, in
+    // `bytes`) and the camera the view pass used for the view matrices.
+    uint32_t bone_first, bone_count;
+    const float (*bones)[12];
+    float camera[12];
+};
+
+/* View pass: a model whose skin bones lie beyond its `count` view matrices
+ * (matrix IDs below `total`) records its camera (row-major 3x4) and world
+ * array for the next pose version of the arrays at `position`. */
+void PublishNativeModelSkinView(uint32_t position, const float camera[12], uint32_t world, uint32_t count, uint32_t total);
+
+/* model_view.cpp: the view pass's side of it (registers r3 position, r5 world
+ * array, r8 camera, r7 count, r9 model reference). */
+void PublishSkinView(uint32_t position, uint32_t world, uint32_t camera, uint32_t count, uint32_t reference);
+
+/* Game thread: the version of the arrays at `addresses` that `live`
+ * (ReadNativeModelPose of them) describes; without arrays (addresses[0] 0)
+ * an empty one. Valid until the packets recorded meanwhile have rendered. */
+const NativePoseVersion* VersionNativeModelPose(const uint32_t addresses[3], const mh3_matrix_sources& live);
+#ifdef MH3_DEVELOPMENT
+struct NativePoseStatistics {
+    // Captures, those copied (and their bytes), those reusing the version of
+    // an unchanged producer revision or of equal contents.
+    uint64_t captures, copies, copied_bytes, same_revision, same_contents;
+    uint32_t versions, bindings;
+};
+
+/* Since the last call. */
+NativePoseStatistics TakeNativePoseStatistics();
+#endif
+/* 80080BC0/80080C0C/80080C68: the scene's current view array (0 position,
+ * 1 normal, 2 environment), declaring its allocation owner. */
+uint32_t NativeModelViewArray(uint32_t scene, unsigned kind);
+/* All three at one declaration. */
+void NativeModelViewArrays(uint32_t scene, uint32_t arrays[3]);
+void PublishNativeModelDualTexture(bool enabled);
+/* Reapply independent live selector state after an immutable material overlay.
+ * Unknown remains unknown; this is never an identity/dual fallback. */
+void ApplyNativeModelSelectors();
+/* The game thread's selector state. */
+mh3_model_matrix_selectors ReadNativeModelSelectors();
+uint64_t ReadNativeModelSelectorsRevision();
+void SetNativeModelSelectors(const mh3_model_matrix_selectors& state);
+void PublishNativeModelMatrixRows(const uint32_t rows[8]);
+/* Actual native matrix setter publications, shared with UI/effects. Selectors
+ * are PN rows0..27 and main texture rows30..57, step3; post rows64+ do not
+ * change these palette slots. Values are copied and retained across frames,
+ * source retirement and model changes until another actual load replaces them. */
+void PublishNativeModelPositionMatrix(uint32_t selector, const float matrix[12], NativeOwner owner = NativeOwner::Game);
+void PublishNativeModelNormalMatrix(uint32_t selector, const float matrix[9], NativeOwner owner = NativeOwner::Game);
+/* 2x4 loads replace only the first two rows. They preserve an actually known
+ * third row; a new partial slot remains incomplete for 3x4 model consumption. */
+void PublishNativeModelTextureMatrix(uint32_t selector, const float matrix[12], bool matrix3x4 = true, NativeOwner owner = NativeOwner::Game);
+const mh3_model_palette& ReadNativeModelPalette(NativeOwner owner = NativeOwner::Game);
+uint64_t ReadNativeModelPaletteRevision(NativeOwner owner = NativeOwner::Game);
+void PublishNativeModelPalette(const mh3_model_palette& palette, NativeOwner owner = NativeOwner::Game);
+/* The owner's palette to rebuild in place (a publication without the copy):
+ * advances its revision; the reference stays valid. Matrix setters given one
+ * of its own slots leave that slot as it is. */
+mh3_model_palette& EditNativeModelPalette(NativeOwner owner);

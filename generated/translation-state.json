@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "steps": {
+    "native index": "630b542f8b897badaa807c0520ca29db77b34e92bc648f53dd9d0d2b28031292",
+    "overlay enemy_field": "cdac95c42dd67c4c76bdc3cedc165d629dd2212105b886ffa799b454f8b91b03",
+    "overlay map00_field": "46aac32b2b133a49b0e36f7fe402c20861b17bfc936efb22681037a084e97af9",
+    "overlay map01_field": "16237f3ffabef9d1b06c5cb952b1d854c72de44906319a1d7cd7efbcbb9122aa",
+    "overlay map02_field": "38dd9fc5bb6fe23a3c663307e2f4dcd1fee54e7719924dd753f6842f1db5218f",
+    "overlay map03_field": "f9b7be9b3a88acff409c16cb84a0bb13c2748ee0151dc8f80e125f9d15709f20",
+    "overlay map04_field": "30cbb543dfb60910e79a7c5916b7877260c198147ca212a2d1f653e02ff24db7",
+    "overlay map05_field": "62a83d98dad8a67a404b961284e234205c6715aa10934b43b8f4be730f562c5e",
+    "overlay map06_field": "4d44428f02615614eaf66a464e77694d99dcf91962db03fe2c9821ed34a8026b",
+    "overlay map07_field": "b11995b6438c16a78edb99728df9371cb7d269285a2dc94cbba08a66db00d7e7",
+    "overlay map08_field": "20b605d7c41d40efc6d070efe18dd7aa8cedf000ecf19f6588a5a6602fa34ca9",
+    "overlay map09_field": "f2ce54836789c15a5915d43fbd2d7f3d1664aab12ff52bc71fbe6f36fd70c369",
+    "overlay map10_field": "524ab47a2ca7dc9247d4663bd366a5e416c7e8736a392eaaf7e93ed97c6f5915",
+    "overlay map11_field": "5d9094dbde01b6011da6b7a7b0433fefe85291b677966b52055d6862612b529c",
+    "overlay map_town_online": "57f171a7081b83a60c7f475aa067f3cfe6998c11ddf6e3e39829e1a2f3e592fb",
+    "overlay map_town_quest": "57f171a7081b83a60c7f475aa067f3cfe6998c11ddf6e3e39829e1a2f3e592fb",
+    "overlay map_village": "f2e25c7c254a1ff7cbc8a32743af6b1fdf6736ba88c3e3f89c28a6251efc9771",
+    "overlay net_data": "4bfc64dd5dc76bf65d971cb5abfc9cbfd146caf1c516de0818da45a89bcaad35",
+    "overlay quest_field": "cc13e73b01cf2a2de80f28c4eae194508444d0fbb304de0af6579ba15feccd4d",
+    "prepare": "4f8c84c09ea2b0520b2caa9e3a670e0d4fe1e3e40d249a5f5db884687dbcb3e7",
+    "translate": "1c4b5160e20c5cca3ffa30ca2ec0c66de001ec38874f898828c7e7c62d7f56fc",
+    "translator": "cec76ded385a695fdbf9598f59e2adc02aefde4833b5d847028351cc58effa62"
+  }
+}

@@ -1,0 +1,69 @@
+#include <cstdint>
+#include "ppc_runtime.h"
+#include "abi_bridge.h"
+#include "memory.h"
+#include "recomp_mod_loader.h"
+
+extern "C" double func_800D73A0_ra18_0_0_2(CpuContext* MKW_RESTRICT ctx, uint32_t arg_r3, uint32_t arg_r4)
+{
+    uint32_t r2 = ctx->gpr[2];
+    uint32_t r3 = arg_r3;
+    uint32_t r4 = arg_r4;
+    PPC_FPR f0 = ctx->fpr[0];
+    PPC_FPR f1 = ctx->fpr[1];
+    PPC_FPR f2 = ctx->fpr[2];
+
+    MKW_GUEST_ENTER(0x800D73A0u);
+    goto loc_800D73A0;
+
+loc_800D73A0:
+{
+    f0.d = MemoryInline::FlatReadFloat32(r3);
+    f2.d = MemoryInline::FlatReadFloat32(r4);
+    f0.d = PpcFmulsInline(f0.d, f2.d);
+    MemoryInline::FlatWriteFloat32(r3, f0.d);
+    f0.d = MemoryInline::FlatReadFloat32((r3 + 4));
+    f0.d = PpcFmulsInline(f0.d, f2.d);
+    MemoryInline::FlatWriteFloat32((r3 + 4), f0.d);
+    f0.d = MemoryInline::FlatReadFloat32((r3 + 8));
+    f0.d = PpcFmulsInline(f0.d, f2.d);
+    MemoryInline::FlatWriteFloat32((r3 + 8), f0.d);
+    f1.d = MemoryInline::FlatReadFloat32((r3 + 12));
+    f0.d = MemoryInline::FlatReadFloat32((r4 + 12));
+    f0.d = static_cast<double>(PpcForceSingleValueInline(f1.d - f0.d));
+    f0.d = PpcFmulsInline(f2.d, f0.d);
+    MemoryInline::FlatWriteFloat32((r3 + 12), f0.d);
+    f0.d = MemoryInline::FlatReadFloat32((r3 + 16));
+    f2.d = MemoryInline::FlatReadFloat32((r4 + 4));
+    f0.d = PpcFmulsInline(f0.d, f2.d);
+    MemoryInline::FlatWriteFloat32((r3 + 16), f0.d);
+    f0.d = MemoryInline::FlatReadFloat32((r3 + 20));
+    f0.d = PpcFmulsInline(f0.d, f2.d);
+    MemoryInline::FlatWriteFloat32((r3 + 20), f0.d);
+    f0.d = MemoryInline::FlatReadFloat32((r3 + 24));
+    f0.d = PpcFmulsInline(f0.d, f2.d);
+    MemoryInline::FlatWriteFloat32((r3 + 24), f0.d);
+    f1.d = MemoryInline::FlatReadFloat32((r3 + 28));
+    f0.d = MemoryInline::FlatReadFloat32((r4 + 16));
+    f0.d = static_cast<double>(PpcForceSingleValueInline(f1.d + f0.d));
+    f1.d = MemoryInline::FlatReadFloat32((r2 + -30420));
+    f0.d = static_cast<double>(PpcForceSingleValueInline(f0.d - f1.d));
+    f0.d = PpcFmulsInline(f2.d, f0.d);
+    f0.d = static_cast<double>(PpcForceSingleValueInline(f1.d + f0.d));
+    MemoryInline::FlatWriteFloat32((r3 + 28), f0.d);
+    ctx->fpr[0] = f0;
+    ctx->fpr[2] = f2;
+    return f1.d;
+}
+
+}
+
+extern "C" void func_800D73A0(CpuContext* MKW_RESTRICT ctx)
+{
+    double result;
+    [[clang::noinline]] result = func_800D73A0_ra18_0_0_2(ctx, ctx->gpr[3], ctx->gpr[4]);
+    ctx->fpr[1].d = result;
+}
+
+// RECOMP_GUEST_ABI gpr_read=0x0000001C gpr_write=0x00000000 gpr_return=0x00000000 fpr_read=0x00000000 fpr_write=0x00000007 fpr_return=0x00000002 cr_read=0x00 cr_write=0x00 xer_read=0 xer_write=0 fence=0
+// RECOMP_REGISTRATION base 0x800D73A0 func_800D73A0 preserves=true fpr_mask=0x00000000

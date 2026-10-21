@@ -1,0 +1,84 @@
+#include <cstdint>
+#include "ppc_runtime.h"
+#include "abi_bridge.h"
+#include "memory.h"
+#include "recomp_mod_loader.h"
+
+extern "C" void func_8040E910(CpuContext* ctx);
+extern "C" uint64_t func_8040E910_ra38_0_18_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+
+extern "C" uint64_t func_8040F634_ra8_0_18_0(CpuContext* MKW_RESTRICT ctx, uint32_t arg_r3)
+{
+    uint32_t r0 = ctx->gpr[0];
+    uint32_t r1 = ctx->gpr[1];
+    uint32_t r3 = arg_r3;
+    uint32_t r4 = ctx->gpr[4];
+    uint32_t r5 = ctx->gpr[5];
+
+    MKW_GUEST_ENTER(0x8040F634u);
+    goto loc_8040F634;
+
+loc_8040F634:
+{
+    MemoryInline::FlatWriteRam32((r1 + -32), r1);
+    r1 = (r1 + -32);
+    r0 = ctx->lr;
+    MemoryInline::FlatWriteRam32((r1 + 36), r0);
+    r4 = 0x80570000u;
+    r5 = (r4 + 5648);
+    r4 = MemoryInline::FlatRead32(r5);
+    r0 = MemoryInline::FlatRead32((r5 + 4));
+    MemoryInline::FlatWriteRam32((r1 + 8), r4);
+    MemoryInline::FlatWriteRam32((r1 + 12), r0);
+    r0 = MemoryInline::FlatRead32((r5 + 8));
+    MemoryInline::FlatWriteRam32((r1 + 16), r0);
+    r0 = MemoryInline::FlatRead16((r5 + 12));
+    MemoryInline::FlatWriteRam16((r1 + 20), static_cast<uint16_t>(r0));
+    r0 = MemoryInline::FlatRead8((r5 + 14));
+    MemoryInline::FlatWriteRam8((r1 + 22), static_cast<uint8_t>(r0));
+    r4 = 15;
+    r5 = (r1 + 8);
+    ctx->lr = 0x8040F67Cu;
+    if constexpr (KnownRegArgsCpuCall<0x8040E910u>(&func_8040E910)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        const auto regargs_result_8040E910_5A9 = func_8040E910_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8040E910_5A9);
+        r4 = static_cast<uint32_t>(regargs_result_8040E910_5A9 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        InvokeDirectCpu<0x8040E910u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+    }
+    r0 = MemoryInline::FlatRead32((r1 + 36));
+    ctx->lr = r0;
+    r1 = (r1 + 32);
+    ctx->gpr[0] = r0;
+    ctx->gpr[1] = r1;
+    ctx->gpr[5] = r5;
+    return (static_cast<uint64_t>(r4) << 32) | r3;
+}
+
+}
+
+extern "C" void func_8040F634(CpuContext* MKW_RESTRICT ctx)
+{
+    uint64_t result;
+    [[clang::noinline]] result = func_8040F634_ra8_0_18_0(ctx, ctx->gpr[3]);
+    ctx->gpr[3] = static_cast<uint32_t>(result);
+    ctx->gpr[4] = static_cast<uint32_t>(result >> 32);
+}
+
+// RECOMP_GUEST_ABI gpr_read=0x0000000A gpr_write=0x0000003B gpr_return=0x00000018 fpr_read=0x00000000 fpr_write=0x00000000 fpr_return=0x00000000 cr_read=0x01 cr_write=0x01 xer_read=1 xer_write=0 fence=0
+// RECOMP_REGISTRATION base 0x8040F634 func_8040F634 preserves=true fpr_mask=0x00000000

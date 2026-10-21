@@ -1,0 +1,139 @@
+using System;
+using System.IO;
+using Translator.Core.Analysis;
+using Xunit;
+
+namespace Translator.Tests;
+
+public sealed class RuntimeNativeGuestEffectAnalyzerTests
+{
+    [Fact]
+    public void TypedStubDerivesArgumentsAndReturnWithoutContextFence()
+    {
+        using var fixture = new SourceFixture("""
+            extern "C" uint32_t Plain(uint32_t first, float second) { return first; }
+            PPC_NATIVE_OVERRIDE(80001234, Plain, uint32_t, (uint32_t first, float second), (first, second));
+            """);
+
+        var effects = RuntimeNativeGuestEffectAnalyzer.AnalyzeDirectory(fixture.Directory);
+        var contract = effects.Contracts[0x80001234u];
+        Assert.Equal(1u << 3, contract.GprReadBeforeWriteMask);
+        Assert.Equal(1u << 1, contract.FprReadBeforeWriteMask);
+        Assert.Equal(1u << 3, contract.GprPossibleWriteMask);
+        Assert.False(contract.HasFullSynchronizationFence);
+        Assert.Contains(0x80001234u, effects.PreciseContracts);
+    }
+
+    [Fact]
+    public void DirectContextNativeDerivesConstantRegisterReadsAndWrites()
+    {
+        using var fixture = new SourceFixture("""
+            extern "C" void Matrix(CpuContext* ctx) {
+                const auto a = ctx->gpr[3];
+                const auto b = ctx->gpr[4];
+                ctx->gpr[6] = a + b;
+            }
+            REGISTER_NATIVE_FUNCTION(0x80005678, Matrix);
+            """);
+
+        var contract = RuntimeNativeGuestEffectAnalyzer.AnalyzeDirectory(fixture.Directory).Contracts[0x80005678u];
+        Assert.Equal((1u << 3) | (1u << 4), contract.GprReadBeforeWriteMask);
+        Assert.Equal(1u << 6, contract.GprPossibleWriteMask);
+        Assert.False(contract.HasFullSynchronizationFence);
+    }
+
+    [Fact]
+    public void ComputedRegisterSubscriptGetsTheCompleteContext()
+    {
+        // 0x800C1084 read its spline frames as ctx->gpr[6 + i]: the index
+        // starts with a digit, so neither the constant scan nor the computed
+        // check saw it, and the callers never stored r6-r8 (a crash under
+        // water on the Deserted Island).
+        using var fixture = new SourceFixture("""
+            extern "C" void Tube(CpuContext* ctx) {
+                const auto count = ctx->gpr[4];
+                for (uint32_t i = 0; i < 3; i++)
+                    Read(ctx->gpr[6 + i], count);
+            }
+            REGISTER_NATIVE_FUNCTION(0x800C1084, Tube);
+            """);
+
+        // It gets the EABI boundary: every argument register is stored.
+        var effects = RuntimeNativeGuestEffectAnalyzer.AnalyzeDirectory(fixture.Directory);
+        Assert.Equal(0x7F8u, effects.Contracts[0x800C1084u].GprReadBeforeWriteMask & 0x7F8u);
+        Assert.Contains(0x800C1084u, effects.ConservativeContracts);
+        Assert.DoesNotContain(0x800C1084u, effects.PreciseContracts);
+    }
+
+    [Fact]
+    public void EscapedContextAndSchedulerCallsRemainExplicitFullBoundaries()
+    {
+        using var fixture = new SourceFixture("""
+            extern "C" void Sleep(CpuContext* ctx) {
+                Fiber::YieldToScheduler(ctx);
+            }
+            REGISTER_NATIVE_FUNCTION(0x80009ABC, Sleep);
+            """);
+
+        var contract = RuntimeNativeGuestEffectAnalyzer.AnalyzeDirectory(fixture.Directory).Contracts[0x80009ABCu];
+        Assert.True(contract.HasFullSynchronizationFence);
+        Assert.True((contract.BoundaryFlags & GuestCallBoundaryFlags.CanSuspend) != 0);
+        Assert.Contains(0x80009ABCu,
+            RuntimeNativeGuestEffectAnalyzer.AnalyzeDirectory(fixture.Directory).ConservativeContracts);
+    }
+
+    [Fact]
+    public void TypedStubReachingForAmbientContextGetsTheEabiBoundary()
+    {
+        // A typed stub's contract comes from its host signature alone. This one
+        // is shaped exactly like 0x801AAD7C (__OSGetSystemTime): declared to
+        // return a single uint32_t, but it publishes a 64-bit result by storing
+        // r3 and r4 through the ambient context. Deriving "writes r3" from the
+        // signature would let a narrowed call boundary skip reloading r4; the
+        // EABI boundary it gets instead reloads every volatile register.
+        using var fixture = new SourceFixture("""
+            extern "C" uint32_t GetSystemTime(uint32_t low, uint32_t high) {
+                const uint64_t now = ReadSystemTime();
+                if (CpuContext* ctx = CurrentCpuContext()) {
+                    ctx->gpr[3] = static_cast<uint32_t>(now >> 32);
+                    ctx->gpr[4] = static_cast<uint32_t>(now);
+                }
+                return static_cast<uint32_t>(now >> 32);
+            }
+            PPC_NATIVE_OVERRIDE(801AAD7C, GetSystemTime, uint32_t, (uint32_t low, uint32_t high), (low, high));
+            """);
+
+        var effects = RuntimeNativeGuestEffectAnalyzer.AnalyzeDirectory(fixture.Directory);
+        var contract = effects.Contracts[0x801AAD7Cu];
+        Assert.False(contract.HasFullSynchronizationFence);
+        Assert.Equal(0x00001FF9u, contract.GprPossibleWriteMask);
+        Assert.Contains(0x801AAD7Cu, effects.ConservativeContracts);
+    }
+
+    [Fact]
+    public void FullContextMarkerKeepsTheFence()
+    {
+        using var fixture = new SourceFixture("""
+            extern "C" void MH3_SwitchContext(CpuContext* ctx) { LoadGuestContext(ctx); }
+            REGISTER_NATIVE_FUNCTION_AS(0x80001000, MH3_SwitchContext, "SwitchContext");
+            MH3_NATIVE_FULL_CONTEXT(0x80001000);
+            """);
+
+        var effects = RuntimeNativeGuestEffectAnalyzer.AnalyzeDirectory(fixture.Directory);
+        Assert.True(effects.Contracts[0x80001000u].HasFullSynchronizationFence);
+    }
+
+    private sealed class SourceFixture : IDisposable
+    {
+        public SourceFixture(string source)
+        {
+            Directory = Path.Combine(Path.GetTempPath(), $"mkw-native-effects-{Guid.NewGuid():N}");
+            System.IO.Directory.CreateDirectory(Directory);
+            File.WriteAllText(Path.Combine(Directory, "fixture.cpp"), source);
+        }
+
+        public string Directory { get; }
+
+        public void Dispose() => System.IO.Directory.Delete(Directory, recursive: true);
+    }
+}

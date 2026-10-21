@@ -1,0 +1,175 @@
+#include <cstdint>
+#include "ppc_runtime.h"
+#include "abi_bridge.h"
+#include "memory.h"
+#include "recomp_mod_loader.h"
+
+extern "C" void func_800CF2E4(CpuContext* ctx);
+extern "C" uint32_t func_800CF2E4_ra8_0_8_0(CpuContext*, uint32_t);
+
+extern "C" uint64_t func_803B6954_ra18_0_18_0(CpuContext* MKW_RESTRICT ctx, uint32_t arg_r3, uint32_t arg_r4)
+{
+    uint32_t cr0_0 = 0;
+
+    uint32_t r0 = ctx->gpr[0];
+    uint32_t r1 = ctx->gpr[1];
+    uint32_t r3 = arg_r3;
+    uint32_t r4 = arg_r4;
+    uint32_t r31 = ctx->gpr[31];
+
+    MKW_GUEST_ENTER(0x803B6954u);
+    goto loc_803B6954;
+
+loc_803B6954:
+{
+    MemoryInline::FlatWriteRam32((r1 + -16), r1);
+    r1 = (r1 + -16);
+    r0 = ctx->lr;
+    MemoryInline::FlatWriteRam32((r1 + 20), r0);
+    r31 = r3;
+    ctx->lr = 0x803B696Cu;
+    if constexpr (KnownRegArgsCpuCall<0x800CF2E4u>(&func_800CF2E4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[4] = r4;
+        const auto regargs_result_800CF2E4_39B = func_800CF2E4_ra8_0_8_0(ctx, r3);
+        r3 = regargs_result_800CF2E4_39B;
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r4 = ctx->gpr[4];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        InvokeDirectCpu<0x800CF2E4u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+    }
+}
+
+loc_803B6970:
+{
+    if ((static_cast<uint32_t>(r3) != static_cast<uint32_t>(1))) {
+        goto loc_803B697C;
+    }
+}
+
+loc_803B6974:
+{
+    r3 = -1;
+    goto loc_803B69E8;
+}
+
+loc_803B697C:
+{
+    r3 = 0x806C0000u;
+    r3 = (r3 + 31960);
+    r0 = (r31 * 96);
+    r3 = (r3 + r0);
+    r4 = MemoryInline::FlatRead32((r3 + 436));
+}
+
+loc_803B6994:
+{
+    if ((static_cast<int32_t>(r4) == static_cast<int32_t>(0))) {
+        goto loc_803B69E4;
+    }
+}
+
+loc_803B6998:
+{
+    r0 = (r4 & 512);
+}
+
+loc_803B69A0:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(0))) {
+        goto loc_803B69AC;
+    }
+}
+
+loc_803B69A4:
+{
+    r3 = 1;
+    goto loc_803B69E8;
+}
+
+loc_803B69AC:
+{
+    r0 = (r4 & 2);
+}
+
+loc_803B69B4:
+{
+    if ((static_cast<int32_t>(r0) != static_cast<int32_t>(0))) {
+        goto loc_803B69C4;
+    }
+}
+
+loc_803B69B8:
+{
+    r0 = (r4 & 1);
+}
+
+loc_803B69C0:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(0))) {
+        goto loc_803B69CC;
+    }
+}
+
+loc_803B69C4:
+{
+    r3 = MemoryInline::FlatRead16((r3 + 442));
+    goto loc_803B69E8;
+}
+
+loc_803B69CC:
+{
+    r0 = (r4 & 16);
+}
+
+loc_803B69D4:
+{
+    r3 = 1;
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(0))) {
+        goto loc_803B69E8;
+    }
+}
+
+loc_803B69DC:
+{
+    r3 = -1;
+    goto loc_803B69E8;
+}
+
+loc_803B69E4:
+{
+    r3 = -1;
+}
+
+loc_803B69E8:
+{
+    r0 = MemoryInline::FlatRead32((r1 + 20));
+    ctx->lr = r0;
+    r1 = (r1 + 16);
+    ctx->gpr[0] = r0;
+    ctx->gpr[1] = r1;
+    return (static_cast<uint64_t>(r4) << 32) | r3;
+}
+
+}
+
+extern "C" void func_803B6954(CpuContext* MKW_RESTRICT ctx)
+{
+    uint64_t result;
+    [[clang::noinline]] result = func_803B6954_ra18_0_18_0(ctx, ctx->gpr[3], ctx->gpr[4]);
+    ctx->gpr[3] = static_cast<uint32_t>(result);
+    ctx->gpr[4] = static_cast<uint32_t>(result >> 32);
+}
+
+// RECOMP_GUEST_ABI gpr_read=0x0000001B gpr_write=0x0000001B gpr_return=0x00000018 fpr_read=0x00000000 fpr_write=0x00000000 fpr_return=0x00000000 cr_read=0x01 cr_write=0x01 xer_read=1 xer_write=0 fence=0
+// RECOMP_REGISTRATION base 0x803B6954 func_803B6954 preserves=true fpr_mask=0x00000000

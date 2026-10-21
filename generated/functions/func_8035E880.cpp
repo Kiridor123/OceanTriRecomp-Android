@@ -1,0 +1,395 @@
+#include <cstdint>
+#include "ppc_runtime.h"
+#include "abi_bridge.h"
+#include "memory.h"
+#include "recomp_mod_loader.h"
+
+extern "C" void func_803BDF70(CpuContext* ctx);
+extern "C" uint64_t func_803BDF70_ra38_0_18_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+extern "C" void func_803BE0F0(CpuContext* ctx);
+extern "C" uint32_t func_803BE0F0_ra38_0_8_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+
+extern "C" uint64_t func_8035E880_ra38_0_18_0(CpuContext* MKW_RESTRICT ctx, uint32_t arg_r3, uint32_t arg_r4, uint32_t arg_r5)
+{
+    uint32_t cr0_0 = 0;
+    uint32_t r4_addr_0 = 0;
+
+    uint32_t r0 = ctx->gpr[0];
+    uint32_t r1 = ctx->gpr[1];
+    uint32_t r3 = arg_r3;
+    uint32_t r4 = arg_r4;
+    uint32_t r5 = arg_r5;
+    uint32_t r28 = ctx->gpr[28];
+    uint32_t r29 = ctx->gpr[29];
+    uint32_t r30 = ctx->gpr[30];
+    uint32_t r31 = ctx->gpr[31];
+
+    MKW_GUEST_ENTER(0x8035E880u);
+    goto loc_8035E880;
+
+loc_8035E880:
+{
+    MemoryInline::FlatWriteRam32((r1 + -48), r1);
+    r1 = (r1 + -48);
+    r0 = ctx->lr;
+    MemoryInline::FlatWriteRam32((r1 + 52), r0);
+    r28 = r3;
+    // inline leaf 0x802AFCD8 (4 guest instruction(s))
+    r3 = 0x806C0000u;
+    r3 = (r3 + -21440);
+    r3 = MemoryInline::FlatRead8((r3 + 3013));
+    // end of inlined leaf 0x802AFCD8
+    r3 = (r3 & 255);
+    // inline leaf 0x802B06CC (8 guest instruction(s))
+}
+
+loc_inl1_0x802B06CC:
+{
+    r0 = (r3 & 255);
+    r4 = 0x805D0000u;
+    r4 = (r4 + -2816);
+    r4_addr_0 = (r4 + r0);
+    r0 = MemoryInline::FlatRead8(r4_addr_0);
+}
+
+loc_inl1_0x802B06E0:
+{
+    if ((static_cast<uint32_t>(r0) == static_cast<uint32_t>(255))) {
+        goto loc_inl1_return;
+    }
+}
+
+loc_inl1_0x802B06E4:
+{
+    r3 = r0;
+    goto loc_inl1_cont_802B06CC;
+}
+
+loc_inl1_return:
+{
+}
+
+loc_inl1_cont_802B06CC:
+{
+    // end of inlined leaf 0x802B06CC
+    r0 = (r3 & 255);
+}
+
+loc_8035E8B4:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(1))) {
+        goto loc_8035E8D4;
+    }
+}
+
+loc_8035E8B8:
+{
+}
+
+loc_8035E8BC:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(2))) {
+        goto loc_8035E8F0;
+    }
+}
+
+loc_8035E8C0:
+{
+}
+
+loc_8035E8C4:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(3))) {
+        goto loc_8035E910;
+    }
+}
+
+loc_8035E8C8:
+{
+}
+
+loc_8035E8CC:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(5))) {
+        goto loc_8035E934;
+    }
+}
+
+loc_8035E8D0:
+{
+    goto loc_8035E94C;
+}
+
+loc_8035E8D4:
+{
+    // inline leaf 0x802AFCE8 (4 guest instruction(s))
+    r3 = 0x806C0000u;
+    r3 = (r3 + -21440);
+    r3 = MemoryInline::FlatRead8((r3 + 3014));
+    // end of inlined leaf 0x802AFCE8
+    r3 = (r3 & 255);
+    r0 = (r3 + -1);
+}
+
+loc_8035E8E4:
+{
+    if ((static_cast<uint32_t>(r0) <= static_cast<uint32_t>(3))) {
+        goto loc_8035E954;
+    }
+}
+
+loc_8035E8E8:
+{
+    r3 = 0;
+    goto loc_8035E9C8;
+}
+
+loc_8035E8F0:
+{
+    // inline leaf 0x802AFCE8 (4 guest instruction(s))
+    r3 = 0x806C0000u;
+    r3 = (r3 + -21440);
+    r3 = MemoryInline::FlatRead8((r3 + 3014));
+    // end of inlined leaf 0x802AFCE8
+    r0 = (r3 & 255);
+}
+
+loc_8035E8FC:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(6))) {
+        goto loc_8035E954;
+    }
+}
+
+loc_8035E900:
+{
+}
+
+loc_8035E904:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(9))) {
+        goto loc_8035E954;
+    }
+}
+
+loc_8035E908:
+{
+    r3 = 0;
+    goto loc_8035E9C8;
+}
+
+loc_8035E910:
+{
+    // inline leaf 0x802AFCE8 (4 guest instruction(s))
+    r3 = 0x806C0000u;
+    r3 = (r3 + -21440);
+    r3 = MemoryInline::FlatRead8((r3 + 3014));
+    // end of inlined leaf 0x802AFCE8
+    r3 = (r3 & 255);
+    r0 = (r3 + -5);
+}
+
+loc_8035E920:
+{
+    if ((static_cast<uint32_t>(r0) <= static_cast<uint32_t>(1))) {
+        goto loc_8035E954;
+    }
+}
+
+loc_8035E924:
+{
+}
+
+loc_8035E928:
+{
+    if ((static_cast<int32_t>(r3) == static_cast<int32_t>(9))) {
+        goto loc_8035E954;
+    }
+}
+
+loc_8035E92C:
+{
+    r3 = 0;
+    goto loc_8035E9C8;
+}
+
+loc_8035E934:
+{
+    // inline leaf 0x802AFCE8 (4 guest instruction(s))
+    r3 = 0x806C0000u;
+    r3 = (r3 + -21440);
+    r3 = MemoryInline::FlatRead8((r3 + 3014));
+    // end of inlined leaf 0x802AFCE8
+    r0 = (r3 & 255);
+}
+
+loc_8035E940:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(2))) {
+        goto loc_8035E954;
+    }
+}
+
+loc_8035E944:
+{
+    r3 = 0;
+    goto loc_8035E9C8;
+}
+
+loc_8035E94C:
+{
+    r3 = 0;
+    goto loc_8035E9C8;
+}
+
+loc_8035E954:
+{
+    r3 = (r28 & 255);
+    r4 = (r1 + 8);
+    r5 = 16;
+    if constexpr (KnownRegArgsCpuCall<0x803BDF70u>(&func_803BDF70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        const auto regargs_result_803BDF70_11B8 = func_803BDF70_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_803BDF70_11B8);
+        r4 = static_cast<uint32_t>(regargs_result_803BDF70_11B8 >> 32);
+        r0 = ctx->gpr[0];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        InvokeDirectCpu<0x803BDF70u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+    }
+    r31 = (r3 & 255);
+}
+
+loc_8035E96C:
+{
+    if ((static_cast<uint32_t>(r31) <= static_cast<uint32_t>(16))) {
+        goto loc_8035E978;
+    }
+}
+
+loc_8035E970:
+{
+    r3 = 0;
+    goto loc_8035E9C8;
+}
+
+loc_8035E978:
+{
+    r29 = 0;
+    r30 = (r1 + 8);
+    goto loc_8035E9BC;
+}
+
+loc_8035E984:
+{
+    r3 = MemoryInline::FlatRead8(r30);
+    r4 = (r28 & 255);
+    if constexpr (KnownRegArgsCpuCall<0x803BE0F0u>(&func_803BE0F0)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        const auto regargs_result_803BE0F0_15A2 = func_803BE0F0_ra38_0_8_0(ctx, r3, r4, r5);
+        r3 = regargs_result_803BE0F0_15A2;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        InvokeDirectCpu<0x803BE0F0u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r5 = ctx->gpr[5];
+    }
+    r0 = (static_cast<int32_t>(static_cast<int8_t>(r3)));
+}
+
+loc_8035E998:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(5))) {
+        goto loc_8035E9AC;
+    }
+}
+
+loc_8035E99C:
+{
+}
+
+loc_8035E9A0:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(1))) {
+        goto loc_8035E9AC;
+    }
+}
+
+loc_8035E9A4:
+{
+}
+
+loc_8035E9A8:
+{
+    if ((static_cast<int32_t>(r0) != static_cast<int32_t>(15))) {
+        goto loc_8035E9B4;
+    }
+}
+
+loc_8035E9AC:
+{
+    r3 = 1;
+    goto loc_8035E9C8;
+}
+
+loc_8035E9B4:
+{
+    r30 = (r30 + 1);
+    r29 = (r29 + 1);
+}
+
+loc_8035E9BC:
+{
+}
+
+loc_8035E9C0:
+{
+    if ((static_cast<int32_t>(r29) < static_cast<int32_t>(r31))) {
+        goto loc_8035E984;
+    }
+}
+
+loc_8035E9C4:
+{
+    r3 = 0;
+}
+
+loc_8035E9C8:
+{
+    r0 = MemoryInline::FlatRead32((r1 + 52));
+    ctx->lr = r0;
+    r1 = (r1 + 48);
+    ctx->gpr[0] = r0;
+    ctx->gpr[1] = r1;
+    ctx->gpr[5] = r5;
+    return (static_cast<uint64_t>(r4) << 32) | r3;
+}
+
+}
+
+extern "C" void func_8035E880(CpuContext* MKW_RESTRICT ctx)
+{
+    uint64_t result;
+    [[clang::noinline]] result = func_8035E880_ra38_0_18_0(ctx, ctx->gpr[3], ctx->gpr[4], ctx->gpr[5]);
+    ctx->gpr[3] = static_cast<uint32_t>(result);
+    ctx->gpr[4] = static_cast<uint32_t>(result >> 32);
+}
+
+// RECOMP_GUEST_ABI gpr_read=0x0000277B gpr_write=0x000007FB gpr_return=0x00000018 fpr_read=0x00000000 fpr_write=0x00000000 fpr_return=0x00000000 cr_read=0x01 cr_write=0x01 xer_read=1 xer_write=0 fence=0
+// RECOMP_REGISTRATION base 0x8035E880 func_8035E880 preserves=true fpr_mask=0x00000000

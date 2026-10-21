@@ -1,0 +1,257 @@
+// --village: straight into the village with File 1's
+// first character, without the title's movies and menus.
+//
+// The title (demo_data.rso, a task in slot 4) runs a state machine in its work
+// (*0x809D3568, +0 u8 state, +1 u8 sub-state): 0 sets up, 1 plays the intro,
+// 2..9 the logos and the title screen, 10 reads the save files' headers, 11
+// and 12 check and read the chosen file, 13 is the file/character select, 20
+// and 21 the mode menu (Village/City). The select screen's confirm loads the
+// character (LoadCharacter, 0x80442088, from the save manager's buffer) and
+// records the selection (system_w+0x89C file, +0x89E character); choosing
+// Village (0x80982E40) sets game mode 2 and play mode 5 and starts the village
+// task in the title's slot (StartGameModeTask, 0x800419DC). City (the mode
+// menu's cursor, work+0x102D, at 1) does the same with the soft-reset flag
+// clear, play mode 4 and system_w+0x7D3/+0x7D4 set; the City task loads
+// net_data.rso (the network screen, docs/online.md).
+//
+// The boot waits for the title's intro (state 1) and reads the save files from
+// the host as the title's header read (state 10) does: each one into the save
+// manager's buffer after the game's read request, then through the game's
+// file load (0x80441B9C), which keeps the file's name (system_w+0x7EA, 17
+// bytes a file) and in-use byte (+0x859). The game's save writes that name
+// back into the file (SaveBufferFill, 0x80440864): without it the saved file
+// lost its name. The chosen file goes last and stays in the buffer; the boot
+// loads its character and options and chooses Village or City as the mode
+// menu does.
+#include "village_boot.h"
+#include "fatal.h"
+
+#include "guest_call.h"
+#include "memory.h"
+#include "save_data.h"
+#include "vita_launcher.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <numeric>
+#include <stdexcept>
+#include <vector>
+
+namespace {
+
+constexpr uint32_t kSystem = 0x8065AA60;
+enum : uint32_t {
+    kSceneFlag = 0x20,          // u8: setSoftresetFlag's (0 for Village, 1 for City)
+    kGameMode = 0x24,           // u8: 2 village
+    kPlayMode = 0x25,           // u8: 5 village, 4 city
+    kModeFlag0 = 0x7CE,         // u8, cleared by the mode choice
+    kFileNames = 0x7EA,         // char[6][17]: the save files' names (SaveFileLoaded)
+    kVillageVariant = 0x7D3,    // u8: 0 the village task, 1 the city's (StartGameModeTask)
+    kCityFlag = 0x7D4,          // u8: set by the City choice
+    kModeFlag1 = 0x866,         // u8, cleared by the mode choice
+    kOnlineCapable = 0x86B,     // u8, copied to +0x870 by the mode menu
+    kOnlineMenu = 0x870,        // u8
+    kSelectedFile = 0x89C,      // u8 [2]
+    kSelectedCharacter = 0x89E, // u8 [2]
+    kMode = 0x8C2,              // u8: the mode menu's choice, 0 Village, 1 City
+    kSystemSaveBuffer = 0x950,  // u32: the save manager's buffer
+};
+
+enum : uint8_t {
+    kGameModeVillage = 2,
+    kPlayModeVillage = 5,
+    kPlayModeCity = 4
+};
+
+// The options (controls, camera, sound): the file's at +0x28, the game's
+// copy option_w, 0x1F bytes.
+constexpr uint32_t kOptions = 0x8065B510;
+constexpr size_t kFileOptions = 0x28, kOptionBytes = 0x1F;
+
+constexpr uint32_t kTitleWork = 0x809D3568; // u32: the title's work, while demo_data.rso is loaded
+constexpr uint8_t kTitleIntro = 1;          // its state (+0) while the intro plays
+enum : uint32_t {
+    SaveReadRequest = 0x80441AD8,
+    SaveFileLoaded = 0x80441B9C, // after a read: the sum check, the file's name and in-use byte
+    LoadCharacter = 0x80442088,
+    ApplyOptions = 0x803BE89C, // set_option_mode: volumes and brightness from option_w
+    RunExitHook = 0x800408B8,
+    StartGameModeTask = 0x800419DC,
+    SceneReset = 0x800CF000,
+    SceneExit0 = 0x8004D1E0,
+    SceneExit1 = 0x8004D1F4,
+};
+
+enum class State {
+    Off,
+    Waiting,
+    Complete
+};
+
+State state = State::Off;
+std::array<std::vector<uint8_t>, 6> files; // data00..05 (empty: missing)
+unsigned selectedFile = 0, selectedCharacter = 0;
+bool toCity = false;
+
+uint32_t Word(std::span<const uint8_t> data, size_t offset) {
+    return (uint32_t(data[offset]) << 24) | (uint32_t(data[offset + 1]) << 16) | (uint32_t(data[offset + 2]) << 8) | data[offset + 3];
+}
+
+bool HasFirstCharacter(std::span<const uint8_t> data) {
+    // As LoadCharacter (0x80442088): in use, and the bytes from +8 sum to +4.
+    // The first character's record starts at 0x48.
+    return data.size() == SaveData::kFileSize && (Word(data, 0) & 1) && Word(data, SaveData::kCharacters) != 0 && std::accumulate(data.begin() + 8, data.end(), uint32_t(0)) == Word(data, 4);
+}
+
+bool InMainMemory(uint32_t address) {
+    return (address >= 0x80000000u && address < 0x81800000u) || (address >= 0x90000000u && address < 0x94000000u);
+}
+} // namespace
+
+void StartVillageBoot(unsigned fileIndex, unsigned character, bool city) {
+    if (fileIndex >= 6 || character >= 3)
+        MH3_THROW(std::runtime_error("Invalid save selection"));
+
+    const char* override = std::getenv("MH3_USER_DIR");
+    const auto directory = std::filesystem::path(override ? override : "saves") / "nand/title/00010000/524d4850/data/nocopy";
+
+    for (unsigned i = 0; i < files.size(); ++i) {
+        std::ifstream input(directory / ("data0" + std::to_string(i)), std::ios::binary | std::ios::ate);
+        files[i].clear();
+
+        if (!input || input.tellg() != SaveData::kFileSize)
+            continue;
+
+        files[i].resize(SaveData::kFileSize);
+        input.seekg(0);
+        input.read(reinterpret_cast<char*>(files[i].data()), files[i].size());
+
+        if (!input)
+            files[i].clear();
+    }
+
+    if (files[fileIndex].empty())
+        MH3_THROW(std::runtime_error("Quest launch requires the selected existing save: " + (directory / ("data0" + std::to_string(fileIndex))).string()));
+
+    if (!VitaLauncher::ValidSave(files[fileIndex], character))
+        MH3_THROW(std::runtime_error("The selected save character is invalid; create one through normal startup first"));
+
+    state = State::Waiting;
+    selectedFile = fileIndex;
+    selectedCharacter = character;
+    toCity = city;
+    std::cerr << "MH3 village boot: entering " << (city ? "the City" : "the village") << " with File " << selectedFile + 1 << " / character " << selectedCharacter + 1 << '\n';
+}
+
+void StepVillageBoot(CpuContext* ctx) {
+    if (state != State::Waiting || Memory::Read8(kSystem + kGameMode) != 0)
+        return;
+
+    const uint32_t title = Memory::Read32(kTitleWork);
+
+    if (!InMainMemory(title) || Memory::Read8(title) != kTitleIntro)
+        return;
+
+    const uint32_t buffer = Memory::Read32(kSystem + kSystemSaveBuffer);
+
+    if (!buffer)
+        MH3_THROW(std::runtime_error("--village: the game has no save buffer at the title"));
+
+    const CpuContext saved = *ctx;
+    GuestCall game{ctx};
+
+    // Each file's read, as the title's header read: the request, the file,
+    // then the game's file load. The chosen file last.
+    auto read = [&](unsigned index) {
+        if (!game.Call<SaveReadRequest>({index, uint32_t(-1)}))
+            MH3_THROW(std::runtime_error("Quest launch: the save read request failed"));
+
+        std::copy(files[index].begin(), files[index].end(), Memory::GetPointer(buffer, SaveData::kFileSize));
+        return game.Call<SaveFileLoaded>() != 0;
+    };
+
+    for (unsigned i = 0; i < files.size(); ++i)
+        if (i != selectedFile && !files[i].empty())
+            read(i);
+
+    if (!read(selectedFile))
+        MH3_THROW(std::runtime_error("Quest launch: the selected save did not load"));
+
+    if (!game.Call<LoadCharacter>({selectedCharacter}))
+        MH3_THROW(std::runtime_error("Quest launch: the selected character did not load"));
+
+    // As the title's file load (0x80441B9C): the file's options, then their
+    // volumes and brightness. Without them the game kept its defaults, the
+    // Classic Controller's other control type among them.
+    const auto& file = files[selectedFile];
+    std::copy_n(file.begin() + kFileOptions, kOptionBytes, Memory::GetPointer(kOptions, kOptionBytes));
+    game.Call<ApplyOptions>();
+
+    Memory::Write8(kSystem + kSelectedFile, selectedFile);
+    Memory::Write8(kSystem + kSelectedCharacter, selectedCharacter);
+
+    // The mode menu's Village (0x80982E30) or City.
+    Memory::Write8(kSystem + kOnlineMenu, Memory::Read8(kSystem + kOnlineCapable) == 1);
+    game.Call<RunExitHook>();
+    Memory::Write8(kSystem + kMode, toCity);
+    Memory::Write8(kSystem + kModeFlag0, 0);
+    Memory::Write8(kSystem + kModeFlag1, 0);
+    game.Call<SceneReset>();
+    Memory::Write8(kSystem + kSceneFlag, toCity);
+    game.Call<SceneExit0>();
+    game.Call<SceneExit1>();
+    Memory::Write8(kSystem + kGameMode, kGameModeVillage);
+    Memory::Write8(kSystem + kPlayMode, toCity ? kPlayModeCity : kPlayModeVillage);
+    Memory::Write8(kSystem + kVillageVariant, toCity);
+
+    if (toCity)
+        Memory::Write8(kSystem + kCityFlag, 1);
+
+    game.Call<StartGameModeTask>();
+    *ctx = saved;
+    state = State::Complete;
+
+    for (auto& data : files)
+        std::vector<uint8_t>().swap(data);
+
+    const auto* name = reinterpret_cast<const char*>(Memory::GetPointer(kSystem + kFileNames + 17 * selectedFile, 17));
+    std::cerr << "MH3 village boot: loaded File " << selectedFile + 1 << " (\"" << name << "\") / character " << selectedCharacter + 1 << ", starting " << (toCity ? "the City" : "the village") << "\n";
+}
+
+void FinishVillageBoot() {
+    if (state == State::Off)
+        return;
+
+    state = State::Off;
+    std::cerr << "MH3 village boot: " << (toCity ? "network" : "village") << " module verified\n";
+}
+
+ClassicControllerSample ReadGameController() {
+    // Recorded input starts in the village.
+    const bool booting = state != State::Off;
+    HoldInputPlayback(booting);
+    const auto input = ReadHostController();
+    return booting ? ClassicControllerSample{true} : input;
+}
+
+void RunVillageBootSelfTests() {
+    auto check = [](bool valid) {
+        if (!valid)
+            MH3_THROW(std::runtime_error("Village boot regression failed"));
+    };
+
+    std::vector<uint8_t> data(SaveData::kFileSize);
+    check(!HasFirstCharacter(data));
+    data[3] = 1;
+    data[0x4B] = '1';
+    data[7] = '1';
+    check(HasFirstCharacter(data));
+    ++data.back();
+    check(!HasFirstCharacter(data));
+    data.resize(16);
+    check(!HasFirstCharacter(data));
+}

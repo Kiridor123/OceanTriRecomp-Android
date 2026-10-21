@@ -1,0 +1,72 @@
+# Build artifacts and directories
+build/
+build-*/
+build-android/
+bin/
+obj/
+packaging/android/build/
+packaging/android/obj/
+packaging/android/bin/
+*.apk
+*.aab
+*.dex
+*.class
+
+# Game assets, discs and ROM dumps (DO NOT COMMIT COPYRIGHTED DATA)
+Assets/
+Assets
+disc/
+disc
+*.iso
+*.rvz
+*.wbfs
+*.wad
+*.dol
+*.brstm
+*.brres
+
+# Unused binary data dumps
+generated/data_sections_init_blobs/
+generated/data_sections_init_blobs.S
+generated/data_sections_init.cpp
+
+# Save data, user data and local configurations
+saves/
+backup_saves/
+backup_saves*/
+*.tar.gz
+*.zip
+*.7z
+UserData/
+*.log
+mh3-stderr.log
+mh3-stdout.log
+*.graphics
+*.theme*
+*.language
+*.mouse_sensitivity
+gamepad.cfg
+
+# System and editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.bak*
+*.before*
+*~
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+
+# Native libraries and object files
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.pdb
+*.idb
+
+# Broken symlinks / temporary tools
+tools/dotnet/dotnet
