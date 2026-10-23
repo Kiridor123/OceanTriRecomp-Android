@@ -36,7 +36,7 @@ El código fuente del repositorio **[OceanTriRecomp](https://github.com/krisztsa
 
 ### Transparencia de Desarrollo y Uso de IA
 
-Este proyecto fue concebido, diseñado e integrado por **[krisztsa](https://github.com/krisztsa)**. Como parte de un flujo de ingeniería moderno y transparente, el desarrollo contó con **asistencia de inteligencia artificial (Claude en aproximadamente un 65%)** para acelerar el trabajo mecánico de traducción estática de bloques PowerPC a C++, refactorización de subsistemas del *runtime*, diagnóstico de contextos gráficos EGL/ANGLE y construcción de la interfaz `MH3UI`. Toda la arquitectura, validación en hardware real, corrección de errores y control de calidad son supervisados y mantenidos directamente por el autor.
+Este proyecto fue concebido, diseñado e integrado por **[Kris´ZtS](https://github.com/krisztsa)**. Como parte de un flujo de ingeniería moderno y transparente, el desarrollo contó con **asistencia de inteligencia artificial (Claude en aproximadamente un 65%)** para acelerar el trabajo mecánico de traducción estática de bloques PowerPC a C++, refactorización de subsistemas del *runtime*, diagnóstico de contextos gráficos EGL/ANGLE y construcción de la interfaz `MH3UI`. Toda la arquitectura, validación en hardware real, corrección de errores y control de calidad son supervisados y mantenidos directamente por el autor.
 
 ## Requisitos e Instrucciones de Compilación
 
