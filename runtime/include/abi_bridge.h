@@ -729,7 +729,7 @@ inline void InvokeIndirectJump(uint32_t target, CpuContext* ctx) {
 // missing targets. Out of line so the common bctrl keeps a small frame.
 MKW_PPC_NO_INLINE inline void InvokeIndirectCpuSlow(uint32_t target, CpuContext* cpu) {
     if (target == 0) {
-        ReportMissingCpuTarget(target, cpu);
+        return;
     }
 
     ApplyRuntimeCallOptions(target, cpu);
@@ -749,6 +749,8 @@ MKW_PPC_NO_INLINE inline void InvokeIndirectCpuSlow(uint32_t target, CpuContext*
 }
 
 inline void InvokeIndirectCpu(uint32_t target, CpuContext* ctx) {
+    if (target == 0)
+        return;
     CpuContext* cpu = ctx ? ctx : &GetPersistentCpuContext();
 
     if (target < 0x80800000u || target >= 0x81800000u) {

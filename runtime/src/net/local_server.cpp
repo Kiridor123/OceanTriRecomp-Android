@@ -1,23 +1,30 @@
-// Ciudad offline: usa los servidores nativos compilados en MH3.exe.
-// Solo se activa cuando existe OnlineLocal junto al ejecutable y el usuario
-// no ha elegido un servidor externo ni el modo comunidad.
+// Servidor local y multijugador para Ciudad/Loc Lac (local_server.h)
 #include "local_server.h"
 
 #include "../mh3sp_native_server.h"
+#include "lan_beacon.h"
 #include "nas_server.h"
 #include "online.h"
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
+#if defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <arpa/inet.h>
+#  include <fcntl.h>
+#  include <netinet/in.h>
+#  include <sys/select.h>
+#  include <sys/socket.h>
+#  include <unistd.h>
 #endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -25,47 +32,45 @@
 #include <fstream>
 #include <string>
 #include <thread>
-#include <chrono>
 
 namespace {
-constexpr const char* kServer = "127.0.0.1:18080";
 constexpr uint16_t kNasPort = 18080;
 constexpr uint16_t kOpnPort = 8200;
 constexpr uint16_t kLmpPort = 8201;
 constexpr uint16_t kFmpPort = 8202;
 constexpr uint16_t kRfpPort = 8203;
-bool configured = false;
-bool started = false;
 
-std::filesystem::path Root() {
-    wchar_t path[32768]{};
-    const DWORD length = GetModuleFileNameW(nullptr, path, 32768);
-    const auto exe = (length > 0 && length < 32768)
-        ? std::filesystem::path(std::wstring(path, length)).parent_path()
-        : std::filesystem::current_path();
-    return exe / L"OnlineLocal";
-}
+LocalOnlineServer::Mode g_mode = LocalOnlineServer::Mode::Community; // Por defecto Servidor de la Comunidad
+std::string g_hostIp = "mh3sp.com";
+bool g_configured = false;
+bool g_configLoaded = false;
 
-bool Installed() {
-    // OnlineLocal es el interruptor de activación; no se necesita ningún .py.
-    std::error_code ec;
-    return std::filesystem::is_directory(Root(), ec);
-}
-
-// OnlineLocal\modo.txt con la palabra "comunidad": usar el servidor de la comunidad.
-bool CommunityMode() {
-    std::ifstream in(Root() / L"modo.txt");
-    std::string word;
-    return (in >> word) && word == "comunidad";
+std::string GetConfigPath() {
+    const char* user = std::getenv("MH3_USER_DIR");
+    if (user && *user)
+        return std::string(user) + "/MH3UI.online";
+    if (std::filesystem::exists("/storage/emulated/0/MH3"))
+        return "/storage/emulated/0/MH3/MH3UI.online";
+    if (std::filesystem::exists("/sdcard/Download"))
+        return "/sdcard/Download/MH3UI.online";
+    return "MH3UI.online";
 }
 
 bool PortOpen(uint16_t port) {
+#if defined(_WIN32)
     const SOCKET handle = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (handle == INVALID_SOCKET)
         return false;
-
     u_long nonBlocking = 1;
     ioctlsocket(handle, FIONBIO, &nonBlocking);
+#else
+    const int handle = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (handle < 0)
+        return false;
+    int flags = fcntl(handle, F_GETFL, 0);
+    fcntl(handle, F_SETFL, (flags < 0 ? 0 : flags) | O_NONBLOCK);
+#endif
+
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
@@ -78,63 +83,106 @@ bool PortOpen(uint16_t port) {
     FD_SET(handle, &writable);
     FD_SET(handle, &failed);
     timeval wait{0, 150000};
+#if defined(_WIN32)
     const int ready = ::select(0, nullptr, &writable, &failed, &wait);
     const bool open = ready > 0 && FD_ISSET(handle, &writable) && !FD_ISSET(handle, &failed);
     ::closesocket(handle);
+#else
+    const int ready = ::select(handle + 1, nullptr, &writable, &failed, &wait);
+    const bool open = ready > 0 && FD_ISSET(handle, &writable) && !FD_ISSET(handle, &failed);
+    ::close(handle);
+#endif
     return open;
 }
 } // namespace
 
 namespace LocalOnlineServer {
-void Configure() {
-    // Un servidor elegido manualmente tiene prioridad sobre el modo local.
-    if (std::getenv("MH3_ONLINE_SERVER") || !Installed() || CommunityMode())
+void LoadOnlineConfig() {
+    if (g_configLoaded)
         return;
+    g_configLoaded = true;
 
-    SetOnlineServerSetting(kServer);
-    SetSkipTlsSetting(true);
-    configured = true;
-    std::fprintf(stderr, "MH3 ciudad offline: servidor nativo local en %s (OnlineLocal)\n", kServer);
+    const std::string path = GetConfigPath();
+    std::ifstream in(path);
+    int m = 3;
+    if (in >> m) {
+        if (m == 0)
+            g_mode = Mode::Offline;
+        else
+            g_mode = Mode::Community;
+    } else {
+        g_mode = Mode::Community;
+    }
+    g_hostIp = "mh3sp.com";
+}
+
+void SaveOnlineConfig() {
+    const std::string path = GetConfigPath();
+    std::ofstream out(path);
+    if (out.is_open()) {
+        out << (g_mode == Mode::Offline ? 0 : 3) << " mh3sp.com\n";
+    }
+}
+
+void SetMode(Mode mode, const std::string& hostIp) {
+    if (mode == Mode::Offline) {
+        g_mode = Mode::Offline;
+    } else {
+        g_mode = Mode::Community;
+    }
+    g_hostIp = "mh3sp.com";
+    SaveOnlineConfig();
+
+    StopLocalServer();
+
+    if (g_mode == Mode::Community) {
+        SetOnlineServerSetting("mh3sp.com");
+        SetSkipTlsSetting(false);
+    }
+    ApplyOnlinePatches();
+}
+
+Mode GetMode() {
+    LoadOnlineConfig();
+    return g_mode;
+}
+
+std::string GetConfiguredHostIp() {
+    return "mh3sp.com";
+}
+
+bool StartLocalServer() {
+    return false;
+}
+
+void StopLocalServer() {
+    LanBeacon::StopBroadcaster();
+    LanBeacon::StopScanner();
+    if (mh3sp_native::IsRunning())
+        mh3sp_native::Stop();
+    if (NasServer::IsRunning())
+        NasServer::Stop();
+}
+
+bool IsLocalServerRunning() {
+    return false;
+}
+
+void Configure() {
+    LoadOnlineConfig();
+    StopLocalServer();
+
+    if (g_mode == Mode::Community) {
+        SetOnlineServerSetting("mh3sp.com");
+        SetSkipTlsSetting(false);
+        g_configured = true;
+        std::fprintf(stderr, "[MH3 Online] Servidor oficial de la comunidad mh3sp.com configurado\n");
+    } else {
+        std::fprintf(stderr, "[MH3 Online] Modo Desconectado\n");
+    }
 }
 
 void Ensure() {
-    if (!configured || started)
-        return;
-
-    started = true;
-    WSADATA data{};
-    const int wsaResult = WSAStartup(MAKEWORD(2, 2), &data);
-    if (wsaResult != 0) {
-        std::fprintf(stderr, "MH3 ciudad offline: WSAStartup fallo (%d)\n", wsaResult);
-        return;
-    }
-
-    // NAS HTTP integrado en el ejecutable.
-    if (!PortOpen(kNasPort) && !NasServer::Start(kNasPort)) {
-        std::fprintf(stderr, "MH3 ciudad offline: no pude abrir el NAS local en el puerto %d\n", int(kNasPort));
-    }
-
-    // OPN/LMP/FMP/RFP se ejecutan dentro de MH3.exe; ya no se lanza Python.
-    if (!mh3sp_native::IsRunning())
-        mh3sp_native::Start();
-
-    // Espera hasta 10 segundos a que los cinco servicios estén escuchando.
-    for (int i = 0; i < 100; ++i) {
-        if (PortOpen(kNasPort) && PortOpen(kOpnPort) && PortOpen(kLmpPort) &&
-            PortOpen(kFmpPort) && PortOpen(kRfpPort)) {
-            std::fprintf(stderr, "MH3 ciudad offline: NAS y servicios OPN/LMP/FMP/RFP listos\n");
-            return;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    std::fprintf(stderr,
-        "MH3 ciudad offline: faltan servicios nativos; comprueba que los puertos 8200-8203 y 18080 estén libres\n");
+    StopLocalServer();
 }
 } // namespace LocalOnlineServer
-#else
-namespace LocalOnlineServer {
-void Configure() {}
-void Ensure() {}
-} // namespace LocalOnlineServer
-#endif

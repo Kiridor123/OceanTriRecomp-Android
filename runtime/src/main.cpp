@@ -1,4 +1,3 @@
-#include "mh3sp_native_server.h"
 #include "touch_controls.h"
 #include "language.h"
 #include "mh3_frame_rate_control.h"
@@ -125,15 +124,12 @@ void AppendCrashLog(std::string_view what, const CpuContext* cpu) noexcept {
     const std::string text = report.str();
 #if defined(ANDROID) || defined(__ANDROID__)
     __android_log_print(ANDROID_LOG_FATAL, "MH3", "MH3 CRASH REPORT:\n%s", text.c_str());
-    if (FILE* f = fopen("/sdcard/Download/oceantri_crash.txt", "a")) {
+    std::error_code lec;
+    std::filesystem::create_directories("/storage/emulated/0/MH3/logs", lec);
+    if (FILE* f = fopen("/storage/emulated/0/MH3/logs/oceantri_crash.txt", "a")) {
         fputs(text.c_str(), f);
         fputc('\n', f);
         fclose(f);
-    }
-    if (FILE* f2 = fopen("/storage/emulated/0/Download/oceantri_crash.txt", "a")) {
-        fputs(text.c_str(), f2);
-        fputc('\n', f2);
-        fclose(f2);
     }
 #endif
 #ifdef __vita__
@@ -968,11 +964,19 @@ int main(int argc, char** argv) {
             int fd = (int)(intptr_t)p;
             char buf[1024];
             ssize_t r;
+            std::error_code ec;
+            std::filesystem::create_directories("/storage/emulated/0/MH3/logs", ec);
+            FILE* logFile = fopen("/storage/emulated/0/MH3/logs/game_log.txt", "a");
             while ((r = read(fd, buf, sizeof(buf) - 1)) > 0) {
                 if (r > 0 && buf[r - 1] == '\n') --r;
                 buf[r] = '\0';
                 __android_log_print(ANDROID_LOG_INFO, "MH3", "%s", buf);
+                if (logFile) {
+                    fprintf(logFile, "%s\n", buf);
+                    fflush(logFile);
+                }
             }
+            if (logFile) fclose(logFile);
             return nullptr;
         }, (void*)(intptr_t)pfd[0]);
         pthread_detach(thr);
@@ -989,6 +993,7 @@ int main(int argc, char** argv) {
         std::filesystem::create_directories(std::string(userDir) + "/saves", uec);
         std::filesystem::create_directories(std::string(userDir) + "/nand", uec);
         std::filesystem::create_directories(std::string(userDir) + "/graphics", uec);
+        std::filesystem::create_directories(std::string(userDir) + "/logs", uec);
         setenv("MH3_USER_DIR", userDir, 1);
         __android_log_print(ANDROID_LOG_INFO, "MH3", "MH3_USER_DIR set to: %s", userDir);
 
@@ -1035,7 +1040,6 @@ int main(int argc, char** argv) {
         __android_log_print(ANDROID_LOG_INFO, "MH3", "Graphics init: resIdx=%d scale=%s vsync=%d", resIdx, scales[resIdx], vsync);
     }
 #endif
-    mh3sp_native::Start();
 #ifdef _WIN32
     {
         // Sin consola: la salida estandar se guarda en MH3.log junto al exe.

@@ -49,6 +49,22 @@ namespace aurora::gl {
 namespace {
 size_t nativeMeshLiveBytes = 0;
 std::vector<std::pair<GLsync, size_t>> nativeMeshRetired;
+
+void drain_retired_native_meshes(bool forceAll) noexcept {
+  for (auto it = nativeMeshRetired.begin(); it != nativeMeshRetired.end();) {
+    if (!it->first) {
+      it = nativeMeshRetired.erase(it);
+      continue;
+    }
+    const auto status = glClientWaitSync(it->first, forceAll ? GL_SYNC_FLUSH_COMMANDS_BIT : 0, forceAll ? 50000000 : 0);
+    if (status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED || status == GL_WAIT_FAILED || forceAll) {
+      glDeleteSync(it->first);
+      it = nativeMeshRetired.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
 } // namespace
 
 NativeMeshBuffer::NativeMeshBuffer(const char* path, uint64_t offset, uint32_t bytes) {
@@ -67,12 +83,34 @@ void NativeMeshBuffer::create(const char* path, uint64_t offset, const void* pay
   const auto release = [](uint8_t* pointer) { ::operator delete[](pointer, std::align_val_t(16)); };
   std::unique_ptr<uint8_t, decltype(release)> data(static_cast<uint8_t*>(::operator new[](bytes, std::align_val_t(16))), release);
   gfx::fill_mesh_payload(path, offset, payload, data.get(), bytes);
+  // Clear any existing GL errors on this thread before mesh allocation
+  while (glGetError() != GL_NO_ERROR);
+
   GLint previous = 0;
   glGetIntegerv(GL_COPY_WRITE_BUFFER_BINDING, &previous);
   glGenBuffers(1, &m_buffer);
   glBindBuffer(GL_COPY_WRITE_BUFFER, m_buffer);
   glBufferData(GL_COPY_WRITE_BUFFER, bytes, data.get(), GL_STATIC_DRAW);
-  const auto error = glGetError();
+  auto error = glGetError();
+
+  if (error != GL_NO_ERROR || !m_buffer) {
+    // Attempt recovery during heavy load (e.g. map transitions): drain retired mesh fences
+    drain_retired_native_meshes(true);
+    glFinish();
+    while (glGetError() != GL_NO_ERROR);
+
+    if (m_buffer)
+      glDeleteBuffers(1, &m_buffer);
+    m_buffer = 0;
+
+    glGenBuffers(1, &m_buffer);
+    if (m_buffer) {
+      glBindBuffer(GL_COPY_WRITE_BUFFER, m_buffer);
+      glBufferData(GL_COPY_WRITE_BUFFER, bytes, data.get(), GL_STATIC_DRAW);
+      error = glGetError();
+    }
+  }
+
   glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(previous));
 
   if (error != GL_NO_ERROR || !m_buffer) {
@@ -80,7 +118,13 @@ void NativeMeshBuffer::create(const char* path, uint64_t offset, const void* pay
       glDeleteBuffers(1, &m_buffer);
 
     m_buffer = 0;
-    AURORA_THROW(std::runtime_error("Native mesh GPU allocation failed"));
+#if defined(__ANDROID__)
+    __android_log_print(ANDROID_LOG_ERROR, "MH3_GL", "Native mesh GPU allocation failed: path=%s offset=%llu bytes=%u glError=0x%x",
+                        path ? path : "null", (unsigned long long)offset, bytes, (unsigned int)error);
+#endif
+    char errMsg[256];
+    std::snprintf(errMsg, sizeof(errMsg), "Native mesh GPU allocation failed (GL error 0x%x, %u bytes)", (unsigned int)error, bytes);
+    AURORA_THROW(std::runtime_error(errMsg));
   }
 
   m_data = data.release();
@@ -96,7 +140,8 @@ NativeMeshBuffer::~NativeMeshBuffer() {
       const auto fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
       glDeleteBuffers(1, &buffer);
       nativeMeshLiveBytes -= bytes;
-      nativeMeshRetired.emplace_back(fence, bytes);
+      if (fence)
+        nativeMeshRetired.emplace_back(fence, bytes);
     });
   ::operator delete[](const_cast<uint8_t*>(m_data), std::align_val_t(16));
 }
@@ -112,24 +157,12 @@ size_t native_mesh_resident_bytes() {
   if (!on_render_thread())
     AURORA_THROW(std::runtime_error("Model backing query outside context owner"));
 
-  size_t bytes = nativeMeshLiveBytes;
+  drain_retired_native_meshes(false);
 
-  for (auto it = nativeMeshRetired.begin(); it != nativeMeshRetired.end();) {
-    const auto status = it->first ? glClientWaitSync(it->first, 0, 0) : GL_WAIT_FAILED;
-
-    if (status == GL_WAIT_FAILED)
-      AURORA_THROW(std::runtime_error("GL model retirement notification failed"));
-
-    if (status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED) {
-      glDeleteSync(it->first);
-      it = nativeMeshRetired.erase(it);
-    } else {
-      bytes += it->second;
-      ++it;
-    }
-  }
-
-  return bytes;
+  // Return actively live mesh bytes. Buffers marked with glDeleteBuffers
+  // have already been handed over to the GL driver for deferred release,
+  // so counting in-flight retired bytes here would cause an eviction avalanche.
+  return nativeMeshLiveBytes;
 }
 
 namespace {
@@ -519,11 +552,7 @@ void shutdown() noexcept {
 
   // Teardown is the only unconditional finish in this ownership path.
   glFinish();
-
-  for (const auto& item : nativeMeshRetired)
-    if (item.first)
-      glDeleteSync(item.first);
-  nativeMeshRetired.clear();
+  drain_retired_native_meshes(true);
   nativeMeshLiveBytes = 0;
 
   for (auto& fence : g_frameFences) {
@@ -565,6 +594,7 @@ void release_context() noexcept {
     Log.fatal("GL context released outside its owner");
 
   glFlush();
+  drain_retired_native_meshes(false);
 
 #if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
   if (g_context->angleContext) {
@@ -649,6 +679,7 @@ void discard_native_frame() noexcept {
     Log.fatal("GL canceled frame fence allocation failed");
 
   glFlush();
+  drain_retired_native_meshes(false);
 }
 
 void finish() noexcept {
@@ -1438,6 +1469,7 @@ void present(const TexturePtr& source, int32_t x, int32_t y, int32_t width, int3
     Log.fatal("GL frame fence allocation failed");
 
   glFlush();
+  drain_retired_native_meshes(false);
 #if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
   if (g_context->angleContext) {
     if (!g_context->angleContext->swap_buffers())

@@ -3,6 +3,7 @@
 // the network stack: _vita_net_init loads SceNet and runs sceNetInit and
 // sceNetCtlInit).
 #include "net_host.h"
+#include "local_server.h"
 
 #include "guest_threads.h"
 
@@ -32,6 +33,13 @@
 #else
 #include <ifaddrs.h>
 #include <resolv.h>
+#endif
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define LOG_NET(...) do { __android_log_print(ANDROID_LOG_INFO, "MH3_NET", __VA_ARGS__); std::fprintf(stderr, __VA_ARGS__); } while(0)
+#else
+#define LOG_NET(...) std::fprintf(stderr, __VA_ARGS__)
 #endif
 
 #ifdef MH3_HAS_OPENSSL
@@ -256,25 +264,35 @@ bool Override(const std::string& name, uint32_t* ip) {
 
     const char* hosts = std::getenv("MH3_ONLINE_HOSTS");
 
-    if (!hosts)
-        return false;
+    if (hosts) {
+        std::string_view rest(hosts);
 
-    std::string_view rest(hosts);
+        while (!rest.empty()) {
+            const auto comma = rest.find(',');
+            const std::string_view entry = rest.substr(0, comma);
+            rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+            const auto equals = entry.find('=');
 
-    while (!rest.empty()) {
-        const auto comma = rest.find(',');
-        const std::string_view entry = rest.substr(0, comma);
-        rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
-        const auto equals = entry.find('=');
+            if (equals == std::string_view::npos)
+                continue;
 
-        if (equals == std::string_view::npos)
-            continue;
+            const std::string_view pattern = entry.substr(0, equals);
+            const std::string address(entry.substr(equals + 1));
 
-        const std::string_view pattern = entry.substr(0, equals);
-        const std::string address(entry.substr(equals + 1));
+            if (MatchesHost(pattern, name) && inet_pton(AF_INET, address.c_str(), ip) == 1)
+                return true;
+        }
+    }
 
-        if (MatchesHost(pattern, name) && inet_pton(AF_INET, address.c_str(), ip) == 1)
-            return true;
+    // Direct resolution for MH3SP community infrastructure:
+    // Prevents error 20100/23403 if Android ISP/mobile data DNS fails to resolve mh3sp.com subdomains.
+    if (MatchesHost("opn.mh3sp.com", name) || MatchesHost("nas.mh3sp.com", name) || MatchesHost("available.mh3sp.com", name)) {
+        inet_pton(AF_INET, "170.187.164.37", ip);
+        return true;
+    }
+    if (MatchesHost("natneg1.mh3sp.com", name) || MatchesHost("natneg2.mh3sp.com", name) || MatchesHost("natneg3.mh3sp.com", name)) {
+        inet_pton(AF_INET, "97.107.139.231", ip);
+        return true;
     }
 
     return false;
@@ -297,7 +315,11 @@ bool Startup() {
     static const bool started = _vita_net_init() >= 0;
     return started;
 #else
-    return true;
+    static const bool started = [] {
+        LocalOnlineServer::Ensure();
+        return true;
+    }();
+    return started;
 #endif
 }
 

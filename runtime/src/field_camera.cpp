@@ -328,22 +328,17 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
 
         W32(cam + kTiltTarget, 0);
     } else {
-        if (!manual && Memory::Read8(plw + kPlwState) == 3) {
+        if (!manual) {
             const uint32_t step = uint32_t(GameStep::Share(Memory::Read8(cam + kFast) == 0 ? 10 : 30));
             const uint32_t pitch = R32(cam + kPitchTarget);
             const int16_t angle = int16_t(pitch);
 
-            if (angle > 0 && angle < 2560) {
-                W32(cam + kPitchTarget, pitch - step);
+            if (angle > 0)
+                W32(cam + kPitchTarget, (pitch - std::min<uint32_t>(uint32_t(angle), step)) & 0xFFFF);
+            else if (angle < 0)
+                W32(cam + kPitchTarget, (pitch + std::min<uint32_t>(uint32_t(-angle), step)) & 0xFFFF);
 
-                if (int16_t(pitch - step) <= 0)
-                    W32(cam + kPitchTarget, 0);
-            } else if (angle < 0 && angle > -2560) {
-                W32(cam + kPitchTarget, pitch + step);
-
-                if (int16_t(pitch + step) >= 0)
-                    W32(cam + kPitchTarget, 0);
-            }
+            pitchShift = 2;
         }
 
         if (act(0, 27) == 0 && act(1, 18) == 0 && Memory::Read8(plw + kPlwAction) != 4)
@@ -455,13 +450,11 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
             easeEye = F(kOne);
             easeTarget = easeEye;
         }
-
     } else if (settleDown(0)) {
         easeEye = F(kEaseSit);
         easeTarget = easeEye;
     }
 
-    // Apply the pitch to the camera orbit on land as well as underwater.
     game.Call<RotX>({offset, R32(cam + kPitch) + R32(cam + kTilt)});
     game.Call<RotY>({offset, R32(cam + kYaw)});
     game.Call<VecAdd>({frame[32], offset, player});

@@ -53,12 +53,13 @@ public class OceanTriActivity extends SDLActivity {
             sLogBuffer.removeFirst();
         }
 
-        // Try writing to sdcard download log file
+        // Try writing to MH3/logs file
         try {
-            File logFile = new File("/sdcard/Download/oceantri_log.txt");
-            if (!logFile.getParentFile().exists()) {
-                logFile.getParentFile().mkdirs();
+            File logDir = new File("/storage/emulated/0/MH3/logs");
+            if (!logDir.exists()) {
+                logDir.mkdirs();
             }
+            File logFile = new File(logDir, "oceantri_log.txt");
             FileWriter fw = new FileWriter(logFile, true);
             fw.write(line + "\n");
             fw.close();
@@ -112,7 +113,11 @@ public class OceanTriActivity extends SDLActivity {
                 String stackTrace = sw.toString();
                 log("FATAL JAVA UNCAUGHT EXCEPTION: " + stackTrace);
                 try {
-                    File crashFile = new File("/sdcard/Download/oceantri_crash.txt");
+                    File crashDir = new File("/storage/emulated/0/MH3/logs");
+                    if (!crashDir.exists()) {
+                        crashDir.mkdirs();
+                    }
+                    File crashFile = new File(crashDir, "oceantri_crash.txt");
                     FileWriter fw = new FileWriter(crashFile, true);
                     fw.write("UNCAUGHT EXCEPTION in thread " + t.getName() + ":\n" + stackTrace + "\n");
                     fw.close();
@@ -232,14 +237,17 @@ public class OceanTriActivity extends SDLActivity {
 
         // 2. Search for ROM in other common directories (e.g. Download)
         final String foundOtherRom = findGameRom();
+        if (foundOtherRom != null) {
+            sRomPath = foundOtherRom;
+            mRomReady = true;
+            log("Found ROM automatically, launching: " + sRomPath);
+            return;
+        }
+
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                if (foundOtherRom != null) {
-                    showRomFoundPrompt(foundOtherRom);
-                } else {
-                    showRomSelectPrompt();
-                }
+                showRomSelectPrompt();
             }
         });
     }

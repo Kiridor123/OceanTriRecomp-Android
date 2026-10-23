@@ -10,6 +10,7 @@
 // models.bin remains the legacy startup pack when no index exists.
 void LoadNativeModelAssets(const char* disc_root);
 void UnloadNativeModelAssets();
+void PurgeUnusedNativeModelGPU();
 
 // Source provenance selects a single indexed pack. Missing source extents and
 // invalid files fail explicitly. Metadata/catalog admission does not allocate

@@ -2,119 +2,156 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%20ARM64-green.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android)
-[![Latest Release](https://img.shields.io/badge/Release-v1.3-orange.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
+[![Latest Release](https://img.shields.io/badge/Release-v1.4-orange.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
 
-Port nativo para **Android** de **Monster Hunter Tri** mediante recompilación estática de código (AOT - *Ahead-of-Time*), logrando rendimiento nativo en hardware ARM64 sin necesidad de emulación pesada.
+Port nativo para **Android** de **Monster Hunter Tri** mediante recompilación estática de código (AOT — *Ahead-of-Time*), logrando rendimiento nativo en hardware ARM64 sin necesidad de emulación.
 
----
-
-## 🙏 Reconocimientos y Agradecimientos Especiales
-
-> ### **Crédito Principal:**
-> Este proyecto es un fork directo y continuación para Android de **[krisztsa/OceanTriRecomp](https://github.com/krisztsa/OceanTriRecomp)**.
-> 
-> **Gracias al excelente e innovador trabajo de [krisztsa](https://github.com/krisztsa)** —quien desarrolló la arquitectura de recompilación estática de Monster Hunter Tri a C++, el renderizador moderno con Aurora HAL y el menú integrado para PC— fue posible adaptar, optimizar y hacer realidad esta versión nativa para teléfonos y tablets Android. Todo el agradecimiento y reconocimiento por las bases de este proyecto pertenecen a su autor original y a la comunidad de ingeniería inversa y preservación de videojuegos.
-
-Agradecimientos adicionales a:
-- Proyecto **WiiCompiled** y herramientas de decompilación estática de PowerPC.
-- **Aurora Engine HAL** por la capa de abstracción gráfica de bajo nivel.
-- **libSDL3** por el soporte multiplataforma de audio, ventanas y periféricos.
-- La comunidad de desarrolladores y jugadores de *Monster Hunter*.
+> **⚠️ Este proyecto NO incluye ningún archivo del juego.** Se requiere una copia legal propia de Monster Hunter Tri (`.iso` / `.rvz`) para poder utilizarlo.
 
 ---
 
-## ✨ Características y Avances del Port de Android (v1.3)
+## 🙏 Reconocimientos y Proyectos Base
 
-### 🚀 1. Rendimiento Nativo ARM64 (Sin Emulación)
-A diferencia de los emuladores convencionales (como Dolphin) que deben interpretar o traducir en tiempo de ejecución las instrucciones de CPU (*JIT*) y lidiar con la sobrecarga de emulación, **OceanTriRecomp** ejecuta código binario C++ compilado directamente para la arquitectura **ARM64** de tu dispositivo. Esto se traduce en menor consumo de batería, temperaturas más bajas y estabilidad de cuadros por segundo.
+Este proyecto se construye directamente sobre el trabajo de otros desarrolladores. Con total transparencia, estos son los proyectos y autores cuyos aportes hicieron posible este port:
 
-### ⚡ 2. Soporte de Alta Tasa de Refresco: Hasta 120 FPS
-- Adaptación para pantallas de **60 Hz, 90 Hz y 120 Hz**.
-- Desacoplamiento de V-Sync sin crasheos de pipeline.
-- Sistema de pacing de fotogramas dinámico que elimina el estrangulamiento artificial a 60 FPS cuando la pantalla y la GPU permiten tasas superiores.
+### Proyecto Base: OceanTriRecomp
 
-### 📂 3. Selector de ROM Integrado (ROM Picker)
-- En el primer inicio, la aplicación despliega automáticamente el selector de archivos del sistema de Android (*Storage Access Framework*).
-- Selecciona tu copia legal de Monster Hunter Tri (`.iso` o `.rvz`) desde la memoria interna o tarjeta SD; el instalador interno copiará y preparará los datos necesarios en el almacenamiento seguro de la app.
+> **Fork directo de [krisztsa/OceanTriRecomp](https://github.com/krisztsa/OceanTriRecomp)**
+>
+> Todo el mérito por la arquitectura de recompilación estática PowerPC → C++, el renderizador moderno con Aurora HAL, y el runtime nativo pertenece a **[krisztsa](https://github.com/krisztsa)**. Este repositorio adapta su trabajo para Android ARM64.
 
-### 🎮 4. Controles Táctiles y Ocultación
-- **Gamepad Virtual Completo**: Stick analógico virtual y botones táctiles translúcidos en pantalla (A, B, X, Y, L, R, ZL, ZR, +, -, 1).
-- **Opción de Ocultar Táctiles**: En `Ajustes` → `Controles` puedes cambiar la opción a `OCULTOS`. Los botones táctiles desaparecerán de pantalla dejando únicamente el engranaje flotante de ajustes (⚙), ideal si utilizas un mando físico o quieres una pantalla limpia.
+### Servidor Online: MH3SP (Monster Hunter 3 Server Project)
 
-### 🕹️ 5. Keymapper para Mandos Bluetooth y USB
-- Soporte Plug-and-Play para mandos de Xbox, PlayStation (DualShock 4 / DualSense), Nintendo Switch Pro Controller y mandos genéricos USB/Bluetooth.
-- Archivo de configuración `gamepad.cfg` integrado con perfiles:
-  - **Estilo Nintendo**: Disposición tradicional (A a la derecha, B abajo, X arriba, Y a la izquierda).
-  - **Estilo Xbox / Occidental**: Invierte automáticamente A/B y X/Y para respetar la memoria muscular de juegos occidentales (A para aceptar/rodar).
-  - **Gatillos**: Opción para alternar entre gatillos primarios y secundarios (L/R y ZL/ZR).
+> El modo online (Ciudad Loc Lac) utiliza una implementación de servidor derivada de **[sepalani/MH3SP](https://github.com/sepalani/MH3SP)**, creado por **[Sepalani](https://github.com/sepalani)**.
+>
+> - **Repositorio del servidor**: [sepalani/MH3SP](https://github.com/sepalani/MH3SP) — Licencia AGPL-3.0
+> - **Parches de cliente**: [sepalani/MH3SP-patcher](https://github.com/sepalani/MH3SP-patcher)
+>
+> El archivo [`mh3sp_native_server.cpp`](runtime/src/mh3sp_native_server.cpp) es una adaptación nativa en C++ del servidor Python original de MH3SP. El código derivado se distribuye bajo la misma licencia AGPL-3.0 del proyecto original, como se indica en sus cabeceras. La conexión online por defecto apunta a `mh3sp.com`.
 
-### 📱 6. Recuperación de Pantalla en Segundo Plano (Ciclo de Vida)
-- Se solucionó el problema de pantalla negra tras suspender la app, abrir notificaciones push o responder mensajes en apps externas (como WhatsApp). El contexto OpenGL ES 3.0 se recicla y sincroniza limpiamente en el hilo de renderizado sin congelamientos.
+### Toolchain de Recompilación: WiiCompiled
 
-### 🔍 7. Interfaz de Ajustes Diseñada para Móviles
-- Menú dentro del juego con tipografía de alto contraste y tamaño optimizado para alta densidad de píxeles (DPI).
-- Pestañas organizadas para gráficos (resolución interna, V-Sync, FPS), controles, temas visuales e idioma.
+> El traductor estático PowerPC → C++ y el ABI bridge provienen de **WiiCompiled** (commit `85f250155f`).
+> Consultar [`toolchain/ORIGIN.md`](toolchain/ORIGIN.md) y [`toolchain/THIRD-PARTY-NOTICES.md`](toolchain/THIRD-PARTY-NOTICES.md) para detalles y licencias (GPLv3).
 
-### 🛡️ 8. Compatibilidad con Android 15 (Páginas de 16 KB)
-- El APK y las librerías nativas (`libmain.so`, `libSDL3.so`, `libpng16.so`) están alineadas a 16 KB mediante `zipalign -P 16`, garantizando compatibilidad con los nuevos núcleos de memoria de Android 15 y dispositivos futuros.
+### Otros Proyectos Utilizados
+
+| Proyecto | Uso | Licencia |
+|----------|-----|----------|
+| [Aurora (encounter/aurora)](https://github.com/encounter/aurora) | HAL gráfico SDL3 + OpenGL ES 3.0 | MIT |
+| [libSDL3](https://github.com/libsdl-org/SDL) | Ventana, audio, input multiplataforma | zlib |
+| [Dolphin Emulator](https://github.com/dolphin-emu/dolphin) | Referencia de comportamiento hardware y Riivolution | GPL-2.0 |
+| [Crypto++](https://github.com/weidai11/cryptopp) | Criptografía de red (SHA-1, ECDSA) | BSL-1.0 |
+| [pugixml](https://github.com/zeux/pugixml) | Parser XML para parches Riivolution | MIT |
+| [toml11](https://github.com/ToruNiina/toml11) | Configuración de ajustes | MIT |
+| [stb_dxt](https://github.com/nothings/stb) | Compresión de texturas DXT | MIT/Public Domain |
+
+---
+
+## ✨ Características (v1.4)
+
+### 🚀 Rendimiento Nativo ARM64
+Código C++ compilado directamente para ARM64. Sin interpretación ni JIT en tiempo de ejecución. Menor consumo de batería y temperaturas más bajas comparado con emulación convencional.
+
+### 🌐 Modo Online — Ciudad Loc Lac
+- Conexión directa al servidor **mh3sp.com** para jugar online.
+- Servidor local embebido (adaptación nativa de [MH3SP](https://github.com/sepalani/MH3SP)) para modo LAN.
+- Beacon LAN para descubrimiento automático de partidas en red local.
+- Implementación nativa de NAS (Nintendo Authentication Server).
+
+### ⚡ Soporte de Alta Tasa de Refresco
+- Soporte para pantallas de 60 Hz, 90 Hz y 120 Hz.
+- Frame pacing dinámico sin estrangulamiento artificial.
+
+### 🎮 Controles Táctiles Personalizables
+- Gamepad virtual completo: sticks analógicos, A/B/X/Y, L/R/ZL/ZR, D-Pad, +/-.
+- **Botones macro**: M1 (A+X), M2 (B+Y), M3 (L+R), M4 (A+B) — activables individualmente desde ajustes.
+- Modo edición: arrastra y reposiciona cualquier botón. Escala individual por botón.
+- Opción de ocultar controles táctiles para uso con mando físico.
+
+### 🕹️ Mandos Bluetooth y USB
+- Plug-and-Play para mandos Xbox, PlayStation (DualShock/DualSense), Nintendo Switch Pro y genéricos.
+- Perfiles Nintendo y Xbox para disposición de botones.
+- Intercambio de gatillos L/R ↔ ZL/ZR.
+
+### 🔧 Mejoras Técnicas en v1.4
+- **Sistema de limpieza GPU mejorado**: fence-based mesh retirement con drenaje automático.
+- **Corrección de crash GPU**: operaciones de GPU ahora correctamente despachadas al render thread.
+- **Límite de memoria GPU**: aumentado de 16 MiB a 64 MiB para evitar evicción prematura.
+- **Logs estructurados**: registros del juego en `/storage/emulated/0/MH3/logs/`.
+- **Corrección de audio**: mezcla nativa sin artefactos en dispositivos ARM64.
+- **Corrección de crash en foto grupal**: estabilidad en capturas de pantalla multijugador.
+- **Optimización de frustum culling**: reducción de draw calls innecesarios.
 
 ---
 
 ## 📲 Instalación
 
-1. Dirígete a la sección de **[Releases](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)**.
-2. Descarga el archivo `OceanTriRecomp-Android-v1.3-arm64.apk`.
-3. Instálalo en tu dispositivo Android (asegúrate de permitir la instalación desde fuentes desconocidas si tu navegador lo solicita).
-4. Abre **Monster Hunter Tri**. En la pantalla de bienvenida, pulsa el botón para seleccionar la ROM.
-5. Elige tu archivo `.iso` o `.rvz` de Monster Hunter Tri (versión Europea recomendada: `RMHP08`).
-6. Espera unos instantes mientras se copian los datos del juego. ¡A cazar!
+1. Ve a **[Releases](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)**.
+2. Descarga `OceanTriRecomp-Android-v1.4-arm64.apk`.
+3. Instala en tu dispositivo (permite instalación de fuentes desconocidas si se solicita).
+4. Abre la app, selecciona tu ROM de Monster Hunter Tri (`.iso` / `.rvz`, versión PAL `RMHP08`).
+5. Espera la copia inicial de datos. ¡A cazar!
 
 ---
 
-## 🛠️ Requisitos del Dispositivo
+## 🛠️ Requisitos
 
-- **Procesador**: 64-bit ARMv8-A (Snapdragon, MediaTek Dimensity, Google Tensor, Samsung Exynos).
-- **Sistema Operativo**: Android 10 (API nivel 29) o superior.
-- **Gráficos**: Compatible con OpenGL ES 3.0+.
-- **Espacio Libre**: Alrededor de 3 a 5 GB libres para los datos del juego.
+- **CPU**: ARMv8-A 64-bit (Snapdragon, Dimensity, Tensor, Exynos)
+- **OS**: Android 10+ (API 29)
+- **GPU**: OpenGL ES 3.0+
+- **Espacio**: ~3-5 GB libres
 
 ---
 
-## 🏗️ Cómo Compilar el Proyecto (Build from Source)
+## 🏗️ Compilar desde el Código Fuente
 
-### Prerrequisitos en Linux
-- Android NDK (r28 o superior recomendado)
+### Prerrequisitos (Linux)
+- Android NDK r28+
 - Android SDK Build-Tools 35.0.0
 - CMake 3.25+ y Ninja
 - Clang / LLVM
 - Java JDK 17+
 
-### Pasos de Compilación
+### Pasos
 ```bash
-# 1. Clonar el repositorio
+# Clonar
 git clone https://github.com/Kiridor123/OceanTriRecomp-Android.git
 cd OceanTriRecomp-Android
 
-# 2. Configurar variables de entorno (ajusta según tus rutas locales)
-export ANDROID_HOME="/ruta/a/tu/android-sdk"
+# Variables de entorno
+export ANDROID_HOME="/ruta/a/android-sdk"
 export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/28.2.13676358"
 
-# 3. Compilar librerías nativas y generar APK
-chmod +x scripts/build-android.sh
-./scripts/build-android.sh
+# Configurar (ARM64)
+cmake -B build-android \
+  -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a \
+  -DANDROID_PLATFORM=android-29 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DANDROID=ON \
+  -G Ninja
+
+# Compilar
+cmake --build build-android --target MH3 --parallel $(nproc)
+
+# Empaquetar APK
+bash packaging/android/build_apk.sh
 ```
 
-El APK compilado, alineado y firmado estará disponible en la carpeta `release/OceanTriRecomp-Android-v1.3-arm64.apk`.
+El APK se genera en `release/OceanTriRecomp-Android-v1.4-arm64.apk`.
 
 ---
 
-## ⚖️ Licencia y Descargo de Responsabilidad (Disclaimer)
+## 📜 Licencias
 
-### Licencia del Código
-Este proyecto está distribuido bajo la licencia **GNU General Public License v3.0 (GPLv3)**. Consulta el archivo [LICENSE](LICENSE) para más detalles.
+- **Runtime y toolchain**: GPLv3 (heredada de WiiCompiled)
+- **Servidor online (mh3sp_native_server.cpp)**: AGPL-3.0 (derivado de [MH3SP](https://github.com/sepalani/MH3SP))
+- **Aurora HAL**: MIT
+- Ver [`toolchain/THIRD-PARTY-NOTICES.md`](toolchain/THIRD-PARTY-NOTICES.md) para la lista completa de dependencias.
 
-### Descargo de Responsabilidad Legal
-- **Monster Hunter** y **Monster Hunter Tri** son marcas registradas de **Capcom Co., Ltd.**
-- **Wii** es una marca registrada de **Nintendo Co., Ltd.**
-- Este proyecto es un esfuerzo independiente de código abierto con fines de investigación, compatibilidad y preservación histórica. No está afiliado, respaldado, asociado ni patrocinado por Capcom ni por Nintendo.
-- **Este repositorio y sus versiones compiladas (Releases) NO contienen ni distribuyen ningún archivo con derechos de autor, código propietario, modelos, texturas, música ni archivos ROM del juego original.** El usuario final debe suministrar su propia copia legalmente adquirida de *Monster Hunter Tri* para generar o cargar los datos necesarios en la aplicación.
+---
+
+## ⚖️ Aviso Legal
+
+Este proyecto es una herramienta de preservación de software. **No distribuye, incluye ni enlaza a ningún archivo protegido por derechos de autor de Nintendo, Capcom ni ningún otro titular.** Se requiere que el usuario proporcione su propia copia legal del juego. El uso de este software es responsabilidad del usuario.

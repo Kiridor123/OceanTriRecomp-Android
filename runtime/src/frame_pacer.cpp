@@ -185,8 +185,7 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
     const auto period = std::chrono::nanoseconds(VideoRetracePeriodNs());
 
     // Each step advances the game by the host time the previous one took, with
-    // no fixed rate; frames through the frame limit by the display's
-    // (DisplayStep).
+    // no fixed rate; frames through the frame limit by the display's.
     bool variableStep = true;
 #if 1 // habilitado tambien en release (Windows)
     // MH3_VARIABLE_STEP=0: the game's own fixed steps (its retrace budget).
@@ -208,25 +207,51 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
     double stepTicks; // game time of the step that just ran, in retraces
     if (variableStep) {
         const int targetFps = MH3FrameRateControl::TargetFPS();
-        const auto targetPeriod = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / double(targetFps)));
+        const auto targetPeriod = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / double(std::max(1, targetFps))));
         const auto targetDeadline = frameEnd + targetPeriod;
         if (now < targetDeadline) {
             sleepUntil(targetDeadline);
             now = Clock::now();
         }
-        const auto step = std::min<Clock::duration>(now - frameEnd, kMaxStep);
-        if (now - frameEnd > targetPeriod * 2) {
+
+        const auto actualFrameDuration = now - frameEnd;
+
+        // If deadline was missed (rendering bottleneck / framerate drop), reset frameEnd
+        // directly to now so no time debt accumulates and the simulation NEVER accelerates (no mini-turbo).
+        if (now >= targetDeadline) {
             frameEnd = now;
         } else {
-            frameEnd += targetPeriod;
+            frameEnd = targetDeadline;
         }
-        stepTicks = std::chrono::duration<double>(step) / period;
-#ifdef MH3_HAS_AURORA
-        stepTicks = DisplayStep(stepTicks);
-#endif
 
-        // The next step is assumed to take as long as this one.
-        GameStep::Begin(std::max(stepTicks, 1e-3) / 2);
+        // Measure actual frame duration in seconds, clamped to realistic bounds.
+        // If a massive stall occurred (e.g. loading screen or pause > 100ms), avoid physics spikes.
+        double dt = std::chrono::duration<double>(actualFrameDuration).count();
+        if (dt > 0.1) {
+            dt = std::min(dt, 0.05); // cap single frame contribution to 50ms (20 FPS)
+        } else if (dt < 1.0 / 240.0) {
+            dt = 1.0 / 240.0;
+        }
+
+        // Exponential moving average filter (alpha = 0.15).
+        // Smooths out VSync frame-drop cadence (e.g. 16.6ms / 33.3ms alternating on 60Hz displays when dropping to 45 FPS)
+        // so that logic does not jerk between 2.0x and 0.5x speed (eliminates the "mini-turbo"),
+        // while tracking the true real-time framerate so the game NEVER runs in slow motion
+        // even if FPS is 45, or if 120 FPS target is set on a 60 Hz display.
+        static double smoothedDt = 1.0 / double(std::max(1, targetFps));
+        static int lastTargetFps = targetFps;
+        if (targetFps != lastTargetFps) {
+            lastTargetFps = targetFps;
+            smoothedDt = 1.0 / double(std::max(1, targetFps));
+        }
+
+        smoothedDt = smoothedDt * 0.85 + dt * 0.15;
+
+        // Retrace period in seconds (e.g. 1 / 59.94 s)
+        const double retraceSeconds = std::chrono::duration<double>(period).count();
+        stepTicks = smoothedDt / retraceSeconds;
+
+        GameStep::Begin(stepTicks / 2.0);
 
         // No wait: only deliver the device work due (audio, alarms, IOS, VI),
         // and let the other guest threads that can run have a moment, as the
@@ -236,10 +261,10 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
         GuestThreads::Donate(ctx, kDonation);
         *ctx = frame;
     } else {
-        frameEnd += budget * period;
-
-        if (now - frameEnd > kMaxDebt)
-            frameEnd = now; // too far behind: drop the debt
+        if (now >= frameEnd + budget * period)
+            frameEnd = now;
+        else
+            frameEnd += budget * period;
         stepTicks = budget;
         GameStep::Begin(budget / 2.0);
 

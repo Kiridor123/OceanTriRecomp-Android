@@ -35,11 +35,10 @@ constexpr size_t MaxIndexBytes = 4 * 1024 * 1024;
 constexpr size_t MaxMetadataBytes = 8 * 1024 * 1024;
 constexpr size_t MaxIdentityBytes = 4 * 1024 * 1024;
 
-// The packs' GPU data, released ones included until their last scene: the
-// Vita's CDRAM model reservation (aurora-main gxm/device.cpp). Least recently
-// drawn packs of earlier areas make room within it. One quest's packs take
-// 5-8 MiB; at 32 MiB they outgrew the reservation over a few areas.
-constexpr size_t MaxGPUBytes = 16 * 1024 * 1024;
+// The packs' GPU data, released ones included until their last scene.
+// Expanded from the 16 MiB PS Vita CDRAM limit to 64 MiB for Android and PC,
+// preventing eviction thrashing during multi-monster hunts and Loc Lac City online lobbies.
+constexpr size_t MaxGPUBytes = 64 * 1024 * 1024;
 constexpr uint32_t LegacyPack = UINT32_MAX;
 struct Assets {
     std::vector<uint8_t> metadata, identity;
@@ -1077,9 +1076,46 @@ void PumpNativeModelGPUReads() {
     if (!manager)
         return;
 
+    // Periodically (every 120 frames) or when new payloads arrive,
+    // proactively purge GPU meshes that have no live sources and are not demanded.
+    static uint32_t s_purgeInterval = 0;
+    if (++s_purgeInterval >= 120) {
+        s_purgeInterval = 0;
+        PurgeUnusedNativeModelGPU();
+    }
+
     for (auto& payload : payloads)
         QueueNativeGraphicsTask(NativeTaskOrder::BeforeDraws,
                                 [&m = *manager, payload = std::move(payload)] { PrefetchGPU(m, payload.handle, payload.generation, payload.data.get()); });
+}
+
+void PurgeUnusedNativeModelGPU() {
+    if (!manager)
+        return;
+
+    std::vector<std::pair<uintptr_t, uint64_t>> toRetire;
+    {
+        std::lock_guard lock(manager->lock);
+        for (auto& item : manager->loaded) {
+            auto& asset = *item.second;
+            if (asset.gpuRegistered && !NativeModelPackHasLiveSources(asset.handle()) &&
+                (!manager->frameKnown || asset.lastDemandFrame != manager->demandFrame)) {
+                toRetire.emplace_back(asset.handle(), asset.generation);
+                asset.gpuRegistered = false;
+                ++manager->stats.gpu_evictions;
+            }
+        }
+    }
+
+    if (!toRetire.empty()) {
+        QueueNativeGraphicsTask(NativeTaskOrder::AfterDraws, [toRetire = std::move(toRetire)] {
+            for (const auto& [handle, gen] : toRetire) {
+                try {
+                    UnregisterNativeModelGPU(handle, gen);
+                } catch (...) {}
+            }
+        });
+    }
 }
 
 void UnloadNativeModelAssets() {

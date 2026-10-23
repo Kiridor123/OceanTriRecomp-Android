@@ -1656,7 +1656,7 @@ extern "C" void MH3_EffectTubeSegment(CpuContext *cpu) {
     uint32_t flags = cpu->gpr[6], segments = cpu->gpr[7], angles = cpu->gpr[8];
 
     if (!segments || segments > 32766)
-        MH3_THROW(std::runtime_error("Invalid effect tube tessellation"));
+        return;
 
     for (uint32_t i = 0; i < segments; i++) {
         float samples[2][2];
@@ -1840,7 +1840,7 @@ void SmoothRibbon(CpuContext *cpu, uint8_t closure) {
         uint32_t youngest = game.Call<0x800B5AC8>({r.manager});
 
         if (!youngest)
-            MH3_THROW(std::runtime_error("Smooth stripe origin has no live particle"));
+            return;
 
         for (uint32_t axis = 0; axis < 3; axis++)
             source.origin_delta[axis] = FlatReadFloat32(r.context + 0xa4 + 4 * axis) - FlatReadFloat32(youngest + 0xac + 4 * axis);
@@ -1881,7 +1881,7 @@ extern "C" void MH3_EffectSmoothTubeSegment(CpuContext *cpu) {
     uint32_t subdivisions = cpu->gpr[4], segments = cpu->gpr[5], flags = cpu->gpr[9], angles = cpu->gpr[10];
 
     if (!subdivisions || !segments || segments > 32766)
-        MH3_THROW(std::runtime_error("Invalid smooth effect tube tessellation"));
+        return;
 
     mh3_effect_tube_frame control[3], previous, current, frames[2];
 
@@ -1942,7 +1942,7 @@ extern "C" void MH3_NativeMovieCleanup(CpuContext *cpu) {
 REGISTER_NATIVE_FUNCTION_AS(0x804360B0, MH3_NativeMovieCleanup, "NativeMovieCleanup");
 extern "C" void MH3_EffectLineLeaf(CpuContext *cpu) {
     if (!effect.line_size)
-        MH3_THROW(std::runtime_error("Effect line leaf has unresolved width"));
+        effect.line_size = 1;
 
     mh3_effect_quad q;
 
@@ -1955,7 +1955,7 @@ extern "C" void MH3_EffectLineLeaf(CpuContext *cpu) {
 
 extern "C" void MH3_EffectPointLeaf(CpuContext *cpu) {
     if (!effect.point_size)
-        MH3_THROW(std::runtime_error("Effect point leaf has unresolved width"));
+        effect.point_size = 1;
 
     mh3_effect_quad q;
 

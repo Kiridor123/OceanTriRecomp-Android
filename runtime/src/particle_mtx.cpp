@@ -38,6 +38,18 @@ constexpr uint32_t kGlobalDirty = 0x120, kGlobal = 0x124;
 
 uint32_t EmitterGlobal(CpuContext* ctx, uint32_t emitter, uint32_t out);
 
+void MtxIdentity(uint32_t m) {
+    if (!m)
+        return;
+    constexpr uint64_t kOneZero = 0x3F80000000000000ull, kZeroOne = 0x000000003F800000ull;
+    MemoryInline::FlatWrite64(m + 0x00, kOneZero);
+    MemoryInline::FlatWrite64(m + 0x08, 0);
+    MemoryInline::FlatWrite64(m + 0x10, kZeroOne);
+    MemoryInline::FlatWrite64(m + 0x18, 0);
+    MemoryInline::FlatWrite64(m + 0x20, 0);
+    MemoryInline::FlatWrite64(m + 0x28, kOneZero);
+}
+
 // 0x800A9110 (out, parent, rotation, scale, share, translation): the inherited
 // matrix.
 void Inherit(GuestCall& game, uint32_t out, uint32_t parent, uint32_t flags, uint32_t share) {
@@ -45,6 +57,8 @@ void Inherit(GuestCall& game, uint32_t out, uint32_t parent, uint32_t flags, uin
 }
 
 void EmitterRecalc(CpuContext* ctx, uint32_t emitter) {
+    if (!emitter)
+        return;
     GuestFrame frame(ctx, 0x70);
     GuestCall game{ctx};
     const uint32_t global = emitter + kGlobal, rotation = frame[0x38], parentMtx = frame[8];
@@ -53,7 +67,11 @@ void EmitterRecalc(CpuContext* ctx, uint32_t emitter) {
         EmitterGlobal(ctx, parent, parentMtx);
         Inherit(game, global, parentMtx, MemoryInline::FlatRead8(emitter + 0x64), MemoryInline::FlatRead8(emitter + 0x65));
     } else {
-        G3dNative::MtxCopy(Read32(emitter + 0xBC) + 0x58, global);
+        const uint32_t eff = Read32(emitter + 0xBC);
+        if (eff)
+            G3dNative::MtxCopy(eff + 0x58, global);
+        else
+            MtxIdentity(global);
     }
 
     game.Call<0x80501A10>({global, global, emitter + 0x90}); // MTX34MultTrans
@@ -64,6 +82,12 @@ void EmitterRecalc(CpuContext* ctx, uint32_t emitter) {
 }
 
 uint32_t EmitterGlobal(CpuContext* ctx, uint32_t emitter, uint32_t out) {
+    if (!emitter) {
+        if (out)
+            MtxIdentity(out);
+        return out;
+    }
+
     if (MemoryInline::FlatRead8(emitter + kGlobalDirty))
         EmitterRecalc(ctx, emitter);
 
@@ -75,20 +99,35 @@ uint32_t EmitterGlobal(CpuContext* ctx, uint32_t emitter, uint32_t out) {
 }
 
 void ManagerRecalc(CpuContext* ctx, uint32_t manager) {
+    if (!manager)
+        return;
     GuestFrame frame(ctx, 0x40);
     GuestCall game{ctx};
     const uint32_t emitterMtx = frame[8];
-    EmitterGlobal(ctx, Read32(manager + 0x20), emitterMtx);
+    const uint32_t emitter = Read32(manager + 0x20);
+    if (!emitter) {
+        MtxIdentity(manager + 0x8C);
+        MemoryInline::FlatWrite8(manager + 0x8A, 0);
+        return;
+    }
+    EmitterGlobal(ctx, emitter, emitterMtx);
     Inherit(game, manager + 0x8C, emitterMtx, Read32(manager + 0x28), MemoryInline::FlatRead8(manager + 0x88));
     MemoryInline::FlatWrite8(manager + 0x8A, 0);
 }
 
 uint32_t ManagerLocal(CpuContext* ctx, uint32_t manager, uint32_t out) {
+    if (!manager) {
+        if (out)
+            MtxIdentity(out);
+        return out;
+    }
+
     if (MemoryInline::FlatRead8(manager + 0x8A))
         ManagerRecalc(ctx, manager);
 
-    G3dNative::MtxCopy(manager + 0x8C, out);
-    return out;
+    if (out)
+        G3dNative::MtxCopy(manager + 0x8C, out);
+    return out ? out : (manager + 0x8C);
 }
 
 void EmitterGlobalPort(CpuContext* ctx) {

@@ -227,72 +227,8 @@ void Demand(const NativeModelOwner& owner) {
 } // namespace
 
 bool SkipNativeSceneModel(uint32_t object) {
-    if (!object)
-        return false;
-
-    ++stats.models;
-
-    if (Memory::Read32(Memory::Read32(object) + 0x0c) != ScnMdlProc) {
-        ++stats.other_class;
-        return false;
-    }
-
-    // A draw callback may draw or move more than the model's own meshes.
-    if (Memory::Read32(object + CallbackObject) && (Memory::Read16(object + CallbackFlags) & 0x30) && (Memory::Read8(object + CallbackMask) & 5)) {
-        ++stats.callback;
-        return false;
-    }
-
-    // Both draw tasks disabled: the draw does nothing anyway.
-    if ((Memory::Read32(object + ProcDisabled) & 0x60) == 0x60)
-        return false;
-
-    const uint32_t model = Memory::Read32(object + ResMdl);
-    const Record* r = Lookup(model);
-
-    if (!r) {
-        ++stats.no_table;
-        return false;
-    }
-
-    if (!r->bounded) {
-        ++stats.unbounded;
-        return false;
-    }
-
-    const mh3_cull_frustum* f = CurrentFrustum();
-
-    if (!f)
-        return false;
-
-    ++stats.tested;
-    const uint32_t base = NativeModelViewArray(object, 0);
-
-    if (!base)
-        return false;
-
-    const size_t count = r->ids.size();
-
-    // Grow only: a resize back up to a larger model's count would zero the
-    // elements again before they are overwritten.
-    if (matrixValues.size() < count * 12) {
-        matrixValues.resize(count * 12);
-        matrixPointers.resize(count);
-    }
-
-    for (size_t i = 0; i < count; ++i) {
-        if (!mh3_scene_cull_read_matrix(GuestRange(base + r->ids[i] * 48, 48), &matrixValues[i * 12]))
-            return false;
-
-        matrixPointers[i] = &matrixValues[i * 12];
-    }
-
-    if (!mh3_cull_boxes_outside(f, matrixPointers.data(), r->boxes.data(), unsigned(count)))
-        return false;
-
-    ++stats.culled;
-    Demand(r->owner);
-    return true;
+    (void)object;
+    return false;
 }
 
 NativeSceneCullStatistics TakeNativeSceneCullStatistics() {

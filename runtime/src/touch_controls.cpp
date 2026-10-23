@@ -5,6 +5,8 @@
 #include "mh3_frame_rate_control.h"
 #include "widescreen.h"
 #include "memory.h"
+#include "net/local_server.h"
+#include "net/lan_beacon.h"
 
 #include <SDL3/SDL.h>
 #include <GLES3/gl3.h>
@@ -165,7 +167,17 @@ public:
         float spreadY = 0.10f;
         float btnR = 0.058f;
 
-        // A, B, X, Y
+        // Macro Buttons FIRST (checked before individual buttons for collision priority)
+        AddBtn("M1", "1", (MH3_CL_A | MH3_CL_X), { diamondNormX - spreadX * 1.8f, diamondNormY - spreadY * 0.8f }, btnR * 0.95f,
+               { 0.85f, 0.30f, 0.60f, 0.60f }, { 1.0f, 0.45f, 0.80f, 0.95f });
+        AddBtn("M2", "2", (MH3_CL_B | MH3_CL_Y), { diamondNormX - spreadX * 1.8f, diamondNormY + spreadY * 0.8f }, btnR * 0.95f,
+               { 0.30f, 0.75f, 0.75f, 0.60f }, { 0.45f, 0.95f, 0.95f, 0.95f });
+        AddBtn("M3", "3", (MH3_CL_L | MH3_CL_R), { 0.50f, 0.15f }, btnR * 0.85f,
+               { 0.55f, 0.35f, 0.85f, 0.60f }, { 0.75f, 0.55f, 1.00f, 0.95f });
+        AddBtn("M4", "A+B", (MH3_CL_A | MH3_CL_B), { diamondNormX + spreadX * 0.5f, diamondNormY + spreadY * 1.15f }, btnR * 0.95f,
+               { 0.85f, 0.48f, 0.18f, 0.60f }, { 1.0f, 0.70f, 0.30f, 0.95f });
+
+        // A, B, X, Y (after macros so macros win collision priority)
         AddBtn("A", "A", MH3_CL_A, { diamondNormX + spreadX, diamondNormY }, btnR,
                { 0.85f, 0.25f, 0.25f, 0.55f }, { 1.0f, 0.40f, 0.40f, 0.90f });
         AddBtn("B", "B", MH3_CL_B, { diamondNormX, diamondNormY + spreadY }, btnR,
@@ -174,14 +186,6 @@ public:
                { 0.25f, 0.45f, 0.85f, 0.55f }, { 0.40f, 0.70f, 1.00f, 0.90f });
         AddBtn("Y", "Y", MH3_CL_Y, { diamondNormX - spreadX, diamondNormY }, btnR,
                { 0.75f, 0.65f, 0.20f, 0.55f }, { 0.95f, 0.85f, 0.30f, 0.90f });
-
-        // Macro Buttons (Special action combo buttons)
-        AddBtn("M1", "1", (MH3_CL_A | MH3_CL_X), { diamondNormX - spreadX * 1.8f, diamondNormY - spreadY * 0.8f }, btnR * 0.95f,
-               { 0.85f, 0.30f, 0.60f, 0.60f }, { 1.0f, 0.45f, 0.80f, 0.95f });
-        AddBtn("M2", "2", (MH3_CL_B | MH3_CL_Y), { diamondNormX - spreadX * 1.8f, diamondNormY + spreadY * 0.8f }, btnR * 0.95f,
-               { 0.30f, 0.75f, 0.75f, 0.60f }, { 0.45f, 0.95f, 0.95f, 0.95f });
-        AddBtn("M3", "3", (MH3_CL_L | MH3_CL_R), { 0.50f, 0.15f }, btnR * 0.85f,
-               { 0.55f, 0.35f, 0.85f, 0.60f }, { 0.75f, 0.55f, 1.00f, 0.95f });
 
         // Shoulders (Top corners)
         float topY = 0.10f;
@@ -413,6 +417,7 @@ public:
         if (btn.id == "M1") return m_macro1Enabled;
         if (btn.id == "M2") return m_macro2Enabled;
         if (btn.id == "M3") return m_macro3Enabled;
+        if (btn.id == "M4") return m_macro4Enabled;
         return true;
     }
 
@@ -977,12 +982,13 @@ private:
         }
 
         // Header Title & Subtitle (Larger readable fonts)
-        const char* titles[] = { "Gráficos", "Sistema", "Guardados", "Controles" };
+        const char* titles[] = { "Gráficos", "Sistema", "Guardados", "Controles", "Online" };
         const char* subtitles[] = {
             "Pantalla, resolución y presentación",
             "Idioma, guardados y reinicio",
             "Gestor de partidas Dolphin / Wii NAND",
-            "Visibilidad en pantalla, mando gamepad y macros"
+            "Visibilidad en pantalla, mando gamepad y macros",
+            "Multijugador local, ZeroTier y servidores comunitarios"
         };
         DrawText(padX + 24.0f, padY + 16.0f, titles[m_menuTab], 28.0f, COL_WHITE);
         DrawText(padX + 24.0f, padY + 48.0f, subtitles[m_menuTab], 14.5f, COL_MUTED);
@@ -1008,9 +1014,9 @@ private:
 
         // Tab Navigation Bar
         float tabY = padY + 86.0f;
-        float tabW = (panW - 40.0f - 30.0f) / 4.0f;
+        float tabW = (panW - 40.0f - 40.0f) / 5.0f;
         float tabH = 44.0f;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 5; ++i) {
             float tx = padX + 20.0f + float(i) * (tabW + 10.0f);
             bool active = (m_menuTab == i);
             DrawRoundedRect(tx, tabY, tabW, tabH, 8.0f,
@@ -1028,6 +1034,7 @@ private:
         else if (m_menuTab == 1) RenderTabSystem(padX + 20.0f, contentY, contentW);
         else if (m_menuTab == 2) RenderTabSaves(padX + 20.0f, contentY, contentW);
         else if (m_menuTab == 3) RenderTabControls(padX + 20.0f, contentY, contentW);
+        else if (m_menuTab == 4) RenderTabOnline(padX + 20.0f, contentY, contentW);
     }
 
     void RenderTabGraphics(float x, float y, float w) {
@@ -1261,7 +1268,7 @@ private:
         DrawText(x + 18.0f, c3Y + 14.0f, "Botones especiales (Macros) y Editor de pantalla", 19.0f, COL_WHITE);
         DrawText(x + 18.0f, c3Y + 36.0f, "Activa combinaciones de botones simultáneos para armas o reposiciona controles:", 13.5f, COL_MUTED);
 
-        float mChipW = (w - 36.0f - 20.0f) / 3.0f;
+        float mChipW = (w - 36.0f - 30.0f) / 4.0f;
         float mChipH = 40.0f;
         float mChipY = c3Y + 56.0f;
 
@@ -1270,7 +1277,7 @@ private:
         DrawRoundedRect(m1X, mChipY, mChipW, mChipH, 8.0f,
                         m_macro1Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_macro1Enabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(m1X + mChipW * 0.5f, mChipY + 11.0f, m_macro1Enabled ? "Macro 1 (A+X): ACTIVADO" : "Macro 1 (A+X): NO", 14.0f,
+        DrawText(m1X + mChipW * 0.5f, mChipY + 11.0f, m_macro1Enabled ? "M1 (A+X): SÍ" : "M1 (A+X): NO", 13.5f,
                  m_macro1Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Macro 2 (B+Y)
@@ -1278,7 +1285,7 @@ private:
         DrawRoundedRect(m2X, mChipY, mChipW, mChipH, 8.0f,
                         m_macro2Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_macro2Enabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(m2X + mChipW * 0.5f, mChipY + 11.0f, m_macro2Enabled ? "Macro 2 (B+Y): ACTIVADO" : "Macro 2 (B+Y): NO", 14.0f,
+        DrawText(m2X + mChipW * 0.5f, mChipY + 11.0f, m_macro2Enabled ? "M2 (B+Y): SÍ" : "M2 (B+Y): NO", 13.5f,
                  m_macro2Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Macro 3 (L+R)
@@ -1286,8 +1293,16 @@ private:
         DrawRoundedRect(m3X, mChipY, mChipW, mChipH, 8.0f,
                         m_macro3Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_macro3Enabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(m3X + mChipW * 0.5f, mChipY + 11.0f, m_macro3Enabled ? "Macro 3 (L+R): ACTIVADO" : "Macro 3 (L+R): NO", 14.0f,
+        DrawText(m3X + mChipW * 0.5f, mChipY + 11.0f, m_macro3Enabled ? "M3 (L+R): SÍ" : "M3 (L+R): NO", 13.5f,
                  m_macro3Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // Macro 4 (A+B)
+        float m4X = m3X + mChipW + 10.0f;
+        DrawRoundedRect(m4X, mChipY, mChipW, mChipH, 8.0f,
+                        m_macro4Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                        m_macro4Enabled ? COL_CYAN : COL_CHIP_BORDER);
+        DrawText(m4X + mChipW * 0.5f, mChipY + 11.0f, m_macro4Enabled ? "M4 (A+B): SÍ" : "M4 (A+B): NO", 13.5f,
+                 m_macro4Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Row 2: Action Buttons
         float actBtnY = mChipY + mChipH + 10.0f;
@@ -1365,6 +1380,62 @@ private:
         DrawText(barX + 50.0f + bw * 4.5f, by + 9.0f, "Cancelar", 13.0f, COL_MUTED, true);
     }
 
+    void RenderTabOnline(float x, float y, float w) {
+        // Card 1: Modo de Conexión
+        float c1H = 108.0f;
+        DrawRoundedRect(x, y, w, c1H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
+        DrawText(x + 18.0f, y + 14.0f, "Conexión Multijugador Online", 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, y + 36.0f, "Conexión directa a los servidores comunitarios de Monster Hunter 3 (MH3SP).", 13.5f, COL_MUTED);
+
+        float mChipW = (w - 36.0f - 12.0f) / 2.0f;
+        float mChipH = 42.0f;
+        float mChipY = y + 54.0f;
+
+        // Chip 0: Comunidad MH3SP
+        bool c0Active = (m_onlineMode == 3);
+        float c0X = x + 18.0f;
+        DrawRoundedRect(c0X, mChipY, mChipW, mChipH, 8.0f,
+                        c0Active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                        c0Active ? COL_CYAN : COL_CHIP_BORDER);
+        DrawText(c0X + mChipW * 0.5f, mChipY + 12.0f, "Comunidad MH3SP (mh3sp.com)", 14.0f,
+                 c0Active ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // Chip 1: Desconectado
+        bool c1Active = (m_onlineMode == 0);
+        float c1X = c0X + mChipW + 12.0f;
+        DrawRoundedRect(c1X, mChipY, mChipW, mChipH, 8.0f,
+                        c1Active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                        c1Active ? COL_CYAN : COL_CHIP_BORDER);
+        DrawText(c1X + mChipW * 0.5f, mChipY + 12.0f, "Desconectado", 14.0f,
+                 c1Active ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // Card 2: Detalles
+        float c2Y = y + c1H + 12.0f;
+        float c2H = 224.0f;
+        DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
+
+        if (m_onlineMode == 3) { // Community
+            DrawText(x + 18.0f, c2Y + 14.0f, "Servidor de la Comunidad: mh3sp.com (SSL/TLS)", 19.0f, COL_CYAN);
+            DrawText(x + 18.0f, c2Y + 44.0f, "• Conexión directa a los servidores globales de Monster Hunter 3 (MH3SP).", 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 74.0f, "• Eventos rotativos, misiones de evento y salas de cazadores en todo el mundo.", 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 104.0f, "• Certificado CA oficial de MH3SP integrado para validar la conexión.", 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 134.0f, "• Conexión optimizada directa a OPN (8200), NAS (80) y GameSpy.", 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 174.0f, "Entra a la Ciudad (Loc Lac) desde la puerta de la Aldea de Moga para jugar.", 13.5f, COL_MUTED);
+        } else { // Offline
+            DrawText(x + 18.0f, c2Y + 14.0f, "Modo Desconectado (Aldea de Moga)", 19.0f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 44.0f, "• La red está desactivada.", 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 74.0f, "• Juega las misiones de la historia individual en la Aldea de Moga sin conexión.", 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 104.0f, "• No se realizarán conexiones a la red ni consumirá batería adicional.", 14.5f, COL_WHITE);
+        }
+
+        // Status Banner at bottom
+        float bannerY = c2Y + c2H + 12.0f;
+        float bannerH = 44.0f;
+        DrawRoundedRect(x, bannerY, w, bannerH, 8.0f, { 0.02f, 0.08f, 0.12f, 0.90f }, COL_PANEL_BORDER);
+        DrawText(x + 18.0f, bannerY + 12.0f, "Estado:", 14.0f, COL_CYAN);
+        DrawText(x + 85.0f, bannerY + 12.0f, m_onlineStatusMsg.c_str(), 14.0f, COL_WHITE);
+    }
+
     // -------------------------------------------------------------
     // Menu & Edit Touch Handlers
     // -------------------------------------------------------------
@@ -1389,13 +1460,17 @@ private:
 
         // Tabs
         float tabY = padY + 86.0f;
-        float tabW = (panW - 40.0f - 30.0f) / 4.0f;
+        float tabW = (panW - 40.0f - 40.0f) / 5.0f;
         float tabH = 44.0f;
         if (py >= tabY && py <= tabY + tabH) {
-            for (int i = 0; i < 4; ++i) {
+            for (int i = 0; i < 5; ++i) {
                 float tx = padX + 20.0f + float(i) * (tabW + 10.0f);
                 if (px >= tx && px <= tx + tabW) {
                     m_menuTab = i;
+                    if (m_menuTab == 4) {
+                        LanBeacon::StartScanner();
+                        LanBeacon::TriggerScan();
+                    }
                     return;
                 }
             }
@@ -1572,13 +1647,14 @@ private:
 
             // Card 3: Macros & Edit & Reset
             float c3Y = c2Y + c2H + 12.0f;
-            float mChipW = (contentW - 36.0f - 20.0f) / 3.0f;
+            float mChipW = (contentW - 36.0f - 30.0f) / 4.0f;
             float mChipH = 40.0f;
             float mChipY = c3Y + 56.0f;
 
             float m1X = x + 18.0f;
             float m2X = m1X + mChipW + 10.0f;
             float m3X = m2X + mChipW + 10.0f;
+            float m4X = m3X + mChipW + 10.0f;
 
             if (py >= mChipY && py <= mChipY + mChipH) {
                 if (px >= m1X && px <= m1X + mChipW) {
@@ -1591,6 +1667,10 @@ private:
                     return;
                 } else if (px >= m3X && px <= m3X + mChipW) {
                     m_macro3Enabled = !m_macro3Enabled;
+                    SaveLayoutConfig();
+                    return;
+                } else if (px >= m4X && px <= m4X + mChipW) {
+                    m_macro4Enabled = !m_macro4Enabled;
                     SaveLayoutConfig();
                     return;
                 }
@@ -1618,6 +1698,30 @@ private:
                     SaveLayoutConfig();
                     return;
                 }
+            }
+        } else if (m_menuTab == 4) { // Online / Multijugador
+            HandleTabOnlineTouch(px, py, x, contentY, contentW);
+        }
+    }
+
+    void HandleTabOnlineTouch(float px, float py, float x, float contentY, float contentW) {
+        float mChipW = (contentW - 36.0f - 12.0f) / 2.0f;
+        float mChipH = 42.0f;
+        float mChipY = contentY + 54.0f;
+        if (py >= mChipY && py <= mChipY + mChipH) {
+            float c0X = x + 18.0f;
+            float c1X = c0X + mChipW + 12.0f;
+            if (px >= c0X && px <= c0X + mChipW) {
+                m_onlineMode = 3;
+                LocalOnlineServer::SetMode(LocalOnlineServer::Mode::Community, "mh3sp.com");
+                m_onlineStatusMsg = "Servidor oficial de la comunidad mh3sp.com activado.";
+                return;
+            }
+            if (px >= c1X && px <= c1X + mChipW) {
+                m_onlineMode = 0;
+                LocalOnlineServer::SetMode(LocalOnlineServer::Mode::Offline);
+                m_onlineStatusMsg = "Modo desconectado. Juega en la Aldea de Moga.";
+                return;
             }
         }
     }
@@ -1781,6 +1885,13 @@ private:
         } else {
             m_langChoice = 0; // Spanish default!
         }
+
+        m_onlineMode = static_cast<int>(LocalOnlineServer::GetMode());
+        if (m_onlineMode != 0) m_onlineMode = 3;
+        m_onlineHostIp = "mh3sp.com";
+        m_onlineStatusMsg = (m_onlineMode == 0)
+            ? "Modo desconectado. Juega en la Aldea de Moga."
+            : "Servidor oficial de la comunidad mh3sp.com activado.";
     }
 
     void SaveSettings() {
@@ -1820,6 +1931,7 @@ private:
         out << "MACRO1 " << (m_macro1Enabled ? 1 : 0) << '\n';
         out << "MACRO2 " << (m_macro2Enabled ? 1 : 0) << '\n';
         out << "MACRO3 " << (m_macro3Enabled ? 1 : 0) << '\n';
+        out << "MACRO4 " << (m_macro4Enabled ? 1 : 0) << '\n';
         out << "LEFT_STICK " << m_normLeftStickPos.x << ' ' << m_normLeftStickPos.y << ' ' << m_leftStickScale << '\n';
 
         for (const auto& btn : m_buttons) {
@@ -1850,6 +1962,7 @@ private:
             else if (tag == "MACRO1") { int v; iss >> v; m_macro1Enabled = (v != 0); }
             else if (tag == "MACRO2") { int v; iss >> v; m_macro2Enabled = (v != 0); }
             else if (tag == "MACRO3") { int v; iss >> v; m_macro3Enabled = (v != 0); }
+            else if (tag == "MACRO4") { int v; iss >> v; m_macro4Enabled = (v != 0); }
             else if (tag == "LEFT_STICK") {
                 iss >> m_normLeftStickPos.x >> m_normLeftStickPos.y >> m_leftStickScale;
             } else if (tag == "BTN") {
@@ -1999,11 +2112,15 @@ private:
     int m_langChoice = 0;      // 0: Español
     double m_liveFps = 60.0;
     std::string m_saveStatusMsg = "Listo para exportar o importar partidas guardadas.";
+    int m_onlineMode = 3;
+    std::string m_onlineHostIp = "mh3sp.com";
+    std::string m_onlineStatusMsg = "Servidor oficial de la comunidad mh3sp.com activado.";
 
     // Macros & Edit Mode
     bool m_macro1Enabled = true;
     bool m_macro2Enabled = false;
     bool m_macro3Enabled = false;
+    bool m_macro4Enabled = false;
     bool m_editMode = false;
     int m_selectedButtonIndex = -1;
     bool m_editDragging = false;

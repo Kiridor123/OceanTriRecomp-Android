@@ -261,24 +261,28 @@ static void CameraPitchInputPort(CpuContext* ctx) {
         Memory::Write8(work + kPitchSnap, 0);
     }
 
-    if (Command(plw, 2) || Command(plw, 4)) {
-        const int32_t rampTop = swimming ? 10 : 1;
+    const bool isUp = swapped ? (Command(plw, 3) || Command(plw, 4)) : (Command(plw, 1) || Command(plw, 2));
+    const bool isDown = swapped ? (Command(plw, 1) || Command(plw, 2)) : (Command(plw, 3) || Command(plw, 4));
+
+    if (isUp || isDown) {
+        const int32_t rampTop = swimming ? 10 : 5;
         RampUp(work + kPitchRamp, rampTop);
         const float ramp = float(int8_t(Memory::Read8(work + kPitchRamp)));
         const int32_t amount = int32_t(float(speed) * (ramp / float(rampTop)));
         const uint32_t tilt = uint32_t(GameStep::Share(amount)) & 0xFFFF;
-        const uint32_t up = swapped ? 4 : 2, down = swapped ? 2 : 4;
+        const int16_t maxPitch = swimming ? 16020 : 13653;
+        const int16_t minPitch = swimming ? -16020 : -8192;
 
-        if (Command(plw, up)) {
+        if (isUp) {
             pitch += tilt;
 
-            if (int16_t(pitch) > 16020)
-                pitch = 16020;
-        } else if (Command(plw, down)) {
+            if (int16_t(pitch) > maxPitch)
+                pitch = uint32_t(uint16_t(maxPitch));
+        } else if (isDown) {
             pitch -= tilt;
 
-            if (int16_t(pitch) < -16020)
-                pitch = uint32_t(-16020);
+            if (int16_t(pitch) < minPitch)
+                pitch = uint32_t(uint16_t(minPitch));
         }
 
         Memory::Write32(work + kPitchTarget, pitch);

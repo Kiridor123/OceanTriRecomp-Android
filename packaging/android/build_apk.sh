@@ -72,7 +72,7 @@ if [ ! -f "${KEYSTORE}" ]; then
     keytool -genkeypair -v -keystore "${KEYSTORE}" -alias oceantri -keyalg RSA -keysize 2048 -validity 10000 \
         -storepass oceantrikey -keypass oceantrikey -dname "CN=OceanTri, OU=Gaming, O=Recomp, L=City, S=State, C=US"
 fi
-OUTPUT_APK="${BUILD_DIR}/OceanTriRecomp-Android-v1.3-arm64.apk"
+OUTPUT_APK="${BUILD_DIR}/OceanTriRecomp-Android-v1.4-arm64.apk"
 rm -f "${OUTPUT_APK}"
 "${SDK_BUILD_TOOLS}/apksigner" sign \
     --ks "${KEYSTORE}" \
@@ -84,10 +84,10 @@ rm -f "${OUTPUT_APK}"
 echo "=== 10. Copying release APK ==="
 DEST_DIR="${PROJECT_ROOT}/release"
 mkdir -p "${DEST_DIR}"
-cp "${OUTPUT_APK}" "${DEST_DIR}/OceanTriRecomp-Android-v1.3-arm64.apk"
+cp "${OUTPUT_APK}" "${DEST_DIR}/OceanTriRecomp-Android-v1.4-arm64.apk"
 if [ -d "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3" ]; then
-    cp "${OUTPUT_APK}" "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3/OceanTriRecomp-Android-v1.3-arm64.apk"
+    cp "${OUTPUT_APK}" "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3/OceanTriRecomp-Android-v1.4-arm64.apk"
 fi
 
 echo "=== APK Successfully Built ==="
-ls -lh "${DEST_DIR}/OceanTriRecomp-Android-v1.3-arm64.apk"
+ls -lh "${DEST_DIR}/OceanTriRecomp-Android-v1.4-arm64.apk"

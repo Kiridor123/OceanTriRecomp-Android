@@ -1,12 +1,28 @@
-﻿// Ciudad offline: servidores MH3SP locales (OnlineLocal\ junto al exe) para que el
-// boton Ciudad del juego entre a Loc Lac sin Capcom, sin Nintendo y sin servidores de la comunidad.
 #pragma once
+#include <string>
 
 namespace LocalOnlineServer {
-// Antes de ApplyOnlinePatches: si OnlineLocal esta instalado (y no hay otro servidor
-// elegido), el modo online apunta a 127.0.0.1 sin TLS.
-void Configure();
+enum class Mode {
+    Offline = 0,
+    Host = 1,        // Crea servidor local (0.0.0.0), emite baliza LAN/ZeroTier y conecta
+    Client = 2,      // Se une a un servidor en la misma red (LAN o ZeroTier)
+    Community = 3    // Se conecta al servidor de la comunidad (mh3sp.com)
+};
 
-// Al primer uso de la red: arranca los servidores ocultos y espera a que respondan.
+void Configure();
 void Ensure();
+
+// Ajuste dinámico de modo y host
+void SetMode(Mode mode, const std::string& hostIp = "");
+Mode GetMode();
+std::string GetConfiguredHostIp();
+
+// Control de servidor local
+bool StartLocalServer();
+void StopLocalServer();
+bool IsLocalServerRunning();
+
+// Persistencia
+void LoadOnlineConfig();
+void SaveOnlineConfig();
 } // namespace LocalOnlineServer

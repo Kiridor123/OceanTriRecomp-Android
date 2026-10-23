@@ -142,6 +142,8 @@ enum : uint32_t {
     kKdCleanupSocket = 0x07,
     kKdLockSocket = 0x08,
     kKdUnlockSocket = 0x09,
+    kKdRequestGenerateUserId = 0x0F,
+    kKdRequestRegisterUserId = 0x10,
     kKdGetSchedulerStat = 0x1E,
     kKdSetScriptMode = 0x22,
     kKdRequestShutdown = 0x28,
@@ -163,13 +165,20 @@ struct Pending {
 
 std::vector<Pending> pending;
 
-#ifdef MH3_DEVELOPMENT
-// MH3_TRACE=net, read at first use.
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define LOG_NET(...) do { __android_log_print(ANDROID_LOG_INFO, "MH3_NET", __VA_ARGS__); std::fprintf(stderr, __VA_ARGS__); } while(0)
+bool TraceNet() {
+    return true;
+}
+#elif defined(MH3_DEVELOPMENT)
+#define LOG_NET(...) std::fprintf(stderr, __VA_ARGS__)
 bool TraceNet() {
     static const TraceFlag trace("net");
     return trace;
 }
 #else
+#define LOG_NET(...) ((void)0)
 constexpr bool TraceNet() {
     return false;
 }
@@ -291,7 +300,7 @@ Attempt ConnectAttempt(int32_t fd, Address address) {
             *started = true;
 
             if (TraceNet())
-                std::fprintf(stderr, "MH3 net: socket %d connects to %s:%u\n", fd, Dotted(address.ip).c_str(), Swap16(address.port));
+                LOG_NET("MH3 net: socket %d connects to %s:%u\n", fd, Dotted(address.ip).c_str(), Swap16(address.port));
 
             if (socket->connecting) {
                 // Another connect while one is under way.
@@ -368,7 +377,7 @@ Attempt GetHostByName(uint32_t in, uint32_t out, uint32_t outSize) {
         const auto& addresses = lookup->Addresses();
 
         if (TraceNet())
-            std::fprintf(stderr, "MH3 net: gethostbyname %s: %s\n", lookup->Name().c_str(), addresses.empty() ? "not found" : Dotted(addresses[0]).c_str());
+            LOG_NET("MH3 net: gethostbyname %s: %s\n", lookup->Name().c_str(), addresses.empty() ? "not found" : Dotted(addresses[0]).c_str());
 
         if (outSize != 0x460 || addresses.empty())
             return -1;
@@ -440,7 +449,7 @@ std::optional<Attempt> IpTopIoctl(uint32_t command, uint32_t in, uint32_t inSize
         sockets[fd] = Socket{handle, type == 1};
 
         if (TraceNet())
-            std::fprintf(stderr, "MH3 net: socket %d (%s)\n", fd, type == 1 ? "TCP" : "UDP");
+            LOG_NET("MH3 net: socket %d (%s)\n", fd, type == 1 ? "TCP" : "UDP");
 
         return Done(fd);
     }
@@ -701,7 +710,7 @@ int32_t GetInterfaceOption(const std::vector<Vector>& in, const std::vector<Vect
         Memory::Write32(value, 2);
         break;
     default:
-        std::fprintf(stderr, "MH3 net: unknown interface option 0x%X\n", option);
+        LOG_NET("MH3 net: unknown interface option 0x%X\n", option);
         break;
     }
 
@@ -872,7 +881,7 @@ std::optional<Attempt> SslIoctlv(uint32_t command, const std::vector<Vector>& in
         sessions[slot] = TlsSession{std::move(tls), -1};
 
         if (TraceNet())
-            std::fprintf(stderr, "MH3 net: TLS session %d for %s (verify %d%s)\n", slot + 1, hostname.c_str(), verify, SkipTlsSetting() ? ", skipped: plain" : "");
+            LOG_NET("MH3 net: TLS session %d for %s (verify %d%s)\n", slot + 1, hostname.c_str(), verify, SkipTlsSetting() ? ", skipped: plain" : "");
 
         return answer(slot + 1);
     }
@@ -961,7 +970,7 @@ std::optional<Attempt> SslIoctlv(uint32_t command, const std::vector<Vector>& in
                 }
 
                 if (TraceNet() && result != NetHost::Tls::kWantRead && result != NetHost::Tls::kWantWrite)
-                    std::fprintf(stderr, "MH3 net: TLS session %d handshake: %d\n", id + 1, result);
+                    LOG_NET("MH3 net: TLS session %d handshake: %d\n", id + 1, result);
             }
 
             if ((result == NetHost::Tls::kWantRead || result == NetHost::Tls::kWantWrite) && !socket->nonBlocking)
@@ -1040,7 +1049,7 @@ std::optional<Attempt> NcdIoctlv(uint32_t command, const std::vector<Vector>& in
 }
 
 void Unknown(std::string_view path, const char* kind, uint32_t command) {
-    std::fprintf(stderr, "MH3 net: %.*s %s 0x%X has no host implementation\n", int(path.size()), path.data(), kind, command);
+    LOG_NET("MH3 net: %.*s %s 0x%X has no host implementation\n", int(path.size()), path.data(), kind, command);
 }
 
 // KD keeps no mail or download schedule here; SOStartup needs its socket
@@ -1078,6 +1087,34 @@ std::optional<Attempt> KdIoctl(uint32_t command, uint32_t out, uint32_t outSize)
             return Done(kIpcEInval);
 
         std::memset(Memory::GetPointer(out, std::min<uint32_t>(outSize, 256)), 0, std::min<uint32_t>(outSize, 256));
+        return Done(0);
+    case kKdRequestGenerateUserId:
+        if (outSize > 0)
+            std::memset(Memory::GetPointer(out, std::min<uint32_t>(outSize, 32)), 0, std::min<uint32_t>(outSize, 32));
+        reply(0);
+        if (outSize >= 12) {
+            Memory::Write32(out + 4, 0x00010001);
+            Memory::Write32(out + 8, 0x00010001);
+        }
+        if (outSize >= 16)
+            Memory::Write32(out + 12, 0);
+        return Done(0);
+    case kKdRequestRegisterUserId:
+        reply(0);
+        if (outSize >= 8)
+            Memory::Write32(out + 4, 0);
+        return Done(0);
+    case 0x0A: // NWC24iCheckMailNow
+    case 0x0B: // NWC24iSendMailNow
+    case 0x0C: // NWC24iReceiveMailNow
+    case 0x0D: // NWC24iSaveMailNow
+    case 0x0E: // NWC24iDownloadNowEx
+    case 0x1F: // NWC24iSetFilterMode
+    case 0x20: // NWC24iSetDebugMode
+    case 0x21: // KD_SetNextWakeup
+        if (outSize > 0)
+            std::memset(Memory::GetPointer(out, std::min<uint32_t>(outSize, 32)), 0, std::min<uint32_t>(outSize, 32));
+        reply(0);
         return Done(0);
     case kKdTrySuspendScheduler:
     case kKdCleanupSocket:
@@ -1146,7 +1183,7 @@ int32_t Open(std::string_view path) {
         onlineStarted = true;
 
     if (TraceNet())
-        std::fprintf(stderr, "MH3 net: open %.*s\n", int(path.size()), path.data());
+        LOG_NET("MH3 net: open %.*s\n", int(path.size()), path.data());
 
     return 0;
 }
@@ -1160,7 +1197,7 @@ int32_t Ioctl(CpuContext* cpu, std::string_view path, uint32_t command, uint32_t
     const int32_t result = RunSync(cpu, IoctlAttempt(path, command, in, inSize, out, outSize));
 
     if (TraceNet())
-        std::fprintf(stderr, "MH3 net: %.*s ioctl %u = %d\n", int(path.size()), path.data(), command, result);
+        LOG_NET("MH3 net: %.*s ioctl %u = %d\n", int(path.size()), path.data(), command, result);
 
     return result;
 }
@@ -1170,21 +1207,21 @@ int32_t Ioctlv(CpuContext* cpu, std::string_view path, uint32_t command, uint32_
 
     // The interface options are asked every frame online.
     if (TraceNet() && !(path == "/dev/net/ip/top" && command == kSoGetInterfaceOpt))
-        std::fprintf(stderr, "MH3 net: %.*s ioctlv %u = %d\n", int(path.size()), path.data(), command, result);
+        LOG_NET("MH3 net: %.*s ioctlv %u = %d\n", int(path.size()), path.data(), command, result);
 
     return result;
 }
 
 void IoctlAsync(std::string_view path, uint32_t command, uint32_t in, uint32_t inSize, uint32_t out, uint32_t outSize, uint32_t callback, uint32_t argument) {
     if (TraceNet())
-        std::fprintf(stderr, "MH3 net: %.*s ioctl %u (asynchronous)\n", int(path.size()), path.data(), command);
+        LOG_NET("MH3 net: %.*s ioctl %u (asynchronous)\n", int(path.size()), path.data(), command);
 
     RunAsync(IoctlAttempt(path, command, in, inSize, out, outSize), callback, argument);
 }
 
 void IoctlvAsync(std::string_view path, uint32_t command, uint32_t inputs, uint32_t outputs, uint32_t vectors, uint32_t callback, uint32_t argument) {
     if (TraceNet())
-        std::fprintf(stderr, "MH3 net: %.*s ioctlv %u (asynchronous)\n", int(path.size()), path.data(), command);
+        LOG_NET("MH3 net: %.*s ioctlv %u (asynchronous)\n", int(path.size()), path.data(), command);
 
     RunAsync(IoctlvAttempt(path, command, inputs, outputs, vectors), callback, argument);
 }

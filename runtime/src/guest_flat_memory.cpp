@@ -13,6 +13,7 @@
 #include <ucontext.h>
 #include <unistd.h>
 #if defined(__ANDROID__)
+#include <android/log.h>
 #include <sys/syscall.h>
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001U
@@ -146,7 +147,24 @@ void Report(int signal, siginfo_t* info, void* context) {
     const uintptr_t windowStart = kGuestBase + kWindowGuestStart;
 
     if (host - windowStart >= kWindowSize) {
-        // Not a guest access: the previous disposition handles it on the retry.
+        const uintptr_t pc = FaultPc(context);
+        Dl_info symbol{};
+        const bool named = dladdr(reinterpret_cast<void*>(pc), &symbol) && symbol.dli_sname;
+        char hostMsg[512];
+        std::snprintf(hostMsg, sizeof(hostMsg), "MH3 host fault: signal %d at host address %p by %s (pc %p)\n",
+                      signal, reinterpret_cast<void*>(host), named ? symbol.dli_sname : "?", reinterpret_cast<void*>(pc));
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_FATAL, "MH3", "%s", hostMsg);
+        if (FILE* f = fopen("/sdcard/Download/oceantri_crash.txt", "a")) {
+            fprintf(f, "%s", hostMsg);
+            fclose(f);
+        }
+        if (FILE* f2 = fopen("/storage/emulated/0/Download/oceantri_crash.txt", "a")) {
+            fprintf(f2, "%s", hostMsg);
+            fclose(f2);
+        }
+#endif
+        (void)!write(STDERR_FILENO, hostMsg, std::strlen(hostMsg));
         sigaction(signal, signal == SIGBUS ? &previousBus : &previousSegv, nullptr);
         return;
     }
@@ -162,8 +180,20 @@ void Report(int signal, siginfo_t* info, void* context) {
                                      "runtime/src/hardware_access.inc.\n",
                                      FaultWasWrite(context) ? "write" : "read", guest, Describe(guest), named ? symbol.dli_sname : "?", named ? (unsigned long)(pc - uintptr_t(symbol.dli_saddr)) : 0ul,
                                      reinterpret_cast<void*>(pc), RecompMod::CurrentTranslatedExecutionAddress());
-    if (length > 0)
+    if (length > 0) {
         (void)!write(STDERR_FILENO, text, size_t(length) < sizeof(text) ? size_t(length) : sizeof(text) - 1);
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_FATAL, "MH3", "%s", text);
+        if (FILE* f = fopen("/sdcard/Download/oceantri_crash.txt", "a")) {
+            fprintf(f, "%s", text);
+            fclose(f);
+        }
+        if (FILE* f2 = fopen("/storage/emulated/0/Download/oceantri_crash.txt", "a")) {
+            fprintf(f2, "%s", text);
+            fclose(f2);
+        }
+#endif
+    }
     // An unrecognized, computed hardware pointer may bypass the translator's
     // FIFO lowering. Preserve the faulting native PC above and report its GX
     // guest/native call chain too, before ending the process.
@@ -237,6 +267,12 @@ void Initialize() {
     }
 
     Map(0xE0000000u, lockedCache, off_t(kMem1Size) + kMem2Size);
+#if !defined(MH3_GUEST_WINDOW_WRAPS)
+    // Map page 0 (0x00000000..0x00010000) as PROT_READ anonymous zeroed memory.
+    // On the real Wii, physical address 0 contains memory and reading NULL + offset
+    // does not cause a hardware segmentation fault.
+    mmap(Host(0), 0x10000, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+#endif
     g_mapped = true;
 }
 

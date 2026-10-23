@@ -96,7 +96,13 @@ void GuestThread::Loop() {
         cpu = seed_;
         cpu.gpr[1] = (stackBase_ + stackBytes_ - 16) & ~0xFu;
         Memory::Write32(cpu.gpr[1], 0);
-        job_(&cpu, data_);
+        try {
+            job_(&cpu, data_);
+        } catch (const std::exception& e) {
+            MH3Fatal(e.what());
+        } catch (...) {
+            MH3Fatal("Unknown exception in GuestThread job");
+        }
         const uint64_t elapsed = NowNs() - start;
 #ifdef MH3_DEVELOPMENT
         // One job over 40 ms stalls whoever waits for it (the draw thread's

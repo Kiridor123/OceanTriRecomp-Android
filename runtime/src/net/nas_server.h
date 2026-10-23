@@ -3,7 +3,9 @@
 #include <cstdint>
 
 namespace NasServer {
-// Arranca el NAS (HTTP en 127.0.0.1:httpPort y UDP 27900) en hilos propios.
+// Arranca el NAS (HTTP en 0.0.0.0:httpPort y UDP 27900) en hilos propios.
 // false si no pudo abrir el puerto HTTP.
 bool Start(uint16_t httpPort);
+void Stop();
+bool IsRunning();
 } // namespace NasServer
