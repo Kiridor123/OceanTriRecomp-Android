@@ -1,0 +1,6197 @@
+#include <cstdint>
+#include "ppc_runtime.h"
+#include "abi_bridge.h"
+#include "memory.h"
+#include "recomp_mod_loader.h"
+
+extern "C" void func_80456C40(CpuContext* ctx);
+extern "C" uint64_t func_80456C40_ra18_0_18_0(CpuContext*, uint32_t, uint32_t);
+extern "C" void func_8045F9FC(CpuContext* ctx);
+extern "C" uint64_t func_8045F9FC_ra38_1fe_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double, double, double, double, double, double, double, double);
+extern "C" void func_8045FBD4(CpuContext* ctx);
+extern "C" uint32_t func_8045FBD4_ra38_0_10_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+extern "C" void func_8045FE20(CpuContext* ctx);
+extern "C" uint64_t func_8045FE20_ra38_0_18_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+extern "C" void func_8045FED8(CpuContext* ctx);
+extern "C" uint64_t func_8045FED8_ra38_0_18_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+extern "C" void func_80461C48(CpuContext* ctx);
+extern "C" uint64_t func_80461C48_ra38_1fe_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double, double, double, double, double, double, double, double);
+extern "C" void func_804D5800(CpuContext* ctx);
+extern "C" uint64_t func_804D5800_ra38_0_18_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+extern "C" void func_80507860(CpuContext* ctx);
+extern "C" uint64_t func_80507860_ra38_0_18_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+extern "C" void func_80507F70(CpuContext* ctx);
+extern "C" uint64_t func_80507F70_ra38_1fe_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double, double, double, double, double, double, double, double);
+extern "C" void func_8051AC4C(CpuContext* ctx);
+extern "C" uint64_t func_8051AC4C_ra18_0_18_0(CpuContext*, uint32_t, uint32_t);
+extern "C" void func_8051B1CC(CpuContext* ctx);
+extern "C" uint64_t func_8051B1CC_ra38_1fe_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double, double, double, double, double, double, double, double);
+extern "C" void func_8051B250(CpuContext* ctx);
+extern "C" uint64_t func_8051B250_ra58_1fe_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double, double, double, double, double, double, double, double);
+extern "C" void func_8051B2B8(CpuContext* ctx);
+extern "C" uint64_t func_8051B2B8_ra58_1fe_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double, double, double, double, double, double, double, double);
+
+extern "C" uint64_t func_8050A430_ra38_1fe_18_0(CpuContext* MKW_RESTRICT ctx, uint32_t arg_r3, uint32_t arg_r4, uint32_t arg_r5, double arg_f1, double arg_f2, double arg_f3, double arg_f4, double arg_f5, double arg_f6, double arg_f7, double arg_f8)
+{
+    uint32_t cr0_0 = 0;
+    uint32_t cr6_0 = 0;
+    uint32_t r0_ca_0 = 0;
+    uint32_t r0_ca_1 = 0;
+    uint32_t r0_ca_2 = 0;
+    uint32_t r0_ca_3 = 0;
+    uint32_t r0_ca_4 = 0;
+    uint32_t r0_ca_5 = 0;
+    uint32_t r0_not_0 = 0;
+    uint32_t r0_not_1 = 0;
+    uint32_t r0_not_2 = 0;
+    uint32_t r0_not_3 = 0;
+    uint32_t r0_not_4 = 0;
+    uint32_t r0_not_5 = 0;
+    uint32_t r29_addr_0 = 0;
+    uint32_t r29_addr_1 = 0;
+    uint32_t r29_addr_10 = 0;
+    uint32_t r29_addr_11 = 0;
+    uint32_t r29_addr_12 = 0;
+    uint32_t r29_addr_13 = 0;
+    uint32_t r29_addr_14 = 0;
+    uint32_t r29_addr_15 = 0;
+    uint32_t r29_addr_2 = 0;
+    uint32_t r29_addr_3 = 0;
+    uint32_t r29_addr_4 = 0;
+    uint32_t r29_addr_5 = 0;
+    uint32_t r29_addr_6 = 0;
+    uint32_t r29_addr_7 = 0;
+    uint32_t r29_addr_8 = 0;
+    uint32_t r29_addr_9 = 0;
+    uint8_t* guest_range_0 = nullptr;
+    uint8_t* guest_range_1 = nullptr;
+
+    uint32_t r0 = ctx->gpr[0];
+    uint32_t r1 = ctx->gpr[1];
+    uint32_t r3 = arg_r3;
+    uint32_t r4 = arg_r4;
+    uint32_t r5 = arg_r5;
+    uint32_t r6 = ctx->gpr[6];
+    uint32_t r7 = ctx->gpr[7];
+    uint32_t r8 = ctx->gpr[8];
+    uint32_t r9 = ctx->gpr[9];
+    uint32_t r10 = ctx->gpr[10];
+    uint32_t r11 = ctx->gpr[11];
+    uint32_t r13 = ctx->gpr[13];
+    uint32_t r19 = ctx->gpr[19];
+    uint32_t r20 = ctx->gpr[20];
+    uint32_t r21 = ctx->gpr[21];
+    uint32_t r22 = ctx->gpr[22];
+    uint32_t r23 = ctx->gpr[23];
+    uint32_t r24 = ctx->gpr[24];
+    uint32_t r25 = ctx->gpr[25];
+    uint32_t r26 = ctx->gpr[26];
+    uint32_t r27 = ctx->gpr[27];
+    uint32_t r28 = ctx->gpr[28];
+    uint32_t r29 = ctx->gpr[29];
+    uint32_t r30 = ctx->gpr[30];
+    uint32_t r31 = ctx->gpr[31];
+    PPC_FPR f1; f1.d = arg_f1;
+    PPC_FPR f2; f2.d = arg_f2;
+    PPC_FPR f3; f3.d = arg_f3;
+    PPC_FPR f4; f4.d = arg_f4;
+    PPC_FPR f5; f5.d = arg_f5;
+    PPC_FPR f6; f6.d = arg_f6;
+    PPC_FPR f7; f7.d = arg_f7;
+    PPC_FPR f8; f8.d = arg_f8;
+    const uint32_t r19_entry = r19;
+    const uint32_t r20_entry = r20;
+    const uint32_t r21_entry = r21;
+    const uint32_t r22_entry = r22;
+    const uint32_t r23_entry = r23;
+    const uint32_t r24_entry = r24;
+    const uint32_t r25_entry = r25;
+    const uint32_t r26_entry = r26;
+    const uint32_t r27_entry = r27;
+    uint32_t cr = ctx->cr;
+    uint32_t xer = ctx->xer;
+
+    goto loc_8050A430;
+
+loc_8050A430:
+{
+    MemoryInline::FlatWriteRam32((r1 + -384), r1);
+    r1 = (r1 + -384);
+    r0 = ctx->lr;
+    MemoryInline::FlatWriteRam32((r1 + 388), r0);
+    r11 = (r1 + 384);
+    // inline leaf 0x80457468 (14 guest instruction(s))
+    guest_range_0 = MemoryInline::ResolveRangeHost((r11 + -52), 0, 52u, false, true);
+    // end of inlined leaf 0x80457468
+    r26 = 0x80760000u;
+    r25 = 0x80630000u;
+    r26 = (r26 + 13248);
+    r19 = r3;
+    r20 = (r26 + 0);
+    r0 = 0;
+    r3 = MemoryInline::FlatRead32((r20 + 456));
+    r21 = r4;
+    r25 = (r25 + 2272);
+}
+
+loc_8050A46C:
+{
+    if ((static_cast<uint32_t>(r3) == static_cast<uint32_t>(r0))) {
+        goto loc_8050A488;
+    }
+}
+
+loc_8050A470:
+{
+    r4 = (r25 + 384);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A480u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_1899 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_1899);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_1899 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r3 = MemoryInline::FlatRead32((r20 + 456));
+    ctx->lr = 0x8050A488u;
+    if constexpr (KnownRegArgsCpuCall<0x8051B1CCu>(&func_8051B1CC)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8051B1CC_2305 = func_8051B1CC_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_8051B1CC_2305);
+        r4 = static_cast<uint32_t>(regargs_result_8051B1CC_2305 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8051B1CCu>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A488:
+{
+    r27 = (r26 + 0);
+    r5 = r19;
+    MemoryInline::FlatWriteRam32((r27 + 456), r21);
+    r4 = (r25 + 1312);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A4A4u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_30AD = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_30AD);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_30AD >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A4A8:
+{
+    if ((static_cast<int32_t>(r19) != static_cast<int32_t>(8))) {
+        goto loc_8050A4CC;
+    }
+}
+
+loc_8050A4AC:
+{
+    r5 = r19;
+    r4 = (r25 + 1336);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A4C0u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_3B3E = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_3B3E);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_3B3E >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r0 = 2;
+    MemoryInline::FlatWriteRam32(r26, r0);
+    goto loc_8050AD78;
+}
+
+loc_8050A4CC:
+{
+}
+
+loc_8050A4D0:
+{
+    if ((static_cast<int32_t>(r19) == static_cast<int32_t>(0))) {
+        goto loc_8050A520;
+    }
+}
+
+loc_8050A4D4:
+{
+}
+
+loc_8050A4D8:
+{
+    if ((static_cast<int32_t>(r19) != static_cast<int32_t>(14))) {
+        goto loc_8050A4F4;
+    }
+}
+
+loc_8050A4DC:
+{
+    ctx->lr = 0x8050A4E0u;
+    if constexpr (KnownRegArgsCpuCall<0x8051AC4Cu>(&func_8051AC4C)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8051AC4C_455F = func_8051AC4C_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_8051AC4C_455F);
+        r4 = static_cast<uint32_t>(regargs_result_8051AC4C_455F >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8051AC4Cu>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r4 = (r25 + 1360);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A4F4u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_4A28 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_4A28);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_4A28 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A4F4:
+{
+    r5 = r19;
+    r4 = (r25 + 1376);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A508u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_543C = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_543C);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_543C >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r3 = (r26 + 896);
+    r4 = -20100;
+    r0 = 1;
+    MemoryInline::FlatWriteRam32(r26, r4);
+    MemoryInline::FlatWriteRam32((r3 + 52), r0);
+    goto loc_8050AD78;
+}
+
+loc_8050A520:
+{
+    r3 = r21;
+    ctx->lr = 0x8050A528u;
+    if constexpr (KnownRegArgsCpuCall<0x8051B2B8u>(&func_8051B2B8)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[5] = r5;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8051B2B8_5F49 = func_8051B2B8_ra58_1fe_18_0(ctx, r3, r4, r6, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_8051B2B8_5F49);
+        r4 = static_cast<uint32_t>(regargs_result_8051B2B8_5F49 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8051B2B8u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A52C:
+{
+    r19 = r3;
+    if ((static_cast<int32_t>(r3) == static_cast<int32_t>(200))) {
+        goto loc_8050A594;
+    }
+}
+
+loc_8050A534:
+{
+    r5 = r19;
+    r4 = (r25 + 1396);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A548u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_6D33 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_6D33);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_6D33 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r0 = (-23000 - r19);
+    MemoryInline::FlatWriteRam32(r26, r0);
+    r3 = r21;
+    r4 = (r1 + 16);
+    ctx->lr = 0x8050A55Cu;
+    if constexpr (KnownRegArgsCpuCall<0x8051B250u>(&func_8051B250)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[5] = r5;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8051B250_77D8 = func_8051B250_ra58_1fe_18_0(ctx, r3, r4, r6, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_8051B250_77D8);
+        r4 = static_cast<uint32_t>(regargs_result_8051B250_77D8 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8051B250u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A560:
+{
+    if ((static_cast<int32_t>(r3) <= static_cast<int32_t>(0))) {
+        goto loc_8050A57C;
+    }
+}
+
+loc_8050A564:
+{
+    r5 = MemoryInline::FlatRead32((r1 + 16));
+    r3 = 16777216;
+    r4 = (r13 + -19228);
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A578u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_85D3 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_85D3);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_85D3 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AD78;
+}
+
+loc_8050A57C:
+{
+    r5 = MemoryInline::FlatRead32((r1 + 16));
+    r4 = (r25 + 1432);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A590u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_901F = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_901F);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_901F >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AD78;
+}
+
+loc_8050A594:
+{
+    r3 = r21;
+    r4 = (r1 + 12);
+    r23 = (r13 + -19224);
+    r22 = 0;
+    ctx->lr = 0x8050A5A8u;
+    if constexpr (KnownRegArgsCpuCall<0x8051B250u>(&func_8051B250)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[5] = r5;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8051B250_9AD6 = func_8051B250_ra58_1fe_18_0(ctx, r3, r4, r6, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_8051B250_9AD6);
+        r4 = static_cast<uint32_t>(regargs_result_8051B250_9AD6 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->gpr[19] = r19;
+        ctx->gpr[20] = r20;
+        ctx->gpr[21] = r21;
+        ctx->gpr[22] = r22;
+        ctx->gpr[23] = r23;
+        ctx->gpr[24] = r24;
+        ctx->gpr[25] = r25;
+        ctx->gpr[26] = r26;
+        ctx->gpr[27] = r27;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8051B250u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        r13 = ctx->gpr[13];
+        r19 = ctx->gpr[19];
+        r20 = ctx->gpr[20];
+        r21 = ctx->gpr[21];
+        r22 = ctx->gpr[22];
+        r23 = ctx->gpr[23];
+        r24 = ctx->gpr[24];
+        r25 = ctx->gpr[25];
+        r26 = ctx->gpr[26];
+        r27 = ctx->gpr[27];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A5AC:
+{
+    if ((static_cast<int32_t>(r3) <= static_cast<int32_t>(0))) {
+        goto loc_8050AC48;
+    }
+}
+
+loc_8050A5B0:
+{
+    r5 = MemoryInline::FlatRead32((r1 + 12));
+    r3 = 16777216;
+    r4 = (r13 + -19220);
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A5C4u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_A8D1 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_A8D1);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_A8D1 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r3 = MemoryInline::FlatRead32((r1 + 12));
+    r4 = r23;
+    if constexpr (KnownRegArgsCpuCall<0x8045FED8u>(&func_8045FED8)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FED8_B1D4 = func_8045FED8_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FED8_B1D4);
+        r4 = static_cast<uint32_t>(regargs_result_8045FED8_B1D4 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FED8u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+    }
+    r29 = (r1 + 64);
+    r24 = r3;
+    r31 = (r26 + 464);
+    r30 = (r26 + 864);
+    r28 = 0;
+    r20 = 1;
+    goto loc_8050AC40;
+}
+
+loc_8050A5EC:
+{
+    r3 = (r13 + -19212);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_B717 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_B717);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_B717 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r13 + -19212);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_BA74 = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_BA74);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_BA74 >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A608:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050A660;
+    }
+}
+
+loc_8050A60C:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_BEF9 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_BEF9);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_BEF9 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r13 + -19212);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_C22D = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_C22D);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_C22D >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r13 + -19212);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_C569 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_C569);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_C569 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_C963 = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_C963);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_C963 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_2 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_2, static_cast<uint8_t>(r28));
+    r5 = r3;
+    r6 = r29;
+    r4 = (r25 + 1448);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A65Cu;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_D0E2 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_D0E2);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_D0E2 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050A660:
+{
+    r3 = (r25 + 1464);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_D99D = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_D99D);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_D99D >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1464);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_DCF8 = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_DCF8);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_DCF8 >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A67C:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050A6E8;
+    }
+}
+
+loc_8050A680:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_E17D = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_E17D);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_E17D >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1464);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_E4AF = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_E4AF);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_E4AF >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1464);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_E7E9 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_E7E9);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_E7E9 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_EBE3 = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_EBE3);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_EBE3 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_3 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_3, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r4 = r29;
+    r3 = (r1 + 8);
+    if constexpr (KnownRegArgsCpuCall<0x8045FBD4u>(&func_8045FBD4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FBD4_F24E = func_8045FBD4_ra38_0_10_0(ctx, r3, r4, r5);
+        r4 = regargs_result_8045FBD4_F24E;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FBD4u>(ctx);
+        r0 = ctx->gpr[0];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r5 = r24;
+    r6 = r29;
+    r4 = (r25 + 1476);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A6E0u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_F7F0 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_F7F0);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_F7F0 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r22 = 1;
+    goto loc_8050AC30;
+}
+
+loc_8050A6E8:
+{
+    r3 = (r25 + 1496);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_100B9 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_100B9);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_100B9 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1496);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_10417 = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_10417);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_10417 >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A704:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050A7F0;
+    }
+}
+
+loc_8050A708:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1089F = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1089F);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1089F >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1496);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_10BD4 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_10BD4);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_10BD4 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1496);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_10F11 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_10F11);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_10F11 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_1130E = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_1130E);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_1130E >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_4 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_4, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r3 = r29;
+    r4 = (r25 + 1508);
+    r5 = (r1 + 44);
+    r6 = (r1 + 40);
+    r7 = (r1 + 36);
+    r8 = (r1 + 32);
+    r9 = (r1 + 28);
+    r10 = (r1 + 24);
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A76Cu;
+    if constexpr (KnownRegArgsCpuCall<0x8045F9FCu>(&func_8045F9FC)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045F9FC_11AFC = func_8045F9FC_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_8045F9FC_11AFC);
+        r4 = static_cast<uint32_t>(regargs_result_8045F9FC_11AFC >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045F9FCu>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A770:
+{
+    if ((static_cast<int32_t>(r3) == static_cast<int32_t>(6))) {
+        goto loc_8050A794;
+    }
+}
+
+loc_8050A774:
+{
+    r5 = r29;
+    r4 = (r25 + 1536);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A788u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_1258F = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_1258F);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_1258F >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r19 = 0;
+    r21 = 0;
+    goto loc_8050A7C0;
+}
+
+loc_8050A794:
+{
+    r4 = MemoryInline::FlatRead32((r1 + 40));
+    r3 = (r1 + 24);
+    MemoryInline::FlatWriteRam32((r1 + 48), r28);
+    r0 = (r4 + -1);
+    MemoryInline::FlatWriteRam32((r1 + 40), r0);
+    MemoryInline::FlatWriteRam32((r1 + 52), r28);
+    MemoryInline::FlatWriteRam32((r1 + 56), r28);
+    MemoryInline::FlatWriteRam32((r1 + 60), r28);
+    ctx->lr = 0x8050A7B8u;
+    if constexpr (KnownRegArgsCpuCall<0x804D5800u>(&func_804D5800)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_804D5800_1306A = func_804D5800_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_804D5800_1306A);
+        r4 = static_cast<uint32_t>(regargs_result_804D5800_1306A >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x804D5800u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r19 = r4;
+    r21 = r3;
+}
+
+loc_8050A7C0:
+{
+    ctx->gpr[1] = r1;
+    ctx->gpr[3] = r3;
+    ctx->gpr[4] = r4;
+    ctx->gpr[5] = r5;
+    ctx->cr = cr;
+    ctx->xer = xer;
+    InvokeDirectCpu<0x804D53D0u>(ctx);
+    r3 = ctx->gpr[3];
+    r4 = ctx->gpr[4];
+    r5 = ctx->gpr[5];
+    cr = ctx->cr;
+    r0 = (r19 - r4);
+    xer = (xer & 0xDFFFFFFFu) | ((static_cast<uint32_t>(r19) >= static_cast<uint32_t>(r4) ? 1u : 0u) << 29);
+    MemoryInline::FlatWriteRam32((r27 + 452), r0);
+    r0_not_2 = ~(r3);
+    r0_ca_2 = (xer >> 29) & 1u;
+    r0 = (r0_not_2 + r21);
+    r0 = (r0 + r0_ca_2);
+    r5 = r24;
+    MemoryInline::FlatWriteRam32((r27 + 448), r0);
+    r4 = (r25 + 1564);
+    r6 = (r1 + 64);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A7ECu;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_13A58 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_13A58);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_13A58 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050A7F0:
+{
+    r3 = (r25 + 1584);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_14316 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_14316);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_14316 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1584);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_14674 = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_14674);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_14674 >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A80C:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050A874;
+    }
+}
+
+loc_8050A810:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_14AFC = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_14AFC);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_14AFC >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1584);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_14E31 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_14E31);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_14E31 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1584);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1516E = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1516E);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1516E >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_1556B = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_1556B);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_1556B >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_5 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_5, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r4 = r29;
+    r3 = (r27 + 379);
+    if constexpr (KnownRegArgsCpuCall<0x8045FBD4u>(&func_8045FBD4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FBD4_15BDC = func_8045FBD4_ra38_0_10_0(ctx, r3, r4, r5);
+        r4 = regargs_result_8045FBD4_15BDC;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FBD4u>(ctx);
+        r0 = ctx->gpr[0];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r5 = r24;
+    r6 = r29;
+    r4 = (r25 + 1596);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A870u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_16180 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_16180);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_16180 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050A874:
+{
+    r3 = (r13 + -19204);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_16A40 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_16A40);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_16A40 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r13 + -19204);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_16DA0 = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_16DA0);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_16DA0 >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A890:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050A8F8;
+    }
+}
+
+loc_8050A894:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_17228 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_17228);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_17228 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r13 + -19204);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1755F = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1755F);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1755F >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r13 + -19204);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1789E = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1789E);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1789E >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_17C9B = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_17C9B);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_17C9B >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_6 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_6, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r4 = r29;
+    r3 = (r27 + 4);
+    if constexpr (KnownRegArgsCpuCall<0x8045FBD4u>(&func_8045FBD4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FBD4_1830A = func_8045FBD4_ra38_0_10_0(ctx, r3, r4, r5);
+        r4 = regargs_result_8045FBD4_1830A;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FBD4u>(ctx);
+        r0 = ctx->gpr[0];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r5 = r24;
+    r6 = r29;
+    r4 = (r25 + 1616);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A8F4u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_188AE = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_188AE);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_188AE >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050A8F8:
+{
+    r3 = (r25 + 1632);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1916C = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1916C);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1916C >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1632);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_194CA = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_194CA);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_194CA >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A914:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050A97C;
+    }
+}
+
+loc_8050A918:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_19952 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_19952);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_19952 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1632);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_19C87 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_19C87);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_19C87 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1632);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_19FC4 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_19FC4);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_19FC4 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_1A3C1 = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_1A3C1);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_1A3C1 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_7 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_7, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r4 = r29;
+    r3 = (r27 + 305);
+    if constexpr (KnownRegArgsCpuCall<0x8045FBD4u>(&func_8045FBD4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FBD4_1AA32 = func_8045FBD4_ra38_0_10_0(ctx, r3, r4, r5);
+        r4 = regargs_result_8045FBD4_1AA32;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FBD4u>(ctx);
+        r0 = ctx->gpr[0];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r5 = r24;
+    r6 = r29;
+    r4 = (r25 + 1644);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A978u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_1AFD6 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_1AFD6);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_1AFD6 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050A97C:
+{
+    r3 = (r13 + -19192);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1B896 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1B896);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1B896 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r13 + -19192);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_1BBF6 = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_1BBF6);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_1BBF6 >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050A998:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050AA1C;
+    }
+}
+
+loc_8050A99C:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1C07E = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1C07E);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1C07E >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r13 + -19192);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1C3B5 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1C3B5);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1C3B5 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r13 + -19192);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1C6F4 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1C6F4);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1C6F4 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_1CAF1 = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_1CAF1);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_1CAF1 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_8 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_8, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r3 = r29;
+    r5 = (r27 + 432);
+    r4 = (r13 + -19184);
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050A9ECu;
+    if constexpr (KnownRegArgsCpuCall<0x8045F9FCu>(&func_8045F9FC)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045F9FC_1D279 = func_8045F9FC_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_8045F9FC_1D279);
+        r4 = static_cast<uint32_t>(regargs_result_8045F9FC_1D279 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045F9FCu>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r7 = MemoryInline::FlatRead32((r27 + 432));
+    r5 = r24;
+    r8 = MemoryInline::FlatRead32((r27 + 436));
+    r4 = (r25 + 1664);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AA08u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_1DCDB = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_1DCDB);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_1DCDB >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r0 = MemoryInline::FlatRead32((r27 + 432));
+    r3 = MemoryInline::FlatRead32((r27 + 436));
+    MemoryInline::FlatWriteRam32((r30 + 4), r3);
+    MemoryInline::FlatWriteRam32((r26 + 864), r0);
+    goto loc_8050AC30;
+}
+
+loc_8050AA1C:
+{
+    r3 = (r25 + 1684);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1E661 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1E661);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1E661 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1684);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_1E9BF = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_1E9BF);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_1E9BF >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050AA38:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050AAA0;
+    }
+}
+
+loc_8050AA3C:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1EE47 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1EE47);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1EE47 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1684);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1F17C = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1F17C);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1F17C >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1684);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_1F4B9 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_1F4B9);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_1F4B9 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_1F8B6 = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_1F8B6);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_1F8B6 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_9 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_9, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r4 = r29;
+    r3 = (r31 + 4);
+    if constexpr (KnownRegArgsCpuCall<0x8045FBD4u>(&func_8045FBD4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FBD4_1FF25 = func_8045FBD4_ra38_0_10_0(ctx, r3, r4, r5);
+        r4 = regargs_result_8045FBD4_1FF25;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FBD4u>(ctx);
+        r0 = ctx->gpr[0];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r5 = r24;
+    r6 = r29;
+    r4 = (r25 + 1696);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AA9Cu;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_204C9 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_204C9);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_204C9 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050AAA0:
+{
+    r3 = (r25 + 1716);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_20D87 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_20D87);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_20D87 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1716);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_210E5 = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_210E5);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_210E5 >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050AABC:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050AB24;
+    }
+}
+
+loc_8050AAC0:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_2156D = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_2156D);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_2156D >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1716);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_218A2 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_218A2);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_218A2 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1716);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_21BDF = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_21BDF);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_21BDF >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_21FDC = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_21FDC);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_21FDC >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_10 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_10, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r4 = r29;
+    r3 = (r31 + 69);
+    if constexpr (KnownRegArgsCpuCall<0x8045FBD4u>(&func_8045FBD4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FBD4_2264E = func_8045FBD4_ra38_0_10_0(ctx, r3, r4, r5);
+        r4 = regargs_result_8045FBD4_2264E;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FBD4u>(ctx);
+        r0 = ctx->gpr[0];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r5 = r24;
+    r6 = r29;
+    r4 = (r25 + 1732);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AB20u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_22BF2 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_22BF2);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_22BF2 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050AB24:
+{
+    r3 = (r25 + 1756);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_234B0 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_234B0);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_234B0 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1756);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_2380E = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_2380E);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_2380E >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050AB40:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050ABB4;
+    }
+}
+
+loc_8050AB44:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_23C96 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_23C96);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_23C96 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1756);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_23FCB = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_23FCB);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_23FCB >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1756);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_24308 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_24308);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_24308 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_24705 = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_24705);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_24705 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_11 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_11, static_cast<uint8_t>(r28));
+    r24 = r3;
+    r0 = MemoryInline::FlatRead8((r1 + 64));
+}
+
+loc_8050AB88:
+{
+    if ((static_cast<int32_t>(r0) != static_cast<int32_t>(89))) {
+        goto loc_8050AB94;
+    }
+}
+
+loc_8050AB8C:
+{
+    MemoryInline::FlatWriteRam32((r26 + 464), r20);
+    goto loc_8050AB98;
+}
+
+loc_8050AB94:
+{
+    MemoryInline::FlatWriteRam32((r26 + 464), r28);
+}
+
+loc_8050AB98:
+{
+    r5 = r24;
+    r4 = (r25 + 1768);
+    r6 = (r1 + 64);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050ABB0u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_25011 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_25011);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_25011 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050ABB4:
+{
+    r3 = (r25 + 1792);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_258CF = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_258CF);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_258CF >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r5 = r3;
+    r3 = r24;
+    r4 = (r25 + 1792);
+    if constexpr (KnownRegArgsCpuCall<0x8045FE20u>(&func_8045FE20)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FE20_25C2D = func_8045FE20_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FE20_25C2D);
+        r4 = static_cast<uint32_t>(regargs_result_8045FE20_25C2D >> 32);
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FE20u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050ABD0:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050AC1C;
+    }
+}
+
+loc_8050ABD4:
+{
+    r3 = r24;
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_260B5 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_260B5);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_260B5 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = r3;
+    r3 = (r25 + 1792);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_263EA = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_263EA);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_263EA >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r21 = (r21 - r3);
+    r3 = (r25 + 1792);
+    if constexpr (KnownRegArgsCpuCall<0x80456C40u>(&func_80456C40)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80456C40_26727 = func_80456C40_ra18_0_18_0(ctx, r3, r4);
+        r3 = static_cast<uint32_t>(regargs_result_80456C40_26727);
+        r4 = static_cast<uint32_t>(regargs_result_80456C40_26727 >> 32);
+        r0 = ctx->gpr[0];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80456C40u>(ctx);
+        r0 = ctx->gpr[0];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        cr = ctx->cr;
+    }
+    r4 = r21;
+    r3 = (r24 + r3);
+    r5 = (r1 + 64);
+    r6 = 256;
+    if constexpr (KnownRegArgsCpuCall<0x80507860u>(&func_80507860)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507860_26B24 = func_80507860_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_80507860_26B24);
+        r4 = static_cast<uint32_t>(regargs_result_80507860_26B24 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507860u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r29_addr_12 = (r29 + r3);
+    MemoryInline::FlatWrite8(r29_addr_12, static_cast<uint8_t>(r28));
+    r4 = r29;
+    r3 = (r26 + 896);
+    if constexpr (KnownRegArgsCpuCall<0x8045FBD4u>(&func_8045FBD4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FBD4_27188 = func_8045FBD4_ra38_0_10_0(ctx, r3, r4, r5);
+        r4 = regargs_result_8045FBD4_27188;
+        r0 = ctx->gpr[0];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FBD4u>(ctx);
+        r0 = ctx->gpr[0];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AC30;
+}
+
+loc_8050AC1C:
+{
+    r5 = r24;
+    r4 = (r25 + 1804);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AC30u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_2774C = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_2774C);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_2774C >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050AC30:
+{
+    r4 = r23;
+    r3 = 0;
+    if constexpr (KnownRegArgsCpuCall<0x8045FED8u>(&func_8045FED8)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_8045FED8_28047 = func_8045FED8_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8045FED8_28047);
+        r4 = static_cast<uint32_t>(regargs_result_8045FED8_28047 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x8045FED8u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        cr = ctx->cr;
+    }
+    r24 = r3;
+}
+
+loc_8050AC40:
+{
+}
+
+loc_8050AC44:
+{
+    if ((static_cast<uint32_t>(r24) != static_cast<uint32_t>(r28))) {
+        goto loc_8050A5EC;
+    }
+}
+
+loc_8050AC48:
+{
+}
+
+loc_8050AC4C:
+{
+    if ((static_cast<int32_t>(r22) == static_cast<int32_t>(0))) {
+        goto loc_8050AD54;
+    }
+}
+
+loc_8050AC50:
+{
+    r3 = (r1 + 8);
+    r4 = 0;
+    r5 = 10;
+    ctx->lr = 0x8050AC60u;
+    if constexpr (KnownRegArgsCpuCall<0x80461C48u>(&func_80461C48)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80461C48_28716 = func_80461C48_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80461C48_28716);
+        r4 = static_cast<uint32_t>(regargs_result_80461C48_28716 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80461C48u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+}
+
+loc_8050AC64:
+{
+    r19 = r3;
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(0))) {
+        goto loc_8050AC9C;
+    }
+}
+
+loc_8050AC6C:
+{
+    r4 = MemoryInline::FlatRead32((r13 + -13872));
+    r0 = MemoryInline::FlatRead32((r4 + 22984));
+}
+
+loc_8050AC78:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(3))) {
+        goto loc_8050AC9C;
+    }
+}
+
+loc_8050AC7C:
+{
+    r4 = (r25 + 1828);
+    r5 = (r1 + 8);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AC90u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_292B6 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_292B6);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_292B6 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r0 = -20101;
+    MemoryInline::FlatWriteRam32(r26, r0);
+    goto loc_8050AD78;
+}
+
+loc_8050AC9C:
+{
+}
+
+loc_8050ACA0:
+{
+    if ((static_cast<int32_t>(r3) != static_cast<int32_t>(1))) {
+        goto loc_8050ACD8;
+    }
+}
+
+loc_8050ACA4:
+{
+    r4 = MemoryInline::FlatRead32((r13 + -13872));
+    r0 = MemoryInline::FlatRead32((r4 + 22984));
+}
+
+loc_8050ACB0:
+{
+    if ((static_cast<int32_t>(r0) != static_cast<int32_t>(3))) {
+        goto loc_8050ACD8;
+    }
+}
+
+loc_8050ACB4:
+{
+    r4 = (r25 + 1856);
+    r5 = (r1 + 8);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050ACC8u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_29EB4 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_29EB4);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_29EB4 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r3 = -65536;
+    r0 = (r3 + 32535);
+    MemoryInline::FlatWriteRam32(r26, r0);
+    goto loc_8050AD78;
+}
+
+loc_8050ACD8:
+{
+    SetCRResident(cr, xer, 6, static_cast<int32_t>(r3), static_cast<int32_t>(100));
+}
+
+loc_8050ACDC:
+{
+    if (((cr & 0x00000080u) != 0)) {
+        goto loc_8050AD2C;
+    }
+}
+
+loc_8050ACE0:
+{
+    r3 = MemoryInline::FlatRead32((r13 + -13872));
+    r0 = MemoryInline::FlatRead32((r3 + 22984));
+}
+
+loc_8050ACEC:
+{
+    if ((static_cast<int32_t>(r0) != static_cast<int32_t>(3))) {
+        goto loc_8050AD0C;
+    }
+}
+
+loc_8050ACF0:
+{
+    if (((cr & 0x00000020u) == 0)) {
+        goto loc_8050AD0C;
+    }
+}
+
+loc_8050ACF4:
+{
+    r5 = r19;
+    r4 = (r25 + 1888);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AD08u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_2AB5E = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_2AB5E);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_2AB5E >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    goto loc_8050AD2C;
+}
+
+loc_8050AD0C:
+{
+    r5 = r19;
+    r4 = (r25 + 1948);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AD20u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_2B58D = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_2B58D);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_2B58D >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r0 = (-20000 - r19);
+    MemoryInline::FlatWriteRam32(r26, r0);
+    goto loc_8050AD78;
+}
+
+loc_8050AD2C:
+{
+}
+
+loc_8050AD30:
+{
+    if ((static_cast<int32_t>(r19) != static_cast<int32_t>(40))) {
+        goto loc_8050AD44;
+    }
+}
+
+loc_8050AD34:
+{
+    r3 = (r26 + 0);
+    r0 = 2;
+    MemoryInline::FlatWriteRam32((r3 + 440), r0);
+    goto loc_8050AD70;
+}
+
+loc_8050AD44:
+{
+    r3 = (r26 + 0);
+    r0 = 1;
+    MemoryInline::FlatWriteRam32((r3 + 440), r0);
+    goto loc_8050AD70;
+}
+
+loc_8050AD54:
+{
+    r4 = (r25 + 1976);
+    r3 = 16777216;
+    cr = PpcCrLogicalResident(cr, static_cast<uint32_t>(2), static_cast<uint32_t>(6), static_cast<uint32_t>(6), static_cast<uint32_t>(6));
+    ctx->lr = 0x8050AD64u;
+    if constexpr (KnownRegArgsCpuCall<0x80507F70u>(&func_80507F70)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        const auto regargs_result_80507F70_2C190 = func_80507F70_ra38_1fe_18_0(ctx, r3, r4, r5, f1.d, f2.d, f3.d, f4.d, f5.d, f6.d, f7.d, f8.d);
+        r3 = static_cast<uint32_t>(regargs_result_80507F70_2C190);
+        r4 = static_cast<uint32_t>(regargs_result_80507F70_2C190 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[7] = r7;
+        ctx->gpr[8] = r8;
+        ctx->gpr[9] = r9;
+        ctx->gpr[10] = r10;
+        ctx->gpr[11] = r11;
+        ctx->fpr[1] = f1;
+        ctx->fpr[2] = f2;
+        ctx->fpr[3] = f3;
+        ctx->fpr[4] = f4;
+        ctx->fpr[5] = f5;
+        ctx->fpr[6] = f6;
+        ctx->fpr[7] = f7;
+        ctx->fpr[8] = f8;
+        ctx->cr = cr;
+        ctx->xer = xer;
+        InvokeDirectCpu<0x80507F70u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r8 = ctx->gpr[8];
+        r9 = ctx->gpr[9];
+        r10 = ctx->gpr[10];
+        r11 = ctx->gpr[11];
+        f1 = ctx->fpr[1];
+        f2 = ctx->fpr[2];
+        f3 = ctx->fpr[3];
+        f4 = ctx->fpr[4];
+        f5 = ctx->fpr[5];
+        f6 = ctx->fpr[6];
+        f7 = ctx->fpr[7];
+        f8 = ctx->fpr[8];
+        cr = ctx->cr;
+        xer = ctx->xer;
+    }
+    r0 = -20101;
+    MemoryInline::FlatWriteRam32(r26, r0);
+    goto loc_8050AD78;
+}
+
+loc_8050AD70:
+{
+    r0 = 1;
+    MemoryInline::FlatWriteRam32(r26, r0);
+}
+
+loc_8050AD78:
+{
+    r11 = (r1 + 384);
+    // inline leaf 0x804574B4 (14 guest instruction(s))
+    guest_range_1 = MemoryInline::ResolveRangeHost((r11 + -52), 0, 52u, true, false);
+    // end of inlined leaf 0x804574B4
+    r0 = MemoryInline::FlatRead32((r1 + 388));
+    ctx->lr = r0;
+    r1 = (r1 + 384);
+    ctx->gpr[0] = r0;
+    ctx->gpr[1] = r1;
+    ctx->gpr[5] = r5;
+    ctx->gpr[6] = r6;
+    ctx->gpr[7] = r7;
+    ctx->gpr[8] = r8;
+    ctx->gpr[9] = r9;
+    ctx->gpr[10] = r10;
+    ctx->gpr[11] = r11;
+    ctx->fpr[1] = f1;
+    ctx->fpr[2] = f2;
+    ctx->fpr[3] = f3;
+    ctx->fpr[4] = f4;
+    ctx->fpr[5] = f5;
+    ctx->fpr[6] = f6;
+    ctx->fpr[7] = f7;
+    ctx->fpr[8] = f8;
+    ctx->cr = cr;
+    ctx->xer = xer;
+    ctx->gpr[19] = r19_entry;
+    ctx->gpr[20] = r20_entry;
+    ctx->gpr[21] = r21_entry;
+    ctx->gpr[22] = r22_entry;
+    ctx->gpr[23] = r23_entry;
+    ctx->gpr[24] = r24_entry;
+    ctx->gpr[25] = r25_entry;
+    ctx->gpr[26] = r26_entry;
+    ctx->gpr[27] = r27_entry;
+    return (static_cast<uint64_t>(r4) << 32) | r3;
+}
+
+}
+
+extern "C" void func_8050A430(CpuContext* MKW_RESTRICT ctx)
+{
+    uint64_t result;
+    [[clang::noinline]] result = func_8050A430_ra38_1fe_18_0(ctx, ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], ctx->fpr[1].d, ctx->fpr[2].d, ctx->fpr[3].d, ctx->fpr[4].d, ctx->fpr[5].d, ctx->fpr[6].d, ctx->fpr[7].d, ctx->fpr[8].d);
+    ctx->gpr[3] = static_cast<uint32_t>(result);
+    ctx->gpr[4] = static_cast<uint32_t>(result >> 32);
+}
+
+// RECOMP_GUEST_ABI gpr_read=0x00003FFF gpr_write=0x0007FFFF gpr_return=0x00000018 fpr_read=0xFC003FFF fpr_write=0xFC003FFF fpr_return=0x00000002 cr_read=0xFF cr_write=0xFF xer_read=1 xer_write=1 fence=0
+// RECOMP_REGISTRATION base 0x8050A430 func_8050A430 preserves=true fpr_mask=0x00000000

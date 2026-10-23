@@ -1,4 +1,4 @@
-#include "vita_launcher.h"
+#include "native_launcher.h"
 #include "fatal.h"
 #include "disc_image.h"
 #include "fs_status.h"
@@ -6,11 +6,8 @@
 #include <algorithm>
 #include <fstream>
 #include <stdexcept>
-#ifdef __vita__
-#include <psp2/io/fcntl.h>
-#endif
 
-namespace VitaLauncher {
+namespace NativeLauncher {
 namespace {
 // ProcessDisc reads words only within the bytes it has read.
 uint32_t Word(const std::vector<uint8_t>& b, size_t at) {
@@ -60,13 +57,7 @@ bool DiscReady(const std::filesystem::path& output) {
 
 namespace {
 Status ImagePath(const std::filesystem::path& iso, std::filesystem::path& image) {
-#ifdef __vita__
-    // libstdc++'s POSIX absolute() treats the Vita mount prefix as relative.
-    image = iso;
-    return {};
-#else
     return FsStatus::Absolute(iso, image);
-#endif
 }
 } // namespace
 
@@ -171,12 +162,8 @@ Status ProcessDisc(const std::filesystem::path& iso, const std::filesystem::path
 
         MH3_RETURN_IF_ERROR(FsStatus::RemoveAll(output));
     }
-#ifdef __vita__
-    if (sceIoSync("ux0:", 0) < 0)
-        return Status::Error("Cannot sync prepared game data");
-#endif
     MH3_RETURN_IF_ERROR(FsStatus::Rename(staging, output));
     progress("Game data ready", 1, 1);
     return {};
 }
-} // namespace VitaLauncher
+} // namespace NativeLauncher

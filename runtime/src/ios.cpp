@@ -1,3 +1,4 @@
+#include "win_posix_dir.h"
 #include "abi_bridge.h"
 #include "fatal.h"
 #include "ios_host.h"
@@ -30,13 +31,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#ifdef __vita__
-#include <psp2/io/fcntl.h>
-#include <psp2/io/dirent.h>
-#include <psp2/io/stat.h>
-#else
 #include <sys/xattr.h>
-#endif
 #include <memory>
 #include <iostream>
 #include <map>
@@ -375,7 +370,7 @@ class DiscReader {
     }
 
     void Run() {
-        // The workers' core (Vita): the game, draw and render threads keep
+        // The workers' core (Native): the game, draw and render threads keep
         // cores 2, 1 and 0. Here (core 3) the village load once took 4.28 s
         // instead of 3.82 s on core 0 on the devkit.
         aurora::pin_current_thread(aurora::ThreadRole::Worker);
@@ -390,7 +385,7 @@ class DiscReader {
                 return false;
             };
 
-            // Timed: VitaSDK's condition variable can lose a notification.
+            // Timed: the platform's condition variable can lose a notification.
             while (!stopping && !pending()) {
                 guard.unlock();
                 const bool read = ReadAhead();
@@ -425,7 +420,7 @@ class DiscReader {
                 // read ahead too, so the loading screen lasts until the
                 // models can be admitted without a card read. Admission at
                 // the end of a loading screen waited for the read-ahead
-                // instead, a frame of up to seconds on the Vita's card: a
+                // instead, a frame of up to seconds on the host's card: a
                 // black screen after loading.
                 if (!PacksInMemory(offset, length)) {
                     awaitingPacks.store(true, std::memory_order_relaxed);
@@ -618,14 +613,13 @@ bool ValidNandPath(const std::string& path, bool allowRoot = false) {
 // one title: UID 0x1000, group 0x3038 (verified in RMHP08's TMD).
 using NandMetadata = std::array<uint8_t, 10>;
 constexpr NandMetadata defaultMetadata{0, 0, 0x10, 0, 0x30, 0x38, 3, 3, 3, 0};
-#ifndef __vita__
 #ifdef __APPLE__
 constexpr const char* metadataName = "org.mh3.nand";
 #else
 constexpr const char* metadataName = "user.mh3.nand";
 #endif
 int SetMetadata(int fd, const NandMetadata& metadata) {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(_WIN32)
     // WasmFS has no extended attributes: on the web every entry keeps the
     // title's defaults (docs/optimizations/platforms/web-build.md).
     (void)fd;
@@ -640,7 +634,7 @@ int SetMetadata(int fd, const NandMetadata& metadata) {
 }
 
 int GetMetadata(int fd, NandMetadata& metadata) {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(_WIN32)
     (void)fd;
     metadata = defaultMetadata;
     const auto size = ssize_t(metadata.size());
@@ -661,7 +655,6 @@ int GetMetadata(int fd, NandMetadata& metadata) {
 #endif
     return size == metadata.size() ? 0 : size < 0 ? Error() : -101;
 }
-#endif
 std::string GuestPath(uint32_t address) {
     std::string path;
 
@@ -680,15 +673,12 @@ std::string GuestPath(uint32_t address) {
 // IOS_Open does not create files. ISFS creation will be handled independently.
 // Resolve every component relative to the private NAND root without following
 // symlinks, and reject traversal before opening any host file.
-#ifdef __vita__
-#include "../vita/nand.inc"
-#else
 int CloseNandPath(int fd) {
     return ::close(fd);
 }
 
 int SyncNandFile(int fd) {
-    return ::fsync(fd) == 0 ? 0 : Error();
+    return ::mh3_fsync(fd) == 0 ? 0 : Error();
 }
 
 int OpenNandPath(const std::string& path, int finalFlags, bool allowRoot = false) {
@@ -701,7 +691,7 @@ int OpenNandPath(const std::string& path, int finalFlags, bool allowRoot = false
         if (part == ".." || part == "." || part.empty())
             return -4;
     const auto root = NandRoot();
-    int dir = ::open(root.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    int dir = ::mh3_open(root.string().c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
 
     if (dir < 0)
         return Error();
@@ -713,7 +703,7 @@ int OpenNandPath(const std::string& path, int finalFlags, bool allowRoot = false
         ++next;
         const bool last = next == end;
         int flags = last ? finalFlags : O_RDONLY | O_DIRECTORY;
-        int child = ::openat(dir, it->c_str(), flags | O_NOFOLLOW);
+        int child = ::mh3_openat(dir, it->string().c_str(), flags | O_NOFOLLOW);
         int saved = errno;
         ::close(dir);
         errno = saved;
@@ -731,7 +721,7 @@ int InitializeNand() {
     const auto root = NandRoot();
     std::filesystem::create_directories(root.parent_path());
 
-    if (::mkdir(root.c_str(), 0700) != 0 && errno != EEXIST)
+    if (::mh3_mkdir(root.string().c_str(), 0700) != 0 && errno != EEXIST)
         return Error();
     // IOS and title installation normally provide these parents. No game
     // settings or save contents are synthesized, and existing files survive.
@@ -745,7 +735,7 @@ int InitializeNand() {
             return parent;
 
         const auto name = entry.filename().string();
-        const bool created = ::mkdirat(parent, name.c_str(), 0700) == 0;
+        const bool created = ::mh3_mkdirat(parent, name.c_str(), 0700) == 0;
 
         if (!created && errno != EEXIST) {
             const int error = Error();
@@ -753,7 +743,7 @@ int InitializeNand() {
             return error;
         }
 
-        const int child = ::openat(parent, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        const int child = ::mh3_openat(parent, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
         const int error = child < 0 ? Error() : created ? SetMetadata(child, defaultMetadata) : 0;
 
         if (child >= 0)
@@ -782,15 +772,15 @@ int CreateNandEntry(const std::string& path, bool directory, const NandMetadata&
     int child;
 
     if (directory) {
-        if (::mkdirat(parent, name.c_str(), 0700) != 0) {
+        if (::mh3_mkdirat(parent, name.c_str(), 0700) != 0) {
             const int error = Error();
             ::close(parent);
             return error;
         }
 
-        child = ::openat(parent, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        child = ::mh3_openat(parent, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     } else
-        child = ::openat(parent, name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0600);
+        child = ::mh3_openat(parent, name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0600);
 
     const int result = child < 0 ? Error() : SetMetadata(child, metadata);
 
@@ -821,20 +811,20 @@ int RenameNandEntry(const std::string& from, const std::string& to) {
     struct stat info {};
     int result = 0;
 
-    if (::fstatat(sourceDir, source.filename().c_str(), &info, AT_SYMLINK_NOFOLLOW) != 0)
+    if (::mh3_fstatat(sourceDir, source.filename().string().c_str(), &info, AT_SYMLINK_NOFOLLOW) != 0)
         result = Error();
     else if (!S_ISREG(info.st_mode) && !S_ISDIR(info.st_mode))
         result = -102;
 
     if (!result) {
-        if (::fstatat(targetDir, target.filename().c_str(), &info, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (::mh3_fstatat(targetDir, target.filename().string().c_str(), &info, AT_SYMLINK_NOFOLLOW) == 0) {
             if (!S_ISREG(info.st_mode))
                 result = -102;
         } else if (errno != ENOENT)
             result = Error();
     }
 
-    if (!result && ::renameat(sourceDir, source.filename().c_str(), targetDir, target.filename().c_str()) != 0)
+    if (!result && ::mh3_renameat(sourceDir, source.filename().string().c_str(), targetDir, target.filename().string().c_str()) != 0)
         result = Error();
 
     ::close(sourceDir);
@@ -848,7 +838,7 @@ int RemoveNandTree(int parent, const char* name, bool execute, unsigned depth = 
 
     struct stat info {};
 
-    if (::fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) != 0)
+    if (::mh3_fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) != 0)
         return Error();
 
     const bool directory = S_ISDIR(info.st_mode);
@@ -864,12 +854,12 @@ int RemoveNandTree(int parent, const char* name, bool execute, unsigned depth = 
     }
 
     if (directory) {
-        const int fd = ::openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        const int fd = ::mh3_openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
 
         if (fd < 0)
             return Error();
 
-        DIR* raw = ::fdopendir(fd);
+        DIR* raw = ::mh3_fdopendir(fd);
 
         if (!raw) {
             const int error = Error();
@@ -902,7 +892,7 @@ int RemoveNandTree(int parent, const char* name, bool execute, unsigned depth = 
         }
     }
 
-    if (execute && ::unlinkat(parent, name, directory ? AT_REMOVEDIR : 0) != 0)
+    if (execute && ::mh3_unlinkat(parent, name, directory ? AT_REMOVEDIR : 0) != 0)
         return Error();
 
     return 0;
@@ -918,10 +908,10 @@ int DeleteNandEntry(const std::string& path) {
     if (parent < 0)
         return parent;
     // Validate the entire subtree before removing any file (including InUse).
-    int result = RemoveNandTree(parent, entry.filename().c_str(), false);
+    int result = RemoveNandTree(parent, entry.filename().string().c_str(), false);
 
     if (!result)
-        result = RemoveNandTree(parent, entry.filename().c_str(), true);
+        result = RemoveNandTree(parent, entry.filename().string().c_str(), true);
 
     ::close(parent);
     return result;
@@ -973,7 +963,7 @@ int OpenFile(const std::string& path, uint32_t mode) {
 
 int DirectoryUsage(int fd, uint64_t& clusters, uint64_t& inodes, unsigned depth = 0) {
     // Own each descriptor even on error, and never follow a host symlink.
-    DIR* raw = ::fdopendir(fd);
+    DIR* raw = ::mh3_fdopendir(fd);
 
     if (!raw) {
         const int error = Error();
@@ -1002,14 +992,14 @@ int DirectoryUsage(int fd, uint64_t& clusters, uint64_t& inodes, unsigned depth 
 
         struct stat info {};
 
-        if (::fstatat(fd, entry->d_name, &info, AT_SYMLINK_NOFOLLOW) != 0)
+        if (::mh3_fstatat(fd, entry->d_name, &info, AT_SYMLINK_NOFOLLOW) != 0)
             return Error();
 
         if (S_ISREG(info.st_mode)) {
             ++inodes;
             clusters += (uint64_t(info.st_size) + 0x3FFF) / 0x4000;
         } else if (S_ISDIR(info.st_mode)) {
-            const int child = ::openat(fd, entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+            const int child = ::mh3_openat(fd, entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
 
             if (child < 0)
                 return Error();
@@ -1022,7 +1012,6 @@ int DirectoryUsage(int fd, uint64_t& clusters, uint64_t& inodes, unsigned depth 
             return -102;
     }
 }
-#endif
 } // namespace
 
 #ifdef MH3_DEVELOPMENT
@@ -1906,7 +1895,7 @@ REGISTER_NATIVE_FUNCTION_AS(0x804AACC0, MH3_DVDGetCommandBlockStatus, "MH3_DVDGe
 // and starts the next command. DVDCancel (0x804AB200) sleeps on the DVD thread
 // queue until then; this runtime switches no guest threads, so that sleep
 // never reaches a pump to deliver the reply (a movie skipped while its read
-// was in flight hung the Vita). The disc reader breaks the read instead, and
+// was in flight hung the host). The disc reader breaks the read instead, and
 // its reply arrives before DVDCancelAsync returns, as the drive's interrupt
 // could right after it.
 extern "C" void func_804AAE90(CpuContext*);

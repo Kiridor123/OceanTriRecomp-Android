@@ -1,3 +1,4 @@
+#include "win_posix_dir.h"
 #include "disc_image.h"
 #include "fatal.h"
 #include "dev_options.h"
@@ -13,19 +14,13 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
-#ifdef __vita__
-#include <psp2/io/fcntl.h>
-#include <psp2/io/stat.h>
-#include "../vita/aligned_io.h"
-#else
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#endif
 
 // Keep the partition open and use positioned reads: no shared seek cursor,
-// no reopen per DVD request, and native 64-bit offsets on Vita's 32-bit newlib.
-// On the Vita a suspend (the PS button) invalidates the descriptors of files
+// no reopen per DVD request, and native 64-bit offsets on host's 32-bit newlib.
+// On the host a suspend (the PS button) invalidates the descriptors of files
 // open under ux0:data: after the resume every read fails with ENODEV
 // (0x80010013, Sony's Development Process Overview), so the reader reopens
 // the file once and retries.
@@ -35,26 +30,24 @@ class DiscFile {
 
     Status Open(const std::filesystem::path& path) {
         name = path.string();
-#ifdef __vita__
-        handle = sceIoOpen(name.c_str(), SCE_O_RDONLY, 0);
-#else
         handle = ::open(name.c_str(), O_RDONLY);
-#endif
         if (handle < 0)
             return Status::Error("Cannot open disc file: " + name);
-#ifdef __vita__
-        SceIoStat stat{};
-        const auto result = sceIoGetstatByFd(handle, &stat);
-#else
         struct stat stat {};
+        #ifdef _WIN32
+        const long long mh3Size = ::mh3_filelength(handle);
+        const auto result = mh3Size < 0 ? -1 : 0;
+#define MH3_ST_SIZE mh3Size
+#else
         const auto result = ::fstat(handle, &stat);
+#define MH3_ST_SIZE stat.st_size
 #endif
-        if (result < 0 || stat.st_size < 0) {
+        if (result < 0 || MH3_ST_SIZE < 0) {
             Close();
             return Status::Error("Cannot inspect disc file: " + name);
         }
 
-        size = static_cast<uint64_t>(stat.st_size);
+        size = static_cast<uint64_t>(MH3_ST_SIZE);
         return {};
     }
 
@@ -66,28 +59,16 @@ class DiscFile {
             return Status::Error("Disc read outside file: " + name);
 
         size_t done = 0;
-#ifdef __vita__
-        bool reopened = false;
-#endif
 
         while (done < length) {
-#ifdef __vita__
-            const int file = handle.load(std::memory_order_acquire);
-            const auto count = VitaIo::Pread(file, output + done, length - done, offset + done);
-
-            // Invalidated by a suspend (or closed by another reader's reopen).
-            if (count < 0 && !reopened) {
-                reopened = true;
-
-                if (Reopen(file))
-                    continue;
-            }
+            #ifdef _WIN32
+        const auto count = ::mh3_pread(handle, output + done, length - done, offset + done);
 #else
-            const auto count = ::pread(handle, output + done, length - done, static_cast<off_t>(offset + done));
+        const auto count = ::pread(handle, output + done, length - done, static_cast<off_t>(offset + done));
+#endif
 
             if (count < 0 && errno == EINTR)
                 continue;
-#endif
             if (count <= 0)
                 return Status::Error("Disc file read failed: " + name);
 
@@ -98,60 +79,23 @@ class DiscFile {
     }
 
   private:
-#ifdef __vita__
-    // Replaces `stale` with a new descriptor, unless another reader already
-    // did; false when the file cannot be opened again.
-    bool Reopen(int stale) const {
-        std::lock_guard lock(reopenLock);
-
-        if (handle.load(std::memory_order_relaxed) != stale)
-            return true;
-
-        const int file = sceIoOpen(name.c_str(), SCE_O_RDONLY, 0);
-
-        if (file < 0)
-            return false;
-
-        sceIoClose(stale);
-        handle.store(file, std::memory_order_release);
-        return true;
-    }
-#endif
 
     void Close() {
         const int file = handle.exchange(-1);
 
         if (file < 0)
             return;
-#ifdef __vita__
-        sceIoClose(file);
-#else
         ::close(file);
-#endif
     }
 
     std::string name;
     mutable std::atomic<int> handle{-1};
-#ifdef __vita__
-    mutable std::mutex reopenLock;
-#endif
     uint64_t size = 0;
 };
 
 namespace {
 Status Exists(const std::filesystem::path& path, bool& exists) {
-#ifdef __vita__
-    SceIoStat stat{};
-    const auto result = sceIoGetstat(path.string().c_str(), &stat);
-    exists = result >= 0;
-
-    if (result >= 0 || static_cast<uint32_t>(result) == 0x80010002)
-        return {};
-
-    return Status::Error("Cannot inspect disc path: " + path.string());
-#else
     return FsStatus::Exists(path, exists);
-#endif
 }
 
 Status LoadFile(const std::filesystem::path& path, std::vector<uint8_t>& bytes) {
@@ -490,16 +434,46 @@ std::vector<uint8_t> DiscImage::ReadFile(const std::string& name) const {
     return Read(it->second.first, it->second.second);
 }
 
-void DiscImage::SetFileOverride(const std::string& name, std::vector<uint8_t> bytes) {
-    const auto it = fileEntries.find(name);
+void DiscImage::ClearFileOverrides() {
+    fileOverrides.clear();
+}
 
-    if (it == fileEntries.end() || bytes.size() != it->second.second)
-        MH3_THROW(std::runtime_error("Quest override must preserve the disc file length"));
+bool DiscImage::HasFileEntry(const std::string& name) const {
+    if (fileEntries.find(name) != fileEntries.end()) return true;
+    for (const auto& [entryName, entry] : fileEntries) {
+        if (_stricmp(entryName.c_str(), name.c_str()) == 0) return true;
+    }
+    return false;
+}
 
-    if (name != "05/quest00_eng.bin" && name != "05/quest01_eng.bin" && name != "05/quest03_eng.bin")
-        MH3_THROW(std::runtime_error("Only quest files may be overridden"));
+bool DiscImage::SetFileOverrideFlexible(const std::string& name, std::vector<uint8_t> bytes) {
+    auto it = fileEntries.find(name);
+    if (it == fileEntries.end()) {
+        for (auto entry = fileEntries.begin(); entry != fileEntries.end(); ++entry) {
+            if (_stricmp(entry->first.c_str(), name.c_str()) == 0) {
+                it = entry;
+                break;
+            }
+        }
+    }
+    if (it == fileEntries.end())
+        return false;
+
+    const uint32_t expectedSize = it->second.second;
+    if (bytes.size() < expectedSize) {
+        bytes.resize(expectedSize, 0);
+    } else if (bytes.size() > expectedSize) {
+        bytes.resize(expectedSize);
+    }
 
     fileOverrides[it->second.first] = std::move(bytes);
+    return true;
+}
+
+void DiscImage::SetFileOverride(const std::string& name, std::vector<uint8_t> bytes) {
+    if (!SetFileOverrideFlexible(name, std::move(bytes))) {
+        MH3_THROW(std::runtime_error("Unknown disc file in override: " + name));
+    }
 }
 
 void DiscImage::ApplyFileOverrides(uint64_t offset, std::vector<uint8_t>& data) const {

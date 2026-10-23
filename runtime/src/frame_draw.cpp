@@ -27,6 +27,8 @@
 #include "guest_call.h"
 #include "memory.h"
 #include "port_check.h"
+#include "mh3_graphics_settings.h"
+#include <algorithm>
 
 #include <stdexcept>
 #include <utility>

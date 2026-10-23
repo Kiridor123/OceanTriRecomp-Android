@@ -48,6 +48,11 @@
 #include <sstream>
 #include <string>
 
+// Solo: la sesion tiene un solo miembro (el caso de los experimentos de abajo).
+[[maybe_unused]] static bool SoloSession(CpuContext* cpu) {
+    const uint32_t mgr = Memory::Read32(cpu->gpr[13] - 16440);
+    return mgr != 0 && Memory::Read32(mgr + 68) <= 1;
+}
 namespace {
 
 using namespace NetCtrl;
@@ -665,7 +670,7 @@ REGISTER_NATIVE_FUNCTION_AS(0x8044E4FC, MH3_OnlineScreens, "OnlineScreens");
 extern "C" void func_8042E26C(CpuContext* cpu);
 extern "C" void MH3_CityList(CpuContext* cpu) {
     const uint32_t menu = Memory::Read32(kCityMenu);
-    const uint16_t keys = plan.on && menu ? ChooseCity(menu) : 0;
+    const uint16_t keys = plan.on && menu && Memory::Read8(kLobby) == kGateCounter ? ChooseCity(menu) : 0;
 
     if (!keys) {
         func_8042E26C(cpu);
@@ -755,7 +760,7 @@ extern "C" void MH3_SessionEvent(CpuContext* cpu) {
             Say("session event 805F: after %s", SessionMembers(session).c_str());
             ++count;
             return;
-        } else if (count < 4) {
+        } else if (count < 24) {
             Say("session event %04X (%08X %08X %08X)", event, cpu->gpr[5], cpu->gpr[6], cpu->gpr[7]);
         }
 
@@ -765,3 +770,429 @@ extern "C" void MH3_SessionEvent(CpuContext* cpu) {
     func_803DC5AC(cpu);
 }
 REGISTER_NATIVE_FUNCTION_AS(0x803DC5AC, MH3_SessionEvent, "SessionEvent");
+
+// EXPERIMENT (solo): the session start's member check (phase 1, call at 0x803D9DF8) asks
+// 0x803EF318 for the member's peer state (0 = not found, 2 = waiting). With one local member
+// nobody registers it in the connection table, so treat it as ready.
+extern "C" void func_803EF318(CpuContext* cpu);
+extern "C" void MH3_PeerState(CpuContext* cpu) {
+    static const TraceFlag trace("net");
+    const uint32_t lr = cpu->lr, key = cpu->gpr[4];
+    func_803EF318(cpu);
+
+    if (trace) {
+        // DIAG-BAUL: toda consulta de estado de par, 3 veces por (llamador, resultado)
+        struct Seen { uint32_t lr, result, count; };
+        static Seen seen[48] = {};
+        const uint32_t result = cpu->gpr[3] & 0xFF;
+        for (Seen& s : seen) {
+            if (s.count == 0) s = {lr, result, 0};
+            if (s.lr == lr && s.result == result) {
+                if (s.count++ < 3)
+                    Say("peer state query: caller %08X key %08X -> %u", lr, key, result);
+                break;
+            }
+        }
+    }
+
+    if (!SoloSession(cpu) || lr != 0x803D9DF8u)
+        return;
+
+    const uint32_t state = cpu->gpr[3] & 0xFF;
+
+    if (state == 0 || state == 2) {
+        if (trace) {
+            static uint32_t count = 0;
+
+            if (count++ < 4)
+                Say("peer state %u for member key %08X forced to 1", state, key);
+        }
+
+        cpu->gpr[3] = 1;
+    }
+}
+REGISTER_NATIVE_FUNCTION_AS(0x803EF318, MH3_PeerState, "PeerState");
+
+// EXPERIMENT (solo): the field's load barrier (func_8028C730 sub 5.2) waits for a network
+// flag at manager+0xC1D3 and for sync point 3 (0x80338D48). With one local player nobody
+// satisfies them, so release both while the field sits in mode 1, sub 5.2.
+extern "C" void func_8028C730(CpuContext* cpu);
+extern "C" void func_80338D48(CpuContext* cpu);
+
+namespace {
+constexpr uint32_t kSyncWorks = 0x8065AB04u;
+
+uint32_t SyncMove() {
+    const uint32_t works = Memory::Read32(kSyncWorks);
+    return works ? Memory::Read32(works + 16) : 0;
+}
+
+bool SyncAtLoadBarrier(uint32_t move) {
+    return move && Memory::Read8(move) == 1 && Memory::Read8(move + 1) == 5 && Memory::Read8(move + 2) == 2;
+}
+}  // namespace
+
+extern "C" void MH3_FieldSyncTick(CpuContext* cpu) {
+    static const TraceFlag trace("net");
+    static uint32_t frames = 0, forced = 0;
+    const uint32_t move = SyncMove();
+
+    if (SoloSession(cpu) && SyncAtLoadBarrier(move)) {
+        const uint32_t mgr = Memory::Read32(cpu->gpr[13] - 16440);
+
+        if (mgr) {
+            const uint8_t flag = Memory::Read8(mgr + 0xC1D3);
+
+            if (trace && frames % 120 == 0)
+                Say("field sync: mgr %08X mode %u peers %u flag %u move4 %u move6 %u", mgr, Memory::Read8(mgr + 17),
+                    Memory::Read32(mgr + 68), flag, Memory::Read16(move + 4), Memory::Read16(move + 6));
+
+            if (!flag) {
+                if (SoloSession(cpu)) Memory::Write8(mgr + 0xC1D3, 1);
+
+                if (trace && forced++ < 4)
+                    Say("field sync: forced manager flag +C1D3 to 1");
+            }
+        }
+
+        ++frames;
+    } else {
+        frames = 0;
+    }
+
+    func_8028C730(cpu);
+}
+REGISTER_NATIVE_FUNCTION_AS(0x8028C730, MH3_FieldSyncTick, "FieldSyncTick");
+
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <string>
+#include <thread>
+
+#ifdef _WIN32
+extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vKey);
+extern "C" __declspec(dllimport) int __stdcall Beep(unsigned long f, unsigned long d);
+
+namespace {
+struct SyncSample { uint32_t point; uint32_t originalResult; uint32_t finalResult; uint32_t caller; uint8_t a, b, c; };
+SyncSample g_ring[256];
+volatile uint32_t g_ringPos = 0;
+uint32_t g_readyHits[64] = {}, g_notReadyHits[64] = {};
+volatile uint32_t g_r13 = 0;
+
+void HexDump(std::FILE* f, const char* title, uint32_t addr, uint32_t len) {
+    std::fprintf(f, "%s (%08X):", title, addr);
+    for (uint32_t i = 0; i < len; ++i) {
+        if (i % 16 == 0) std::fprintf(f, "\n  +%04X:", i);
+        std::fprintf(f, " %02X", static_cast<unsigned>(Memory::Read8(addr + i)));
+    }
+    std::fprintf(f, "\n");
+}
+
+void DumpFreeze() {
+    const char* home = std::getenv("USERPROFILE");
+    char stamp[32];
+    std::time_t t = std::time(nullptr);
+    std::tm tmv;
+    localtime_s(&tmv, &t);
+    std::strftime(stamp, sizeof stamp, "%H%M%S", &tmv);
+    std::string name = std::string("mh3-freeze-") + stamp + ".txt";
+    std::string path = std::string("C:\\mh3src\\logs\\") + name;
+    std::FILE* f = std::fopen(path.c_str(), "w");
+    if (!f) { path = name; f = std::fopen(path.c_str(), "w"); }
+    if (!f) return;
+
+    const uint32_t move = SyncMove();
+    std::fprintf(f, "=== MH3 freeze dump %s ===\nmove ptr: %08X\n", stamp, move);
+    if (move) HexDump(f, "move", move, 32);
+
+    const uint32_t r13 = g_r13;
+    const uint32_t mgr = r13 ? Memory::Read32(r13 - 16440) : 0;
+    std::fprintf(f, "mgr: %08X\n", mgr);
+    if (mgr) {
+        std::fprintf(f, "mode %u peers %u flag(+C1D3) %u\n", static_cast<unsigned>(Memory::Read8(mgr + 17)),
+                     Memory::Read32(mgr + 68), static_cast<unsigned>(Memory::Read8(mgr + 0xC1D3)));
+        HexDump(f, "mgr+C1B0", mgr + 0xC1B0, 64);
+        HexDump(f, "mgr+0", mgr, 128);
+    }
+
+    std::fprintf(f, "\n=== sync point counters (original ready / notReady) ===\n");
+    for (int p = 0; p < 64; ++p)
+        if (g_readyHits[p] || g_notReadyHits[p])
+            std::fprintf(f, "point %2d: ready %u notReady %u\n", p, g_readyHits[p], g_notReadyHits[p]);
+
+    const uint32_t pos = g_ringPos;
+    const uint32_t samples = std::min<uint32_t>(pos, 64);
+    std::fprintf(f, "\n=== ultimas %u llamadas reales (antigua -> reciente) ===\n", samples);
+    for (uint32_t i = 0; i < samples; ++i) {
+        const SyncSample& s = g_ring[(pos - samples + i) & 255];
+        std::fprintf(f, "point %u caller %08X original %u final %u move %u.%u.%u\n",
+                     s.point, s.caller, s.originalResult, s.finalResult, s.a, s.b, s.c);
+    }
+    std::fclose(f);
+    Beep(880, 300); Say("freeze dump escrito en %s", path.c_str());
+}
+
+void StartFreezeWatcher() {
+    static bool started = false;
+    if (started) return;
+    started = true;
+    std::thread([] {
+        bool down = false;
+        for (;;) {
+            const bool now = (GetAsyncKeyState(0x78) & 0x8000) != 0;  // F9
+            if (now && !down) DumpFreeze();
+            down = now;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }).detach();
+}
+}  // namespace
+#else
+namespace { void StartFreezeWatcher() {} }
+#endif
+
+extern "C" void MH3_FieldSyncReady(CpuContext* cpu) {
+    static const TraceFlag trace("net");
+    static uint32_t count = 0;
+    const uint32_t point = cpu->gpr[3];
+    const uint32_t caller = cpu->lr;
+    func_80338D48(cpu);
+    const uint32_t originalResult = cpu->gpr[3] & 0xFF;
+    const uint32_t move = SyncMove();
+    const uint32_t mgr = Memory::Read32(cpu->gpr[13] - 16440);
+    const bool soloOnline = mgr &&
+        Memory::Read8(mgr + 17) == 7 &&
+        Memory::Read32(mgr + 68) <= 1;
+
+#ifdef _WIN32
+    g_r13 = cpu->gpr[13];
+    StartFreezeWatcher();
+    if (point < 64) {
+        if (originalResult) ++g_readyHits[point]; else ++g_notReadyHits[point];
+    }
+#endif
+
+    if (soloOnline && point == 3 && SyncAtLoadBarrier(move) && originalResult == 0) {
+        if (trace && count++ < 4)
+            Say("field sync: point 3 reported not ready, forced to 1");
+
+        cpu->gpr[3] = 1;
+    }
+
+#ifdef _WIN32
+    SyncSample& s = g_ring[g_ringPos & 255];
+    s.point = point;
+    s.originalResult = originalResult;
+    s.finalResult = cpu->gpr[3] & 0xFF;
+    s.caller = caller;
+    s.a = move ? Memory::Read8(move) : 0;
+    s.b = move ? Memory::Read8(move + 1) : 0;
+    s.c = move ? Memory::Read8(move + 2) : 0;
+    g_ringPos = g_ringPos + 1;
+#endif
+}
+REGISTER_NATIVE_FUNCTION_AS(0x80338D48, MH3_FieldSyncReady, "FieldSyncReady");
+
+#ifdef _WIN32
+namespace { const bool g_freezeBoot = (StartFreezeWatcher(), true); }
+#endif
+
+// DIAG-BAUL2: trazas (sin cambiar el comportamiento) del baul de suministros.
+// 0x8039D5C4 multi_box_cursor_item_get, 0x800CF26C GetOnlineMode.
+extern "C" void func_8039D5C4(CpuContext* cpu);
+extern "C" void func_800CF26C(CpuContext* cpu);
+
+namespace {
+void DiagWords(char* text, size_t size, uint32_t p) {
+    text[0] = 0;
+    if (p < 0x80000000u || p >= 0x93600000u || (p & 3))
+        return;
+    size_t n = 0;
+    for (uint32_t i = 0; i < 8 && n + 12 < size; ++i)
+        n += size_t(std::snprintf(text + n, size - n, " %08X", Memory::Read32(p + 4 * i)));
+}
+
+void DiagCall(CpuContext* cpu, void (*original)(CpuContext*), const char* name, uint32_t& count, uint32_t limit, bool words) {
+    static const TraceFlag trace("net");
+
+    if (!trace || count >= limit) {
+        original(cpu);
+        return;
+    }
+
+    const uint32_t lr = cpu->lr, r3 = cpu->gpr[3], r4 = cpu->gpr[4], r5 = cpu->gpr[5];
+    char before[100], after[100];
+    before[0] = after[0] = 0;
+
+    if (words)
+        DiagWords(before, sizeof before, r3);
+
+    original(cpu);
+
+    if (words)
+        DiagWords(after, sizeof after, r3);
+
+    ++count;
+    Say("diag %s #%u: caller %08X in(%08X %08X %08X) out %08X | antes:%s | despues:%s", name, count, lr, r3, r4, r5, cpu->gpr[3], before, after);
+}
+} // namespace
+
+extern "C" void MH3_DiagBoxGet(CpuContext* cpu) {
+    static uint32_t count = 0;
+    DiagCall(cpu, func_8039D5C4, "multi_box_cursor_item_get", count, 40, true);
+}
+REGISTER_NATIVE_FUNCTION_AS(0x8039D5C4, MH3_DiagBoxGet, "DiagBoxGet");
+
+extern "C" void MH3_DiagOnlineMode(CpuContext* cpu) {
+    static const TraceFlag trace("net");
+    const uint32_t lr = cpu->lr;
+    func_800CF26C(cpu);
+
+    if (!trace)
+        return;
+
+    struct Seen {
+        uint32_t lr, result, count;
+    };
+    static Seen seen[64] = {};
+    const uint32_t result = cpu->gpr[3];
+
+    for (Seen& s : seen) {
+        if (s.count == 0)
+            s = {lr, result, 0};
+
+        if (s.lr == lr && s.result == result) {
+            if (s.count++ < 2)
+                Say("diag GetOnlineMode: caller %08X -> %08X", lr, result);
+
+            break;
+        }
+    }
+}
+REGISTER_NATIVE_FUNCTION_AS(0x800CF26C, MH3_DiagOnlineMode, "DiagOnlineMode");
+
+// DIAG-BAUL3: traza de ItemAdd (0x8004BAA0), llamada desde cheat_items.cpp.
+extern "C" void MH3_DiagItemAddTrace(uint32_t lr, uint32_t item, uint32_t change, uint32_t slots, uint32_t count) {
+    static const TraceFlag trace("net");
+    static uint32_t n = 0;
+
+    if (!trace || n >= 200)
+        return;
+
+    ++n;
+    Say("diag ItemAdd #%u: caller %08X item %04X change %d slots %08X count %d", n, lr, item & 0xFFFF, int(int16_t(change)), slots, int(count));
+}
+
+// DIAG-BAUL4: traza de 0x80272E94 (cambio de cantidad de un objeto de la bolsa), desde cheat_items.cpp.
+extern "C" void MH3_DiagPlayerItemTrace(uint32_t lr, uint32_t player, uint32_t item, uint32_t change, uint32_t result) {
+    static const TraceFlag trace("net");
+    static uint32_t n = 0;
+
+    if (!trace || n >= 100 || int32_t(change) <= 0)
+        return;
+
+    ++n;
+    Say("diag PlayerItem #%u: caller %08X player %08X item %04X change %d -> %08X", n, lr, player, item & 0xFFFF, int(int32_t(change)), result);
+}
+
+// FIX-BAUL5: en una mision online el baul pide el objeto por la red cuando el modo del gestor (+17) vale 7:
+// pone un temporizador de 900 fotogramas y espera una respuesta que no llega (se va solo). Aqui 0x8027AFEC
+// se ejecuta con ese modo en 0, que lleva a la ruta directa de offline, y despues se restaura.
+extern "C" void func_8027AFEC(CpuContext* cpu);
+
+extern "C" void MH3_SoloBoxTake(CpuContext* cpu) {
+    static const TraceFlag trace("net");
+    static uint32_t n = 0;
+    const uint32_t lr = cpu->lr;
+    const uint32_t manager = Memory::Read32(cpu->gpr[13] - 16440);
+    const bool valid = manager >= 0x80000000u && manager < 0x93600000u;
+    const uint32_t mode = valid ? uint32_t(Memory::Read8(manager + 17)) : 0xFFu;
+    const bool local = valid && mode == 7;
+
+    if (local)
+        Memory::Write8(manager + 17, 0);
+
+    func_8027AFEC(cpu);
+
+    if (local)
+        Memory::Write8(manager + 17, uint8_t(mode));
+
+    if (trace && n < 20) {
+        ++n;
+        Say("diag BaulSolo #%u: caller %08X manager %08X modo %u ruta local %d", n, lr, manager, mode, local ? 1 : 0);
+    }
+}
+REGISTER_NATIVE_FUNCTION_AS(0x8027AFEC, MH3_SoloBoxTake, "SoloBoxTake");
+
+// FIX-QUEST-CLEAR:
+// 1. MH3_BroadcastQuestState (0x80339B2C):
+//    En el juego original en Wii, la funcion 0x80339C4C llama a 0x80339B2C con r6 = 0,
+//    lo que genera un paquete UDP 13:25 con packet[27] = 0. Capcom esperaba que su servidor
+//    oficial validara el paquete, lo reescribiera con packet[27] = 1 y lo difundiera a todos.
+//    En servidores comunitarios revival (MH3SP) y P2P, los clientes reciben los paquetes directamente.
+//    Al forzar r6 = 1, el paquete sale con packet[27] = 1 para que todos los companeros
+//    en la sala lo procesen de inmediato y muestren "Quest Clear".
+//    Ademas, dado que el emisor nunca recibe su propio paquete reflejado por el servidor,
+//    sincronizamos el estado de mision localmente en el emisor.
+extern "C" void func_80339B2C(CpuContext* ctx);
+extern "C" void func_803AFF98(CpuContext* ctx);
+extern "C" void func_803AFEB0(CpuContext* ctx);
+
+extern "C" void MH3_BroadcastQuestState(CpuContext* ctx) {
+    if (ctx->gpr[6] == 0)
+        ctx->gpr[6] = 1;
+
+    func_80339B2C(ctx);
+
+    const uint32_t quest = ctx->gpr[3];
+    if (quest != 0) {
+        const uint8_t qState = Memory::Read8(quest + 27196);
+        if (qState >= 3) {
+            const uint32_t mgr = Memory::Read32(0x8065AB04);
+            const uint32_t move = mgr ? Memory::Read32(mgr + 16) : 0;
+            if (move != 0 && Memory::Read32(move + 220) == quest) {
+                const uint8_t mState = Memory::Read8(move + 250);
+                if (mState < 3) {
+                    Memory::Write8(move + 250, qState);
+                    Memory::Write8(move + 251, Memory::Read8(quest + 27199));
+                    Memory::Write8(move + 252, Memory::Read8(quest + 27198));
+                    Memory::Write8(move + 253, Memory::Read8(quest + 27197));
+                    Memory::Write8(quest + 27194, 1);
+
+                    CpuContext callCtx = *ctx;
+                    callCtx.gpr[3] = quest;
+                    callCtx.gpr[4] = move;
+                    callCtx.gpr[5] = 0;
+                    if (qState == 5)
+                        func_803AFEB0(&callCtx);
+                    else
+                        func_803AFF98(&callCtx);
+                }
+            }
+        }
+    }
+}
+REGISTER_NATIVE_FUNCTION_AS(0x80339B2C, MH3_BroadcastQuestState, "BroadcastQuestState");
+
+// 2. MH3_ReceiveQuestState (0x80339C58):
+//    Al recibir un paquete 13:25 de otro jugador, si packet[27] es 0 (por ejemplo
+//    enviado por un cliente sin parchear), lo forzamos a 1 para asegurar que
+//    loc_80339D40 se ejecute y aplique la victoria/derrota sin descartar el paquete.
+extern "C" void func_80339C58(CpuContext* ctx);
+
+extern "C" void MH3_ReceiveQuestState(CpuContext* ctx) {
+    const uint32_t packet = ctx->gpr[4];
+    if (packet != 0) {
+        if (Memory::Read8(packet + 2) == 13 && Memory::Read8(packet + 3) == 25) {
+            if (Memory::Read8(packet + 27) == 0) {
+                Memory::Write8(packet + 27, 1);
+            }
+        }
+    }
+
+    func_80339C58(ctx);
+}
+REGISTER_NATIVE_FUNCTION_AS(0x80339C58, MH3_ReceiveQuestState, "ReceiveQuestState");

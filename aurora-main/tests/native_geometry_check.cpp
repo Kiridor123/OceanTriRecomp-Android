@@ -7,8 +7,8 @@
 #include "gl/device.hpp"
 #include "gx/gx.hpp"
 #include "gx/shader_info.hpp"
-#include "gxm/sampler_bias.hpp"
-#include "gxm/alpha_compare.hpp"
+#include "gfx/sampler_bias.hpp"
+#include "gfx/alpha_compare.hpp"
 #include "native_graphics.h"
 // Standalone raster/pixel fixture has no model owner registry. Matrix-producer
 // notifications are an explicit test boundary; production links model_pose.
@@ -253,7 +253,7 @@ int main(int argc,char** argv) {
     const auto materialConfig=material_config();
     std::string floatAlpha="#version 300 es\nif (alphaCompare > 128.0 && alphaCompare != 0.0) {}\n";
     std::array<float,4> references{};
-    require(aurora::gxm::parameterize_alpha_references(floatAlpha,references) &&
+    require(aurora::gfx::parameterize_alpha_references(floatAlpha,references) &&
             references[0]==128 && references[1]==0 &&
             floatAlpha.find("alphaCompare > aur_alpha_refs.x")!=std::string::npos &&
             floatAlpha.find("alphaCompare != aur_alpha_refs.y")!=std::string::npos &&
@@ -299,10 +299,10 @@ int main(int argc,char** argv) {
     auto biasedProgram=std::make_shared<aurora::gl::Program>(biasedDescription);
 
     for(int code=0;code<64;++code)
-      require(aurora::gxm::sampler_bias_encoding(float(code-31)/8)==code,"GXM bias encoding mismatch");
+      require(aurora::gfx::sampler_bias_encoding(float(code-31)/8)==code,"GXM bias encoding mismatch");
 
     for(float bias:{-4.f,4.125f,.0625f,-.0625f})
-      require(aurora::gxm::sampler_bias_encoding(bias)==-1,"GXM bias silently rounded");
+      require(aurora::gfx::sampler_bias_encoding(bias)==-1,"GXM bias silently rounded");
 
     auto samplerA=aurora::gl::NearestClamp,samplerB=samplerA;
     samplerB.lodBias=1;

@@ -501,7 +501,7 @@ bool SamePoseLayout(const mh3_matrix_sources& version, const mh3_matrix_sources&
 }
 
 // Word compare of a version's host-order words with the live words (swapped
-// when big-endian), 16 bytes a step (memcmp is a byte loop on the Vita); stops
+// when big-endian), 16 bytes a step (memcmp is a byte loop on the host); stops
 // at the first difference, which a moved camera puts in the first matrix.
 // Matrix tables are whole words.
 bool SamePoseBytes(const uint8_t* have, const uint8_t* now, size_t bytes, bool swap) {

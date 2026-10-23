@@ -1,7 +1,7 @@
 #pragma once
 
 // Native audio, RMHP08. The game's voices are mixed natively on an audio
-// thread (Vita core 3); there is no AX, DSP, command list, mailbox or AI DMA.
+// thread (Native core 3); there is no AX, DSP, command list, mailbox or AI DMA.
 //
 // Game thread (core 2): the game's sound engine (sound_engine.cpp,
 // sound_stream.cpp) and MIX drive host voice records (native_audio_api.cpp,
@@ -359,7 +359,7 @@ Mixer& GetMixer();
 void MixerRender(int16_t* out, uint32_t frames);
 
 
-// Platform output (runtime/src/audio_output.cpp, runtime/vita/audio_output.cpp).
+// Platform output (runtime/src/audio_output.cpp, runtime/src/audio_output.cpp).
 // Starts the thread that pulls MixerRender at the device rate; idempotent.
 void StartAudioOutput();
 void StopAudioOutput();

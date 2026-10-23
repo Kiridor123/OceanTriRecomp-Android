@@ -545,7 +545,7 @@ void LoadTableCache() {
 
     if (std::FILE* file = std::fopen(tableCache.path.c_str(), "rb")) {
         // Unbuffered: newlib reads the file in one call (a buffered fread
-        // took 6.6 s for a 1.5 MiB model payload on the Vita).
+        // took 6.6 s for a 1.5 MiB model payload on the host).
         std::setvbuf(file, nullptr, _IONBF, 0);
 
         if (!std::fseek(file, 0, SEEK_END)) {

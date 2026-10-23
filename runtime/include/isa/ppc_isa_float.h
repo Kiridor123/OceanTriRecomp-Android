@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: GPL-2.0-or-later
 
 //
 // Copyright 2018 Dolphin Emulator Project
@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include "mh3_fma_compat.h"
 
 inline uint64_t PpcBitCastToU64Inline(double value) {
     uint64_t integral = 0;

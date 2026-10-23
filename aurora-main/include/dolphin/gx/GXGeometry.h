@@ -22,10 +22,21 @@ void GXSetLineWidth(u8 width, GXTexOffset texOffsets);
 void GXSetPointSize(u8 pointSize, GXTexOffset texOffsets);
 void GXEnableTexOffsets(GXTexCoordID coord, GXBool line_enable, GXBool point_enable);
 #ifdef TARGET_PC
-void GXSetArray(GXAttr attr, const void* data, u32 size, u8 stride, bool le);
+#ifdef __cplusplus
+}
+#endif
+#ifdef __cplusplus
+extern "C" void GXSetArray(GXAttr attr, const void* data, u32 size, u8 stride, bool le);
+namespace aurora_legacy_detail {
 static inline void GXSetArray(GXAttr attr, const void* data, u32 size, u8 stride) {
   aurora_legacy_gx_panic("GXSetArray");
 }
+}
+using aurora_legacy_detail::GXSetArray;
+extern "C" {
+#else
+void GXSetArray(GXAttr attr, const void* data, u32 size, u8 stride, bool le);
+#endif
 #define GXSETARRAY(attr, data, size, stride, le) GXSetArray((attr), (data), (size), (stride), (le))
 #else
 void GXSetArray(GXAttr attr, const void* data, u8 stride);

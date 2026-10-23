@@ -1,3 +1,13 @@
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+// MH3_PATCH_STACKLIMITS - mingw no declara esta API (Win8+) con el _WIN32_WINNT por defecto
+#if defined(_WIN32)
+extern "C" __declspec(dllimport) void __stdcall GetCurrentThreadStackLimits(PULONG_PTR, PULONG_PTR);
+#endif
+#endif
 // Guest threads (guest_worker.h): host threads with their own CPU context and
 // guest stack, running jobs another thread hands them.
 #include "guest_worker.h"
@@ -16,19 +26,11 @@
 #include <vector>
 #endif
 
-#ifdef __vita__
-#include <psp2/kernel/processmgr.h>
-#include <psp2/kernel/threadmgr.h>
-#endif
 
 namespace {
 
 uint64_t NowNs() {
-#ifdef __vita__
-    return sceKernelGetProcessTimeWide() * 1000;
-#else
     return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-#endif
 }
 
 [[noreturn]] void Fatal(const char* name, const char* reason) {
@@ -44,20 +46,8 @@ void* GuestThread::Run(void* self) {
 }
 
 void GuestThread::Loop() {
-#ifdef __vita__
-    if (sceKernelChangeThreadCpuAffinityMask(sceKernelGetThreadId(), SCE_KERNEL_CPU_MASK_USER_0 << core_) < 0) {
-        std::printf("MH3 %s: core %u is not available, running on core 0\n", name_, core_);
-        sceKernelChangeThreadCpuAffinityMask(sceKernelGetThreadId(), SCE_KERNEL_CPU_MASK_USER_0);
-    }
-
-    SceKernelThreadInfo info{};
-    info.size = sizeof(info);
-
-    if (sceKernelGetThreadInfo(sceKernelGetThreadId(), &info) < 0)
-        Fatal(name_, "no thread information");
-
-    hostLow_.store(uintptr_t(info.stack), std::memory_order_relaxed);
-    hostHigh_.store(uintptr_t(info.stack) + info.stackSize, std::memory_order_relaxed);
+#if defined(_WIN32)
+    { ULONG_PTR lo = 0, hi = 0; GetCurrentThreadStackLimits(&lo, &hi); hostLow_.store(uintptr_t(lo), std::memory_order_relaxed); hostHigh_.store(uintptr_t(hi), std::memory_order_relaxed); }
 #else
     pthread_attr_t attributes;
     void* address = nullptr;

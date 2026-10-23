@@ -28,8 +28,11 @@ class DiscImage {
     std::vector<uint8_t> Read(uint64_t offset, uint32_t length) const;
     std::vector<uint8_t> ReadFile(const std::string& name) const;
 
-    // Launcher quest overlays preserve lengths and apply to partial DVD reads.
+    // Launcher quest overlays and mods apply to partial DVD reads.
     void SetFileOverride(const std::string& name, std::vector<uint8_t> bytes);
+    bool SetFileOverrideFlexible(const std::string& name, std::vector<uint8_t> bytes);
+    void ClearFileOverrides();
+    bool HasFileEntry(const std::string& name) const;
     std::vector<std::string> FileNames() const;
     uint64_t FileOffset(const std::string& name) const;
     uint32_t FileSize(const std::string& name) const;

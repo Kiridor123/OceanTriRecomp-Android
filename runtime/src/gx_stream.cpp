@@ -12,9 +12,6 @@
 #include <unordered_map>
 #include "aurora-main/include/aurora/native_assets.h"
 #include "aurora-main/include/aurora/generated_texture.hpp"
-#ifdef __vita__
-#include "memory.h"
-#endif
 #ifdef MH3_HAS_AURORA
 #include <xxhash.h>
 #endif
@@ -330,19 +327,6 @@ std::array<uint8_t, 37> GuestGxStream::TexturePacket(unsigned slot, const ArrayR
         MH3_THROW(std::runtime_error("Guest GX texture exceeds its RAM region"));
 
     uint32_t nativeAsset = 0;
-#ifdef __vita__
-    // Loaded BRRES headers retain their reserved native ID across relocation.
-    // Static payloads are read from the offline pack, independent of Wii RAM
-    // addresses and their reuse. No content hash or write protection is needed.
-    if (guest >= 64 && Memory::Contains(guest - 64, 64)) {
-        const uint32_t header = guest - 64;
-        const uint32_t tag = Memory::Read32(header + 60);
-
-        if ((tag & 0xf0000000u) == AURORA_NATIVE_TEXTURE_TAG && Memory::Read32(header) == 0x54455830 && Memory::Read32(header + 16) == 64 && Memory::Read16(header + 28) == width &&
-            Memory::Read16(header + 30) == height && Memory::Read32(header + 32) == format)
-            nativeAsset = tag & 0x0fffffffu;
-    }
-#endif
 #ifdef MH3_HAS_AURORA
     const uint32_t generated = aurora::generated_texture_version(reinterpret_cast<const void*>(view.address), width, height);
 #else

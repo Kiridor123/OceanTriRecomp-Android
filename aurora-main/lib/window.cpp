@@ -418,19 +418,22 @@ bool create_window(AuroraBackend backend) {
   }
 #endif
   (void)backend;
-#if defined(AURORA_ENABLE_GX) && !defined(AURORA_GXM) && !defined(AURORA_WEBGPU)
-  // The renderer is OpenGL ES 3.0; the EFB lives in textures, so the window needs no depth/stencil.
-  flags |= SDL_WINDOW_OPENGL;
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-  SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-  SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-  SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-  SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+#if defined(AURORA_ENABLE_GX) && !defined(AURORA_WEBGPU)
+  // ANGLE/Vulkan creates an EGL surface from the native HWND. OpenGL ES mode still uses SDL GL.
+  if (backend != BACKEND_VULKAN) {
+    SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1"); // MH3_ES_DRIVER_HINT: contexto ES por EGL (ANGLE)
+    flags |= SDL_WINDOW_OPENGL;
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+  }
 #endif
   auto width = static_cast<Sint32>(g_config.windowWidth);
   auto height = static_cast<Sint32>(g_config.windowHeight);
@@ -447,11 +450,6 @@ bool create_window(AuroraBackend backend) {
   if (height < 480) {
     height = 480;
   }
-#ifdef AURORA_GXM
-  flags = SDL_WINDOW_FULLSCREEN;
-  width = 960;
-  height = 544;
-#endif
 
   const Sint32 posX = g_config.hasWindowPosition ? g_config.windowPosX : SDL_WINDOWPOS_CENTERED;
   const Sint32 posY = g_config.hasWindowPosition ? g_config.windowPosY : SDL_WINDOWPOS_CENTERED;

@@ -127,7 +127,8 @@ constexpr uint32_t kShellTable = 0x80797020; // shell_set_func_ptr: the shell fu
 
 // The countdown at +0x20 by the step's ticks; true once it is below 1.
 bool CountDown(const Em::Enemy& em) {
-    em.Count(em.Count() - int32_t(GameStep::Ticks()));
+    const int32_t ticks = int32_t(GameStep::Ticks());
+    em.Count(em.Count() - ticks);
     return em.Count() < 1;
 }
 
@@ -429,9 +430,10 @@ void Em003MovePort(CpuContext* ctx) {
         }
 
         break;
-    case 1:
+    case 1: {
         // The count down by the step's ticks, to 0 (the original's 1 a call).
-        em.Count(std::max(em.Count() - int32_t(GameStep::Ticks()), 0));
+        const int32_t ticks = int32_t(GameStep::Ticks());
+        em.Count(std::max(em.Count() - ticks, 0));
 
         if (game.Call<TurnStep>({work, 0, kind == 0 ? 0x80u : 0x40u}) == 1 && em.Count() <= 0) {
             em.NextState();
@@ -449,6 +451,7 @@ void Em003MovePort(CpuContext* ctx) {
         }
 
         break;
+    }
     case 2:
         if (kind == 2 && Memory::Read8(work + 6) == 0 && em.At(120.0f, 1)) {
             Memory::Write8(work + 6, 1);

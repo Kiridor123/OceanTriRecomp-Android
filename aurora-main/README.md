@@ -4,7 +4,7 @@
 <br/>
 
 This is MH3's maintained Aurora copy. It provides SDL3 application services,
-OpenGL ES 3.0 on Linux and native GXM on Vita. The game thread records frame
+OpenGL ES 3.0 on Linux and native GXM on Native. The game thread records frame
 packets through typed native geometry/material/texture APIs and a render
 thread owns the graphics context. GX API and FIFO compatibility entry points
 deliberately panic. Dawn/WebGPU, Vulkan,

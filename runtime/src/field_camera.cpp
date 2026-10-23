@@ -26,6 +26,8 @@
 #include "game_step.h"
 #include "guest_call.h"
 #include "port_check.h"
+#include "mh3_graphics_settings.h"
+extern "C" float g_hunterFov = 45.0f;
 #ifdef MH3_DEVELOPMENT
 #include "cheats.h"
 #include "controller_host.h"
@@ -202,6 +204,11 @@ void ReportMonsters() {
 #endif
 } // namespace
 
+static bool IsInQuestField() {
+    // 0x8065AA84: System GameMode (0 = Menu, 1 = Field/Quest, 2 = Village)
+    return Memory::Read8(0x8065AA84) == 1;
+}
+
 static void FieldCameraUpdatePort(CpuContext* ctx) {
     GuestFrame frame(ctx, 0x100);
     GuestCall game{ctx};
@@ -212,7 +219,7 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
         return game.Call<ActionCheck>({plw, kind, action});
     };
 
-    if (Memory::Read8(plw) == 0 || (game.Call<GetOnlineMode>() & 0xFF) == 2)
+    if (!plw || Memory::Read8(plw) == 0 || (game.Call<GetOnlineMode>() & 0xFF) == 2)
         return;
 
     game.Call<CameraFollowMode>({cam, plw});
@@ -301,9 +308,9 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
     Memory::Write8(cam + kLookUp, 0);
     const bool manual = Memory::Read8(cam + kManualPitch) != 0 || Memory::Read8(cam + kPitchHold) != 0;
 
-    if ((game.Call<OptionConfig>({Memory::Read8(plw + kPlwPlayer), 10}) & 0xFF) == 1 && Memory::Read8(cam + kPitchSnap) == 1) {
+    if (Memory::Read8(plw + kPlwState) == 3 && (game.Call<OptionConfig>({Memory::Read8(plw + kPlwPlayer), 10}) & 0xFF) == 1 && Memory::Read8(cam + kPitchSnap) == 1) {
         pitchShift = 3;
-    } else if (game.Call<LookingUp>({plw}) != 0) {
+    } else if (Memory::Read8(plw + kPlwState) == 3 && game.Call<LookingUp>({plw}) != 0) {
         if (!manual) {
             Memory::Write8(cam + kLookUp, 1);
             const uint32_t step = uint32_t(GameStep::Share(Memory::Read8(cam + kFast) == 0 ? 48 : 144));
@@ -328,7 +335,7 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
 
         W32(cam + kTiltTarget, 0);
     } else {
-        if (!manual) {
+        if (!manual && Memory::Read8(plw + kPlwState) == 3) {
             const uint32_t step = uint32_t(GameStep::Share(Memory::Read8(cam + kFast) == 0 ? 10 : 30));
             const uint32_t pitch = R32(cam + kPitchTarget);
             const int16_t angle = int16_t(pitch);
@@ -456,12 +463,13 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
             easeTarget = easeEye;
         }
 
-        game.Call<RotX>({offset, R32(cam + kPitch) + R32(cam + kTilt)});
     } else if (settleDown(0)) {
         easeEye = F(kEaseSit);
         easeTarget = easeEye;
     }
 
+    // Apply the pitch to the camera orbit on land as well as underwater.
+    game.Call<RotX>({offset, R32(cam + kPitch) + R32(cam + kTilt)});
     game.Call<RotY>({offset, R32(cam + kYaw)});
     game.Call<VecAdd>({frame[32], offset, player});
     game.Call<VecCopy>({cam + kEyeWanted, frame[32]});
@@ -557,12 +565,14 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
                     Memory::WriteFloat32(eye + 4 * k, F(target + 4 * k) + away[k] / length * distance + (k == 1 ? distance / 3.0f : 0.0f));
             }
 
-            game.Call<CameraSet>({0, eye, target}, {F(cam + kFovA), F(cam + kFovB)});
+            const float fovScale = IsInQuestField() ? std::clamp(g_hunterFov / 45.0f, 0.5f, 2.5f) : 1.0f;
+            game.Call<CameraSet>({0, eye, target}, {F(cam + kFovA) * fovScale, F(cam + kFovB) * fovScale});
             return;
         }
     }
 #endif
-    game.Call<CameraSet>({0, cam + kEye, cam + kTarget}, {F(cam + kFovA), F(cam + kFovB)});
+    const float fovScale = IsInQuestField() ? std::clamp(g_hunterFov / 45.0f, 0.5f, 2.5f) : 1.0f;
+    game.Call<CameraSet>({0, cam + kEye, cam + kTarget}, {F(cam + kFovA) * fovScale, F(cam + kFovB) * fovScale});
 }
 
 // 0x802B8ED0 BindCamera (camera, PLW), each step after the field camera

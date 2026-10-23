@@ -18,16 +18,6 @@ std::unordered_map<const void*, GeneratedTexture> generatedTextures;
 uint32_t generatedVersion = 0;
 gl::ProgramPtr materialProgram;
 gfx::TextureHandle source_texture(const MaterialSource& source) {
-#ifdef AURORA_GXM
-  if (source.nativeAsset) {
-    const auto info = gl::native_texture_info(source.nativeAsset);
-
-    if (info.width != 128 || info.height != 128)
-      AURORA_THROW(std::runtime_error("Native material source dimensions differ"));
-
-    return std::make_shared<gfx::TextureRef>(gl::native_texture_asset(source.nativeAsset), gfx::Extent{128, 128, 1}, info.format, info.mips, GX_TF_RGBA8_PC);
-  }
-#endif
   return gfx::new_static_texture_2d(128, 128, 1, source.format, source.bytes, false, "Material source");
 }
 } // namespace

@@ -1,0 +1,381 @@
+#include <cstdint>
+#include "ppc_runtime.h"
+#include "abi_bridge.h"
+#include "memory.h"
+#include "recomp_mod_loader.h"
+
+extern "C" void func_80104918(CpuContext* ctx);
+extern "C" uint64_t func_80104918_ra38_2_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double);
+extern "C" void func_801066F8(CpuContext* ctx);
+extern "C" uint64_t func_801066F8_ra38_2_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double);
+extern "C" void func_8010D314(CpuContext* ctx);
+extern "C" uint64_t func_8010D314_ra38_2_18_0(CpuContext*, uint32_t, uint32_t, uint32_t, double);
+extern "C" void func_8013599C(CpuContext* ctx);
+extern "C" uint64_t func_8013599C_ra38_0_18_0(CpuContext*, uint32_t, uint32_t, uint32_t);
+extern "C" void func_801359B4(CpuContext* ctx);
+extern "C" uint64_t func_801359B4_ra8_0_18_0(CpuContext*, uint32_t);
+
+extern "C" uint64_t func_8015134C_ra38_2_18_0(CpuContext* MKW_RESTRICT ctx, uint32_t arg_r3, uint32_t arg_r4, uint32_t arg_r5, double arg_f1)
+{
+    uint32_t addr_psqx_80151440_loc_0 = 0;
+    uint32_t cr0_0 = 0;
+    uint32_t r1_psq_tmp_0 = 0;
+    uint8_t* guest_range_0 = nullptr;
+
+    uint32_t r0 = ctx->gpr[0];
+    uint32_t r1 = ctx->gpr[1];
+    uint32_t r3 = arg_r3;
+    uint32_t r4 = arg_r4;
+    uint32_t r5 = arg_r5;
+    uint32_t r6 = ctx->gpr[6];
+    uint32_t r7 = ctx->gpr[7];
+    uint32_t r11 = ctx->gpr[11];
+    uint32_t r27 = ctx->gpr[27];
+    uint32_t r28 = ctx->gpr[28];
+    uint32_t r29 = ctx->gpr[29];
+    uint32_t r30 = ctx->gpr[30];
+    uint32_t r31 = ctx->gpr[31];
+    PPC_FPR f0 = ctx->fpr[0];
+    PPC_FPR f1; f1.d = arg_f1;
+    PPC_FPR f31 = ctx->fpr[31];
+
+    [[maybe_unused]] uint32_t mkw_gqr0 = ctx->gqr[0];
+
+    goto loc_8015134C;
+
+loc_8015134C:
+{
+    guest_range_0 = MemoryInline::ResolveRangeHost((r1 + -112), 0, 120u, false, true);
+    MemoryInline::WriteResolved32(guest_range_0, 0u, (r1 + -112), r1);
+    r1 = (r1 + -112);
+    r0 = ctx->lr;
+    MemoryInline::WriteResolved32(guest_range_0, 116u, (r1 + 116), r0);
+    MemoryInline::WriteResolvedFloat64(guest_range_0, 96u, (r1 + 96), f31.d);
+    // psq_store w=0 quant=0 (using PPC_PsqSt)
+    r1_psq_tmp_0 = (r1 + 104);
+    PPC_PsqStStackInline<0u, 0u>(ctx, r1_psq_tmp_0, PPC_PsFromScalarInline(f31.d));
+    r11 = (r1 + 96);
+    // inline leaf 0x80457488 (6 guest instruction(s))
+    // end of inlined leaf 0x80457488
+    r27 = r3;
+    r28 = r4;
+    r29 = r5;
+    r30 = r6;
+    r31 = r7;
+    f31.d = f1.d;
+    r3 = (r1 + 24);
+    // inline leaf 0x80050570 (1 guest instruction(s))
+    // end of inlined leaf 0x80050570
+    r3 = (r1 + 8);
+    // inline leaf 0x80043F0C (1 guest instruction(s))
+    // end of inlined leaf 0x80043F0C
+    r0 = (r28 & 255);
+}
+
+loc_80151398:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(0))) {
+        goto loc_801513B0;
+    }
+}
+
+loc_8015139C:
+{
+}
+
+loc_801513A0:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(1))) {
+        goto loc_801513CC;
+    }
+}
+
+loc_801513A4:
+{
+}
+
+loc_801513A8:
+{
+    if ((static_cast<int32_t>(r0) == static_cast<int32_t>(2))) {
+        goto loc_80151410;
+    }
+}
+
+loc_801513AC:
+{
+    goto loc_8015143C;
+}
+
+loc_801513B0:
+{
+    r3 = r27;
+    r4 = r30;
+    r5 = (r29 & 255);
+    r6 = r31;
+    f1.d = f31.d;
+    ctx->lr = 0x801513C8u;
+    if constexpr (KnownRegArgsCpuCall<0x80104918u>(&func_80104918)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[11] = r11;
+        ctx->fpr[0] = f0;
+        ctx->fpr[31] = f31;
+        const auto regargs_result_80104918_DE3 = func_80104918_ra38_2_18_0(ctx, r3, r4, r5, f1.d);
+        r3 = static_cast<uint32_t>(regargs_result_80104918_DE3);
+        r4 = static_cast<uint32_t>(regargs_result_80104918_DE3 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r11 = ctx->gpr[11];
+        f0 = ctx->fpr[0];
+        f1 = ctx->fpr[1];
+        f31 = ctx->fpr[31];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[11] = r11;
+        ctx->fpr[0] = f0;
+        ctx->fpr[1] = f1;
+        ctx->fpr[31] = f31;
+        InvokeDirectCpu<0x80104918u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r11 = ctx->gpr[11];
+        f0 = ctx->fpr[0];
+        f1 = ctx->fpr[1];
+        f31 = ctx->fpr[31];
+    }
+    goto loc_8015143C;
+}
+
+loc_801513CC:
+{
+    r3 = r27;
+    r4 = r30;
+    r5 = (r1 + 8);
+    ctx->lr = 0x801513DCu;
+    if constexpr (KnownRegArgsCpuCall<0x8013599Cu>(&func_8013599C)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->fpr[0] = f0;
+        const auto regargs_result_8013599C_1378 = func_8013599C_ra38_0_18_0(ctx, r3, r4, r5);
+        r3 = static_cast<uint32_t>(regargs_result_8013599C_1378);
+        r4 = static_cast<uint32_t>(regargs_result_8013599C_1378 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        f0 = ctx->fpr[0];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->fpr[0] = f0;
+        InvokeDirectCpu<0x8013599Cu>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        f0 = ctx->fpr[0];
+    }
+    mkw_gqr0 = ctx->gqr[0];
+    f0.d = MemoryInline::FlatReadFloat32((r27 + 524));
+    MemoryInline::FlatWriteRamFloat32((r1 + 12), f0.d);
+    r3 = r27;
+    ctx->lr = 0x801513ECu;
+    if constexpr (KnownRegArgsCpuCall<0x801359B4u>(&func_801359B4)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[5] = r5;
+        ctx->fpr[0] = f0;
+        ctx->fpr[1] = f1;
+        const auto regargs_result_801359B4_1862 = func_801359B4_ra8_0_18_0(ctx, r3);
+        r3 = static_cast<uint32_t>(regargs_result_801359B4_1862);
+        r4 = static_cast<uint32_t>(regargs_result_801359B4_1862 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        f0 = ctx->fpr[0];
+        f1 = ctx->fpr[1];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->fpr[0] = f0;
+        ctx->fpr[1] = f1;
+        InvokeDirectCpu<0x801359B4u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        f0 = ctx->fpr[0];
+        f1 = ctx->fpr[1];
+    }
+    f31.d = PpcFmulsInline(f31.d, f1.d);
+    r3 = (r1 + 8);
+    r4 = MemoryInline::FlatRead8((r27 + 481));
+    r5 = (r29 & 255);
+    r0 = MemoryInline::FlatRead32((r27 + 448));
+    r6 = (r0 + r31);
+    f1.d = f31.d;
+    ctx->lr = 0x8015140Cu;
+    if constexpr (KnownRegArgsCpuCall<0x8010D314u>(&func_8010D314)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[11] = r11;
+        ctx->fpr[0] = f0;
+        ctx->fpr[31] = f31;
+        const auto regargs_result_8010D314_1D6E = func_8010D314_ra38_2_18_0(ctx, r3, r4, r5, f1.d);
+        r3 = static_cast<uint32_t>(regargs_result_8010D314_1D6E);
+        r4 = static_cast<uint32_t>(regargs_result_8010D314_1D6E >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r11 = ctx->gpr[11];
+        f0 = ctx->fpr[0];
+        f31 = ctx->fpr[31];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[11] = r11;
+        ctx->fpr[0] = f0;
+        ctx->fpr[1] = f1;
+        ctx->fpr[31] = f31;
+        InvokeDirectCpu<0x8010D314u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r11 = ctx->gpr[11];
+        f0 = ctx->fpr[0];
+        f31 = ctx->fpr[31];
+    }
+    goto loc_8015143C;
+}
+
+loc_80151410:
+{
+    f0.d = MemoryInline::FlatReadFloat32((r27 + 392));
+    MemoryInline::FlatWriteRamFloat32((r1 + 8), f0.d);
+    f0.d = MemoryInline::FlatReadFloat32((r27 + 524));
+    MemoryInline::FlatWriteRamFloat32((r1 + 12), f0.d);
+    f0.d = MemoryInline::FlatReadFloat32((r27 + 400));
+    MemoryInline::FlatWriteRamFloat32((r1 + 16), f0.d);
+    r3 = r27;
+    r4 = (r1 + 8);
+    r5 = (r29 & 255);
+    f1.d = f31.d;
+    ctx->lr = 0x8015143Cu;
+    if constexpr (KnownRegArgsCpuCall<0x801066F8u>(&func_801066F8)) {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[6] = r6;
+        ctx->gpr[11] = r11;
+        ctx->fpr[0] = f0;
+        ctx->fpr[31] = f31;
+        const auto regargs_result_801066F8_2477 = func_801066F8_ra38_2_18_0(ctx, r3, r4, r5, f1.d);
+        r3 = static_cast<uint32_t>(regargs_result_801066F8_2477);
+        r4 = static_cast<uint32_t>(regargs_result_801066F8_2477 >> 32);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r11 = ctx->gpr[11];
+        f0 = ctx->fpr[0];
+        f1 = ctx->fpr[1];
+        f31 = ctx->fpr[31];
+    } else {
+        ctx->gpr[0] = r0;
+        ctx->gpr[1] = r1;
+        ctx->gpr[3] = r3;
+        ctx->gpr[4] = r4;
+        ctx->gpr[5] = r5;
+        ctx->gpr[6] = r6;
+        ctx->gpr[11] = r11;
+        ctx->fpr[0] = f0;
+        ctx->fpr[1] = f1;
+        ctx->fpr[31] = f31;
+        InvokeDirectCpu<0x801066F8u>(ctx);
+        r0 = ctx->gpr[0];
+        r1 = ctx->gpr[1];
+        r3 = ctx->gpr[3];
+        r4 = ctx->gpr[4];
+        r5 = ctx->gpr[5];
+        r6 = ctx->gpr[6];
+        r7 = ctx->gpr[7];
+        r11 = ctx->gpr[11];
+        f0 = ctx->fpr[0];
+        f1 = ctx->fpr[1];
+        f31 = ctx->fpr[31];
+    }
+}
+
+loc_8015143C:
+{
+    r0 = 104;
+    addr_psqx_80151440_loc_0 = (r1 + r0);
+    PpcSetPairedFprInline(f31, PPC_PsqLGqrInline<0u, 0u>(ctx, mkw_gqr0, addr_psqx_80151440_loc_0));
+    f31.d = MemoryInline::FlatReadFloat64((r1 + 96));
+    r11 = (r1 + 96);
+    // inline leaf 0x804574D4 (6 guest instruction(s))
+    // end of inlined leaf 0x804574D4
+    r0 = MemoryInline::FlatRead32((r1 + 116));
+    ctx->lr = r0;
+    r1 = (r1 + 112);
+    ctx->gpr[0] = r0;
+    ctx->gpr[1] = r1;
+    ctx->gpr[5] = r5;
+    ctx->gpr[6] = r6;
+    ctx->gpr[11] = r11;
+    ctx->fpr[0] = f0;
+    ctx->fpr[1] = f1;
+    ctx->fpr[31] = f31;
+    return (static_cast<uint64_t>(r4) << 32) | r3;
+}
+
+}
+
+extern "C" void func_8015134C(CpuContext* MKW_RESTRICT ctx)
+{
+    uint64_t result;
+    [[clang::noinline]] result = func_8015134C_ra38_2_18_0(ctx, ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], ctx->fpr[1].d);
+    ctx->gpr[3] = static_cast<uint32_t>(result);
+    ctx->gpr[4] = static_cast<uint32_t>(result >> 32);
+}
+
+// RECOMP_GUEST_ABI gpr_read=0x000007FF gpr_write=0x00000FFB gpr_return=0x00000018 fpr_read=0x80000003 fpr_write=0x80000003 fpr_return=0x00000002 cr_read=0xFF cr_write=0xFF xer_read=1 xer_write=0 fence=0
+// RECOMP_REGISTRATION base 0x8015134C func_8015134C preserves=true fpr_mask=0x00000000

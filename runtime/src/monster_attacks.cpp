@@ -47,6 +47,10 @@
 
 namespace {
 
+inline uint32_t AttackTicks() {
+    return GameStep::Ticks();
+}
+
 enum : uint32_t {
     kAngles = 0x1BC,      // s32[3]
     kArea = 0x1E1,        // u8: the area the monster is in
@@ -472,7 +476,7 @@ void Em001DivePort(CpuContext* ctx) {
     GuestCall game{ctx};
     const Em::Enemy em{game, frame.Arg(3)};
     const uint32_t work = em.work, diff = frame[0x08], step = frame[0x14];
-    const auto countDown = [&] { em.Count(em.Count() - int32_t(GameStep::Ticks())); };
+    const auto countDown = [&] { em.Count(em.Count() - int32_t(AttackTicks())); };
 
     switch (em.State()) {
     case 0:
@@ -573,7 +577,7 @@ void Em001FlyChargePort(CpuContext* ctx) {
     const Em::Enemy em{game, frame.Arg(3)};
     const uint32_t work = em.work, landing = uint8_t(frame.Arg(4)), climb = uint8_t(frame.Arg(5));
     const uint32_t angles = work + kAngles, pitch = frame[0x0C], roll = frame[0x08], toTarget = frame[0x10], vector = frame[0x1C];
-    const int32_t ticks = int32_t(GameStep::Ticks());
+    const int32_t ticks = int32_t(AttackTicks());
     const auto hover = [&](float value) { game.Call<0x80130450>({work}, {double(value)}); };
     const auto fly = [&] {
         game.Call<0x801302AC>({work});
@@ -750,7 +754,7 @@ void Em009RollPort(CpuContext* ctx) {
     const uint8_t roll = uint8_t(frame.Arg(4)), ending = uint8_t(frame.Arg(5));
     const uint32_t route = uint32_t(roll) - 10; // rolls 10-22: 0-12
     const float s = float(GameStep::Scale());
-    const int32_t ticks = int32_t(GameStep::Ticks());
+    const int32_t ticks = int32_t(AttackTicks());
     constexpr uint32_t kRouteTable = 0x805F04A4, kRate = 0x80, kAcc = 0x328, kYaw = kAngles + 4;
     float limit = 95.0f;
     bool done = false;
@@ -1076,7 +1080,7 @@ void Em015StormPort(CpuContext* ctx) {
     const Em::Enemy em{game, frame.Arg(3)};
     const uint32_t work = em.work, at = frame[0x08], joint = frame[0x18];
     const uint8_t how = uint8_t(frame.Arg(4));
-    const uint32_t ticks = GameStep::Ticks();
+    const uint32_t ticks = AttackTicks();
 
     const auto glow = [&](uint32_t kind, double scale) { game.Call<0x8010A930>({work, kind}, {scale}); };
 
@@ -1461,7 +1465,7 @@ void Em040RockPort(CpuContext* ctx) {
         for (uint32_t i = 0; i < 3; ++i)
             Memory::WriteFloat32(work + kVelocity + 4 * i, f(kVelocity + 4 * i) + f(kGravity + 4 * i) * s);
 
-        em.Count(em.Count() - int32_t(GameStep::Ticks()));
+        em.Count(em.Count() - int32_t(AttackTicks()));
         return em.Count() < 0;
     };
 
@@ -1747,7 +1751,7 @@ void Em018SpinPort(CpuContext* ctx) {
     const Em::Enemy em{game, frame.Arg(3)};
     const uint32_t work = em.work, burstAt = frame[0x18], hit = frame[0x08], capsule = frame[0x30];
     const bool secondVoice = uint8_t(frame.Arg(4)) == 1, back = uint8_t(frame.Arg(5)) == 1;
-    const int32_t ticks = int32_t(GameStep::Ticks());
+    const int32_t ticks = int32_t(AttackTicks());
     constexpr uint32_t kYaw = kAngles + 4, kSub = 6, kHold = 7, kSpinSound = 0x310;
 
     const auto turn = [&](int32_t delta) { Memory::Write32(work + kYaw, (Memory::Read32(work + kYaw) + uint32_t(delta)) & 0xFFFF); };

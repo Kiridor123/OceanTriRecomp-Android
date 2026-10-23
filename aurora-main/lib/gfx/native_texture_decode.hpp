@@ -1,5 +1,5 @@
 #pragma once
-// Host diagnostics only. Vita reads the prepared image/palette allocation
+// Host diagnostics only. Native reads the prepared image/palette allocation
 // directly; it never links this CPU expansion or a compression encoder.
 #include <aurora/fatal.hpp>
 #include "native_texture_pack.hpp"

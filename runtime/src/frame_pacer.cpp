@@ -22,27 +22,50 @@
 #endif
 #include "field_jump.h"
 #include "game_step.h"
+#include "mh3_frame_rate_control.h"
 #include "guest_threads.h"
 #include "memory.h"
 #include "timebase_contract.h"
 #include "video_interface.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <thread>
 #include <utility>
 #include <initializer_list>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #ifdef MH3_HAS_AURORA
 #include "native_frame_packet.h"
 #include <optional>
 
 void ReportHostSpeed(double ticks, double nominalHz);
+bool NativeVsyncEnabled() noexcept;
+uint64_t LastNativeFramePacingWaitNs() noexcept;
 #endif
 
 void PumpDevices(CpuContext* cpu); // os_sleep.cpp
 
+namespace MH3FrameRateControl {
+namespace { std::atomic<int> targetFps{60}; std::atomic<uint64_t> logicalFrames{0}; }
+void SetTargetFPS(int fps) noexcept {
+    if (fps == 30 || fps == 45 || fps == 60 || fps == 90 || fps == 120)
+        targetFps.store(fps, std::memory_order_relaxed);
+}
+int TargetFPS() noexcept { return targetFps.load(std::memory_order_relaxed); }
+uint64_t LogicalFrameCount() noexcept { return logicalFrames.load(std::memory_order_relaxed); }
+void CountLogicalFrame() noexcept { logicalFrames.fetch_add(1, std::memory_order_relaxed); }
+} // namespace MH3FrameRateControl
 namespace {
 
 // Small-data globals (offsets from r13; lower-case names are mh3.sel exports).
@@ -67,9 +90,38 @@ using Clock = std::chrono::steady_clock;
 // Deadline of the current frame (fixed step) or start of the current step
 // (variable step), and game time so far in retrace periods (stats, input).
 Clock::time_point frameEnd;
+Clock::time_point lastStepWall;
 bool started = false;
 double pacedTicks = 0;
 uint64_t pacedFrames = 0;
+
+#ifdef _WIN32
+bool EnsureHighResTimer() {
+    using NtSetTimerResolutionFn = LONG(NTAPI*)(ULONG DesiredResolution, BOOLEAN SetResolution, PULONG CurrentResolution);
+    if (HMODULE ntdll = GetModuleHandleW(L"ntdll.dll")) {
+        if (auto fn = reinterpret_cast<NtSetTimerResolutionFn>(GetProcAddress(ntdll, "NtSetTimerResolution"))) {
+            ULONG actual = 0;
+            fn(5000, TRUE, &actual); // 0.5 ms timer resolution
+        }
+    }
+    return true;
+}
+
+int QueryDisplayRefreshHz() {
+    static int cachedHz = 60;
+    static Clock::time_point lastQuery{};
+    const auto now = Clock::now();
+    if (lastQuery == Clock::time_point{} || (now - lastQuery) > std::chrono::seconds(2)) {
+        lastQuery = now;
+        DEVMODEW dm{};
+        dm.dmSize = sizeof(dm);
+        if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm) && dm.dmDisplayFrequency >= 30) {
+            cachedHz = int(dm.dmDisplayFrequency);
+        }
+    }
+    return cachedHz;
+}
+#endif
 
 // Longest variable step; a longer stall (loading, debugger) is not caught up.
 constexpr auto kMaxStep = std::chrono::milliseconds(100);
@@ -159,15 +211,34 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
     Memory::Write32(ctx->gpr[1], saved.gpr[1]);
     Guest os{ctx};
 
-    // OSSleepTicks keeps pumping audio, alarms, IOS and VI callbacks while waiting.
-    auto sleepUntil = [&](Clock::time_point t) {
-        const auto now = Clock::now();
+#ifdef _WIN32
+    static const bool highResTimer = EnsureHighResTimer();
+    (void)highResTimer;
+#endif
 
-        if (now >= t)
+    // OSSleepTicks keeps pumping audio, alarms, IOS and VI callbacks while waiting.
+    // Sleep via OS scheduler only until 2.0 ms before the deadline, then spin-yield
+    // for microsecond precision without Windows condvar oversleep.
+    auto sleepUntil = [&](Clock::time_point t) {
+        auto cur = Clock::now();
+        if (cur >= t)
             return;
 
-        const uint64_t ticks = TimeBaseContract::NanosecondsToTicks(uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(t - now).count()));
-        os(OSSleepTicks, {uint32_t(ticks >> 32), uint32_t(ticks)});
+        constexpr auto kSpinMargin = std::chrono::microseconds(2000);
+        if (t - cur > kSpinMargin) {
+            const auto osTarget = t - kSpinMargin;
+            const uint64_t ticks = TimeBaseContract::NanosecondsToTicks(
+                uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(osTarget - cur).count()));
+            os(OSSleepTicks, {uint32_t(ticks >> 32), uint32_t(ticks)});
+        }
+
+        const CpuContext savedSpin = *ctx;
+        PumpDevices(ctx);
+        *ctx = savedSpin;
+
+        while (Clock::now() < t) {
+            std::this_thread::yield();
+        }
     };
 
     const auto period = std::chrono::nanoseconds(VideoRetracePeriodNs());
@@ -176,7 +247,7 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
     // no fixed rate; frames through the frame limit by the display's
     // (DisplayStep).
     bool variableStep = true;
-#ifdef MH3_DEVELOPMENT
+#if 1 // habilitado tambien en release (Windows)
     // MH3_VARIABLE_STEP=0: the game's own fixed steps (its retrace budget).
     static const bool variable = [] {
         const char* v = std::getenv("MH3_VARIABLE_STEP");
@@ -186,32 +257,93 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
 #endif
     // 0x8003F588, an inlined getter. SetSystemVcnt clamps it to >= 1.
     const int32_t budget = std::max<int32_t>(1, int32_t(Memory::Read32(at(kRetracesPerFrame))));
-    const auto now = Clock::now();
+    auto now = Clock::now();
 
-    if (!started)
+    if (!started) {
         frameEnd = now - budget * period;
+        lastStepWall = frameEnd;
+    }
 
     started = true;
     GameStep::SetVariable(variableStep);
     double stepTicks; // game time of the step that just ran, in retraces
     if (variableStep) {
-        const auto step = std::min<Clock::duration>(now - frameEnd, kMaxStep);
-        frameEnd = now;
-        stepTicks = std::chrono::duration<double>(step) / period;
+        const int targetFps = MH3FrameRateControl::TargetFPS();
+        const auto targetPeriod = std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / double(targetFps)));
+
+        int displayHz = 60;
+#ifdef _WIN32
+        displayHz = QueryDisplayRefreshHz();
+#endif
+        bool vsyncHardwarePaced = false;
+#ifdef MH3_HAS_AURORA
+        static int vblankActiveFrames = 0;
+        if (NativeVsyncEnabled() && displayHz >= 50 && displayHz <= targetFps + 2) {
+            if (LastNativeFramePacingWaitNs() > 250'000 || (now - lastStepWall) >= (targetPeriod * 85) / 100) {
+                vblankActiveFrames = 8;
+            } else if (vblankActiveFrames > 0) {
+                --vblankActiveFrames;
+            }
+            vsyncHardwarePaced = (vblankActiveFrames > 0);
+        } else {
+            vblankActiveFrames = 0;
+        }
+#endif
+        // When hardware V-Sync is already pacing the render thread at <= targetFps
+        // (e.g. 60 FPS cap on a 59.94/60 Hz monitor with V-Sync ON), use an 80%
+        // software floor (just like 90 FPS cap on a 60 Hz display) so the software
+        // pacer never collides with the hardware V-Blank and never drops to 50-54 FPS.
+        const auto effectiveDeadline = vsyncHardwarePaced
+            ? (lastStepWall + (targetPeriod * 80) / 100)
+            : (frameEnd + targetPeriod);
+
+        // Deliver device work (audio, alarms, IOS, VI) and donate to runnable guest threads
+        // INSIDE the frame's wait budget before effectiveDeadline so it never adds extra sleep past the deadline.
+        {
+            const CpuContext frame = *ctx;
+            PumpDevices(ctx);
+            const auto nowBeforeDonate = Clock::now();
+            if (effectiveDeadline > nowBeforeDonate + std::chrono::microseconds(600)) {
+                const auto remaining = std::min<Clock::duration>(
+                    effectiveDeadline - nowBeforeDonate - std::chrono::microseconds(600), kDonation);
+                GuestThreads::Donate(ctx, remaining);
+            }
+            *ctx = frame;
+        }
+
+        now = Clock::now();
+        if (now < effectiveDeadline) {
+            sleepUntil(effectiveDeadline);
+            now = Clock::now();
+        }
+
+        const auto rawStep = std::min<Clock::duration>(now - lastStepWall, kMaxStep);
+        lastStepWall = now;
+
+        // Advance frameEnd phase-locked to effectiveDeadline when on time so sub-ms jitter never accumulates.
+        if (!vsyncHardwarePaced && now >= effectiveDeadline && (now - effectiveDeadline) < targetPeriod) {
+            frameEnd = effectiveDeadline;
+        } else {
+            frameEnd = now;
+        }
+
+        const double rawSeconds = std::chrono::duration<double>(rawStep).count();
+        stepTicks = rawSeconds * 60.0;
+        const double idealSeconds = 1.0 / double(targetFps);
+        const int normDisplayHz = (displayHz >= 58 && displayHz <= 62) ? 60 : displayHz;
+        const double displaySeconds = 1.0 / double(std::max(30, normDisplayHz));
+
+        if (std::fabs(rawSeconds - idealSeconds) <= idealSeconds * 0.10) {
+            stepTicks = 60.0 / double(targetFps);
+        } else if (vsyncHardwarePaced && std::fabs(rawSeconds - displaySeconds) <= displaySeconds * 0.10) {
+            stepTicks = 60.0 / double(normDisplayHz);
+        }
 #ifdef MH3_HAS_AURORA
         stepTicks = DisplayStep(stepTicks);
 #endif
 
         // The next step is assumed to take as long as this one.
         GameStep::Begin(std::max(stepTicks, 1e-3) / 2);
-
-        // No wait: only deliver the device work due (audio, alarms, IOS, VI),
-        // and let the other guest threads that can run have a moment, as the
-        // retrace waits did on the Wii (online play).
-        const CpuContext frame = *ctx;
-        PumpDevices(ctx);
-        GuestThreads::Donate(ctx, kDonation);
-        *ctx = frame;
     } else {
         frameEnd += budget * period;
 
@@ -249,6 +381,7 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
 
     pacedTicks += stepTicks;
     ++pacedFrames;
+    MH3FrameRateControl::CountLogicalFrame();
 
     // Input record/playback is indexed by game time in 30 Hz frames (2 retraces),
     // so a recording replays in real time at any logic rate.

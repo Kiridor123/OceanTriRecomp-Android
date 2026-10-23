@@ -53,33 +53,29 @@ float Evaluate(float frame, uint32_t track) {
         return ReadFloat(last + 4);
 
     const float estimate = ReadFloat(track + 4) * ((frame - ReadFloat(first)) * float(count));
-    const uint32_t index = estimate >= 65535.0f ? 65535u : estimate > 0.0f ? uint32_t(estimate) : 0u;
-
-    if (int32_t(index) > int32_t(count) - 1)
-        MH3_THROW(std::runtime_error("NW4R panic (g3d_resanm.cpp:135): estimatePos is out of bounds"));
+    uint32_t index = estimate >= 65535.0f ? 65535u : estimate > 0.0f ? uint32_t(estimate) : 0u;
+    if (index >= count)
+        index = count - 1;
 
     uint32_t key = first + index * 12;
 
     if (frame < ReadFloat(key)) {
-        do
+        while (key > first && frame < ReadFloat(key))
             key -= 12;
-        while (frame < ReadFloat(key));
     } else {
-        do
+        while (key + 12 <= last && ReadFloat(key + 12) <= frame)
             key += 12;
-        while (ReadFloat(key) <= frame);
-        key -= 12;
     }
 
     const float f0 = ReadFloat(key);
 
-    if (f0 == frame)
+    if (f0 == frame || frame <= f0)
         return ReadFloat(key + 4);
 
-    const float f1 = ReadFloat(key + 12);
+    const float f1 = (key + 12 <= last) ? ReadFloat(key + 12) : f0;
 
-    if (!(f0 <= frame && frame <= f1))
-        MH3_THROW(std::runtime_error("NW4R panic (g3d_resanm.cpp:176): frame is out of bounds"));
+    if (frame >= f1)
+        return (key + 16 <= last + 4) ? ReadFloat(key + 16) : ReadFloat(key + 4);
 
     // At a variable step, keys a frame or less apart (flipbooks: a texture
     // row or a colour per frame) hold the earlier key's value between them.

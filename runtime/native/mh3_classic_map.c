@@ -2,8 +2,8 @@
 
 #include <math.h>
 
-/* Vita sticks rest within about 10 of 128 and reach 0/255 along the axes. */
-const mh3_stick_curve mh3_vita_stick_curve = {0.30f, 0.90f, 0.80f};
+/* Native sticks rest within about 10 of 128 and reach 0/255 along the axes. */
+const mh3_stick_curve mh3_compact_stick_curve = {0.30f, 0.90f, 0.80f};
 /* SDL gamepads (Xbox, DualShock/DualSense, Switch Pro): larger sticks, more
  * centre drift on worn ones. */
 const mh3_stick_curve mh3_gamepad_stick_curve = {0.15f, 0.95f, 0.80f};
@@ -120,25 +120,25 @@ int mh3_classic_game_length(int16_t x, int16_t y) {
     return sticks.length[0];
 }
 
-static float vita_axis(uint8_t value) {
+static float pad_axis(uint8_t value) {
     return clampf(((float)value - 128.0f) / 127.0f, -1.0f, 1.0f);
 }
 
-void mh3_vita_pad_to_classic(const mh3_vita_pad *pad, mh3_classic_state *out) {
+void mh3_host_pad_to_classic(const mh3_host_pad *pad, mh3_classic_state *out) {
     static const struct {
-        uint32_t vita;
+        uint32_t pad_btn;
         uint16_t classic;
     } buttons[] = {
-        {MH3_VITA_CIRCLE, MH3_CL_A},  {MH3_VITA_CROSS, MH3_CL_B},     {MH3_VITA_TRIANGLE, MH3_CL_X}, {MH3_VITA_SQUARE, MH3_CL_Y},
-        {MH3_VITA_UP, MH3_CL_UP},     {MH3_VITA_DOWN, MH3_CL_DOWN},   {MH3_VITA_LEFT, MH3_CL_LEFT},  {MH3_VITA_RIGHT, MH3_CL_RIGHT},
-        {MH3_VITA_L1, MH3_CL_L},      {MH3_VITA_R1, MH3_CL_R},        {MH3_VITA_L2, MH3_CL_ZL},      {MH3_VITA_R2, MH3_CL_ZR},
-        {MH3_VITA_START, MH3_CL_PLUS}, {MH3_VITA_SELECT, MH3_CL_MINUS},
+        {MH3_PAD_CIRCLE, MH3_CL_A},  {MH3_PAD_CROSS, MH3_CL_B},     {MH3_PAD_TRIANGLE, MH3_CL_X}, {MH3_PAD_SQUARE, MH3_CL_Y},
+        {MH3_PAD_UP, MH3_CL_UP},     {MH3_PAD_DOWN, MH3_CL_DOWN},   {MH3_PAD_LEFT, MH3_CL_LEFT},  {MH3_PAD_RIGHT, MH3_CL_RIGHT},
+        {MH3_PAD_L1, MH3_CL_L},      {MH3_PAD_R1, MH3_CL_R},        {MH3_PAD_L2, MH3_CL_ZL},      {MH3_PAD_R2, MH3_CL_ZR},
+        {MH3_PAD_START, MH3_CL_PLUS}, {MH3_PAD_SELECT, MH3_CL_MINUS},
     };
 
     mh3_classic_state state = {0};
 
     for (unsigned i = 0; i < sizeof buttons / sizeof buttons[0]; ++i)
-        if (pad->buttons & buttons[i].vita)
+        if (pad->buttons & buttons[i].pad_btn)
             state.buttons |= buttons[i].classic;
     if (pad->lt > 128)
         state.buttons |= MH3_CL_ZL;
@@ -146,13 +146,13 @@ void mh3_vita_pad_to_classic(const mh3_vita_pad *pad, mh3_classic_state *out) {
     if (pad->rt > 128)
         state.buttons |= MH3_CL_ZR;
 
-    if ((pad->buttons & (MH3_VITA_L3 | MH3_VITA_R3)) == (MH3_VITA_L3 | MH3_VITA_R3))
+    if ((pad->buttons & (MH3_PAD_L3 | MH3_PAD_R3)) == (MH3_PAD_L3 | MH3_PAD_R3))
         state.buttons |= MH3_CL_HOME;
 
     /* The handheld's L/R are digital: a fully pressed analog trigger. */
     state.trigger_l = (state.buttons & MH3_CL_L) ? 255 : 0;
     state.trigger_r = (state.buttons & MH3_CL_R) ? 255 : 0;
-    mh3_classic_stick(vita_axis(pad->lx), -vita_axis(pad->ly), &mh3_vita_stick_curve, &state.lx, &state.ly);
-    mh3_classic_stick(vita_axis(pad->rx), -vita_axis(pad->ry), &mh3_vita_stick_curve, &state.rx, &state.ry);
+    mh3_classic_stick(pad_axis(pad->lx), -pad_axis(pad->ly), &mh3_compact_stick_curve, &state.lx, &state.ly);
+    mh3_classic_stick(pad_axis(pad->rx), -pad_axis(pad->ry), &mh3_compact_stick_curve, &state.rx, &state.ry);
     *out = state;
 }

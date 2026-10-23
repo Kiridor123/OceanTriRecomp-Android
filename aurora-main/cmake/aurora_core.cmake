@@ -36,32 +36,7 @@ if (AURORA_ENABLE_GX)
     target_compile_definitions(aurora_core PUBLIC AURORA_ENABLE_GX)
     target_sources(aurora_core PRIVATE lib/gl/device.cpp lib/gfx/port_capture.cpp lib/gfx/cg_shader.cpp lib/gfx/shader_source.cpp)
 
-    if(AURORA_GXM)
-      target_compile_definitions(aurora_core PUBLIC AURORA_GXM)
-      target_compile_options(aurora_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-gline-tables-only>)
-
-      # The executable links the generated shader bank tables and blob
-      # (cmake/GxmShaderBank.cmake, docs/optimizations/rendering/offline-shader-bank.md).
-      target_sources(aurora_core PRIVATE lib/gxm/renderer.cpp lib/gxm/device.cpp lib/gxm/memory.cpp
-        lib/gxm/draw_memory.cpp lib/gxm/texture.cpp lib/gxm/native_assets.cpp lib/gxm/raster.cpp lib/gxm/shader_bank.cpp)
-      if(NOT TARGET libzstd_static)
-        message(FATAL_ERROR "The GXM shader bank decompresses with zstd; enable AURORA_CACHE_USE_ZSTD")
-      endif()
-
-      target_link_libraries(aurora_core PRIVATE libzstd_static)
-
-      if(MH3_DEVELOPMENT)
-        # The runtime compiler that serves (and reports) bank misses is a
-        # development tool.
-        target_sources(aurora_core PRIVATE lib/gxm/runtime_shader.cpp)
-        set_property(SOURCE lib/gxm/device.cpp lib/gxm/renderer.cpp lib/gxm/runtime_shader.cpp
-          APPEND PROPERTY COMPILE_DEFINITIONS MH3_DEVELOPMENT=1)
-        target_link_libraries(aurora_core PUBLIC vitashark SceShaccCgExt SceShaccCg_stub_weak SceKernelModulemgr_stub taihen_stub)
-      endif()
-
-      target_include_directories(aurora_core PRIVATE lib/gxm)
-      target_link_libraries(aurora_core PUBLIC SceGxm_stub SceDisplay_stub SceCommonDialog_stub)
-    elseif(AURORA_WEBGPU)
+    if(AURORA_WEBGPU)
       # Emscripten's emdawnwebgpu port supplies webgpu/webgpu_cpp.h. The
       # executable links the WGSL shader bank (cmake/WebShaderBank.cmake,
       # docs/optimizations/platforms/web-build.md); GLES3/gl3.h, from Emscripten's sysroot, only
@@ -77,10 +52,34 @@ if (AURORA_ENABLE_GX)
 
       target_link_libraries(aurora_core PRIVATE libzstd_static)
     else()
-      find_path(AURORA_GLES3_INCLUDE_DIR GLES3/gl3.h REQUIRED)
-      find_library(AURORA_GLESV2_LIBRARY NAMES GLESv2 REQUIRED)
+      if(WIN32 AND AURORA_ANGLE_VULKAN)
+        find_path(AURORA_ANGLE_ROOT_DIR
+          NAMES include/EGL/egl.h include/GLES3/gl3.h
+          PATHS "C:/libs/angle" "C:/angle" "C:/libs/angle-win" ${AURORA_ANGLE_ROOT}
+          NO_DEFAULT_PATH
+          REQUIRED
+          MESSAGE_SUPPRESSED_BY_FIND_PACKAGE)
+        find_path(AURORA_GLES3_INCLUDE_DIR GLES3/gl3.h
+          PATHS "${AURORA_ANGLE_ROOT_DIR}/include" NO_DEFAULT_PATH
+          REQUIRED
+          MESSAGE_SUPPRESSED_BY_FIND_PACKAGE)
+        find_library(AURORA_ANGLE_GLESV2_LIBRARY NAMES GLESv2 libGLESv2
+          PATHS "${AURORA_ANGLE_ROOT_DIR}/lib64" "${AURORA_ANGLE_ROOT_DIR}/lib" NO_DEFAULT_PATH
+          REQUIRED
+          MESSAGE_SUPPRESSED_BY_FIND_PACKAGE)
+        set(AURORA_GLESV2_LIBRARY "${AURORA_ANGLE_GLESV2_LIBRARY}" CACHE FILEPATH "ANGLE GLESv2 library" FORCE)
+      else()
+        find_path(AURORA_GLES3_INCLUDE_DIR GLES3/gl3.h REQUIRED)
+        find_library(AURORA_GLESV2_LIBRARY NAMES GLESv2 REQUIRED)
+      endif()
       target_sources(aurora_core PRIVATE lib/gl/gl.cpp)
       target_include_directories(aurora_core PUBLIC ${AURORA_GLES3_INCLUDE_DIR})
       target_link_libraries(aurora_core PUBLIC ${AURORA_GLESV2_LIBRARY})
+      if(WIN32 AND AURORA_ANGLE_VULKAN)
+        set(AURORA_EGL_INCLUDE_DIR "${AURORA_ANGLE_ROOT_DIR}/include" CACHE PATH "ANGLE EGL include directory" FORCE)
+        target_compile_definitions(aurora_core PUBLIC AURORA_ANGLE_VULKAN=1)
+        target_include_directories(aurora_core PUBLIC "${AURORA_EGL_INCLUDE_DIR}")
+        target_sources(aurora_core PRIVATE lib/gl/angle_vulkan_context.cpp)
+      endif()
     endif()
 endif ()

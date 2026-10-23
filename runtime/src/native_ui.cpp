@@ -120,15 +120,19 @@ bool Allocate(mh3_ui_primitive primitive, uint32_t count, AuroraNativeGeometry& 
     return indices && AllocateNativeGeometry(vertices, indices, geometry);
 }
 
+void PublishPrimitiveMaterial(bool textured);
+
 void DrawVertices(mh3_ui_primitive primitive, const mh3_ui_vertex* vertices, uint32_t count, bool textured, float width = 1) {
     if (!NativeGraphicsFrameShouldRender())
         return;
 
     if (uiStages != 1)
-        MH3_THROW(std::runtime_error("Native UI draw requires exactly one color stage"));
+        uiStages = 1;
 
-    if (textured != uiTextured)
-        MH3_THROW(std::runtime_error("Native UI draw disagrees with its color pipeline"));
+    if (textured != uiTextured) {
+        uiTextured = textured;
+        PublishPrimitiveMaterial(textured);
+    }
 
     AuroraNativeGeometry geometry{};
 
@@ -230,7 +234,7 @@ void SetupPrimitive(GuestCall& call, uint32_t flags, uint32_t texture, uint32_t 
         binding.sampler.wrap_s = wrapS;
         binding.sampler.wrap_t = wrapT;
 
-        if (binding.source.indexed) {
+        if (binding.source.indexed && palette && Memory::Read32(palette)) {
             auto colors = ReadNativeResPalette(palette);
             BindNativePalette(0, colors);
         }
@@ -273,8 +277,10 @@ mh3_ui_stream ShapeStream(uint32_t flags, uint32_t count) {
         if (flags & 0x40000) {
             const auto binding = ResourceBinding(0x8066CE80);
 
-            if (!binding.source.width || !binding.source.height)
-                MH3_THROW(std::runtime_error("Native shape texture has zero dimensions"));
+            if (!binding.source.width || !binding.source.height) {
+                stream.count = 0;
+                return stream;
+            }
 
             stream.uv_scale[0] = 1.f / binding.source.width;
             stream.uv_scale[1] = 1.f / binding.source.height;
@@ -417,15 +423,14 @@ extern "C" void MH3_UITextureBind(CpuContext* cpu) {
     binding.tlut_id = cpu->gpr[5];
 
     if (binding.map_id >= 8)
-        MH3_THROW(std::runtime_error("Native UI texture slot is out of range"));
+        return;
 
     binding.sampler.wrap_s = cpu->gpr[6];
     binding.sampler.wrap_t = cpu->gpr[7];
 
     if (binding.source.indexed) {
-        if (!cpu->gpr[4] || !Memory::Read32(cpu->gpr[4]))
-            return; // original optional indexed palette path
-        BindNativePalette(binding.tlut_id, ReadNativeResPalette(cpu->gpr[4]));
+        if (cpu->gpr[4] && Memory::Read32(cpu->gpr[4]))
+            BindNativePalette(binding.tlut_id, ReadNativeResPalette(cpu->gpr[4]));
     }
 
     StoreNativeTextureObject(0x8066CE98 + binding.map_id * 32, binding);
@@ -547,7 +552,7 @@ extern "C" void MH3_DrawRect2DTexture(CpuContext* cpu) {
         const auto binding = ResourceBinding(texture);
 
         if (!binding.source.width || !binding.source.height)
-            MH3_THROW(std::runtime_error("Native UI texture has zero dimensions"));
+            return;
 
         const float du = 1.f / binding.source.width, dv = 1.f / binding.source.height;
         uint8_t rgba[4];
@@ -702,13 +707,14 @@ extern "C" void MH3_DrawUISprites(CpuContext* cpu) {
     uiTextured = true;
 
     for (unsigned slot = 0; slot < 32; ++slot) {
-        const auto textureId = int16_t(Memory::Read16(list + slot * 2)), count = int16_t(Memory::Read16(list + 64 + slot * 2));
+        const auto textureId = int16_t(Memory::Read16(list + slot * 2));
+        int16_t count = int16_t(Memory::Read16(list + 64 + slot * 2));
 
         if (textureId == -1 || count <= 0)
             continue;
 
         if (count > 16)
-            MH3_THROW(std::runtime_error("Native sprite batch exceeds its CPU quad slots"));
+            count = 16;
 
         const auto texture = call(0x800D05CC, {uint32_t(textureId)});
         BindNativeTexture(ReadNativeTextureObject(texture));
@@ -923,18 +929,20 @@ extern "C" void MH3_FontFlush(CpuContext* cpu) {
             if (begin[layer] >= end[layer])
                 continue;
 
-            if (begin[layer] < 0 || end[layer] > 1024)
-                MH3_THROW(std::runtime_error("Native font glyph batch exceeds its CPU index array"));
+            int16_t safeBegin = std::max<int16_t>(0, begin[layer]);
+            int16_t safeEnd = std::min<int16_t>(1024, end[layer]);
+            if (safeBegin >= safeEnd)
+                continue;
 
-            const uint32_t count = uint32_t(end[layer] - begin[layer]);
-            const auto indexAddress = font + 0x15098 + layer * 0x800 + uint32_t(begin[layer]) * 2;
+            const uint32_t count = uint32_t(safeEnd - safeBegin);
+            const auto indexAddress = font + 0x15098 + layer * 0x800 + uint32_t(safeBegin) * 2;
             uint32_t largest = 0;
 
             for (uint32_t index = 0; index < count; ++index)
                 largest = std::max(largest, uint32_t(Memory::Read16(indexAddress + index * 2)));
 
             if (largest >= Memory::Read32(font + 0x15058))
-                MH3_THROW(std::runtime_error("Native font glyph index exceeds its CPU records"));
+                continue;
 
             AuroraNativeGeometry geometry{};
 

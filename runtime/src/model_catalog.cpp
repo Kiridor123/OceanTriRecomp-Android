@@ -29,9 +29,6 @@
 #ifdef MH3_DEVELOPMENT
 #include "dev_options.h"
 #endif
-#ifdef __vita__
-#include <psp2/kernel/threadmgr.h>
-#endif
 
 namespace {
 constexpr size_t capacity = 8192;
@@ -480,19 +477,19 @@ namespace {
 // not wait.
 //
 // The lock has no owner, so it is not recursive: a recursive mutex finds its
-// owner through TLS, which the Vita emulates (pte's lock calls took about 4%
+// owner through TLS, which the host emulates (pte's lock calls took about 4%
 // of the draw thread). Each entry point locks once and calls the others'
 // unlocked forms. A Jhen Mohran fight takes it about 110 times a frame on the
 // game thread and 250 on the draw thread; about 6 of each wait, for about
 // 0.7 us each on the host, so a waiter spins: sleeping after 64 tries made
-// the Vita's frame 1 ms slower than the recursive mutex had. A holder may
+// the host's frame 1 ms slower than the recursive mutex had. A holder may
 // wait seconds for a model pack conversion, so a wait past about a
 // millisecond sleeps between tries. Host development builds catch a thread
 // taking it twice.
 class CatalogLock {
 public:
     void lock() noexcept {
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
         if (held.load(std::memory_order_relaxed) && owner.load(std::memory_order_relaxed) == std::this_thread::get_id())
             MH3Fatal("Model catalog lock taken twice by one thread");
 #endif
@@ -502,13 +499,13 @@ public:
             do
                 Pause(tries++);
             while (held.load(std::memory_order_relaxed));
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
         owner.store(std::this_thread::get_id(), std::memory_order_relaxed);
 #endif
     }
 
     void unlock() noexcept {
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
         owner.store({}, std::memory_order_relaxed);
 #endif
         held.store(false, std::memory_order_release);
@@ -518,15 +515,11 @@ private:
     static void Pause(uint32_t tries) noexcept {
         if (tries < 65536)
             return;
-#ifdef __vita__
-        sceKernelDelayThread(50);
-#else
         std::this_thread::sleep_for(std::chrono::microseconds(50));
-#endif
     }
 
     std::atomic<bool> held{false};
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
     std::atomic<std::thread::id> owner{};
 #endif
 };
@@ -1293,7 +1286,7 @@ size_t CertifyLoadedNativeModels() {
 
         // Its pack is certified from memory, on a later pass when the
         // read-ahead has it: a pass that waited for the card held up the
-        // loading screen's frame (seconds on the Vita).
+        // loading screen's frame (seconds on the host).
         if (!NativeModelPackInMemory(candidate.file)) {
             c.pending_pack_reads = true;
             ++i;
@@ -1595,7 +1588,7 @@ bool SameGroup(const mh3_native_material_state& a, const mh3_native_material_sta
     }
 }
 
-// Word compare (memcmp is a byte loop on the Vita).
+// Word compare (memcmp is a byte loop on the host).
 bool SameWords(const void* a, const void* b, size_t bytes) {
     const auto* x = static_cast<const uint32_t*>(a);
     const auto* y = static_cast<const uint32_t*>(b);

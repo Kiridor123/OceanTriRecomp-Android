@@ -21,7 +21,7 @@
 //
 // The original walked the table from its first code for every character: on
 // the MH3SP notice screen flKnjMsgNumPtr took 37.7% of the game thread (on a
-// Vita). A map built from the table on first use answers a code at once;
+// Native). A map built from the table on first use answers a code at once;
 // no code writes the table. The characters are read as 0x8005BDA0 reads them:
 // 1 to 3 UTF-8 bytes, 0xFFFFFFFF for a malformed sequence (not in the table).
 // MH3_PORT_CHECK=flKnjMsgNumPtr,FontTextColumns,FontGlyphColumns,FontGlyphIndex

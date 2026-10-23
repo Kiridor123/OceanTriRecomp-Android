@@ -11,7 +11,7 @@ inline constexpr uint32_t Version = 4;
 // interfaces/layouts fail instead of guessing a GPU ABI: try_convert returns
 // false with the reason in `error`; convert stops on it.
 // Normalize live alpha references before calling, when source hashes must match
-// Vita's parameterized programs. No filesystem, compiler or graphics context.
+// host's parameterized programs. No filesystem, compiler or graphics context.
 bool try_convert(std::string_view source, Stage stage, std::string& cg, std::string& error);
 std::string convert(std::string_view source, Stage stage);
 

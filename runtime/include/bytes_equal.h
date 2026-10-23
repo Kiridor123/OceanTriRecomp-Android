@@ -1,7 +1,7 @@
 // Byte equality of two buffers, for the state snapshots and publications the
 // renderer compares per draw (hundreds of bytes to ~1.3 KB). Only equality is
 // reported, so NEON compares 64 bytes per step and stops at the first
-// differing block; newlib's memcmp on the Vita compares a word per iteration.
+// differing block; newlib's memcmp on the host compares a word per iteration.
 #pragma once
 #include <cstddef>
 #include <cstdint>

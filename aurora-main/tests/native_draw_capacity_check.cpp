@@ -1,7 +1,7 @@
 // Exercise the real allocator with bounded mock frame memory. No graphics
 // context, payload copy or mirrored implementation is part of this fixture.
 #include <aurora/native_frame_gate.hpp>
-#include "../lib/gxm/native_capacity.hpp"
+#include "../lib/gfx/native_capacity.hpp"
 #include "../lib/gfx/native_geometry.cpp"
 #include <array>
 #include <cassert>
@@ -57,7 +57,7 @@ void aurora_cancel_native_frame() {
 
 int main() {
   using namespace fixture;
-  using namespace aurora::gxm;
+  using namespace aurora::gfx;
   static_assert(NativeVertexBytes == 1048576 && NativeUniformBytes == 2097152);
   static_assert(NativeIndexBytes == 524288 && NativeSlotBytes == 3670016);
   static_assert(NativeProducerBytes == 11796480 && NativeProducerReserve == 12582912);

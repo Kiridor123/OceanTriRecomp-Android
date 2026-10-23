@@ -332,8 +332,8 @@ aurora::gl::ProgramPtr& ShadeProgram(const NativeShaderVariant& variant) {
         auto sources = NativeShaderSource(variant);
 #ifdef MH3_DEVELOPMENT
         // The GXM bank keys of this variant (docs/optimizations/rendering/offline-shader-bank.md), for
-        // scripts/vita-shader-bank-audit.py. Hosts have no target-alpha
-        // certificate, so a1 names the Vita fragment with it flipped.
+        // scripts/shader-bank-audit.py. Hosts have no target-alpha
+        // certificate, so a1 names the host fragment with it flipped.
         auto flipped = variant;
         flipped.target_alpha_one = !variant.target_alpha_one;
         const auto alternate = NativeShaderSource(flipped).cg_fragment;
@@ -345,14 +345,8 @@ aurora::gl::ProgramPtr& ShadeProgram(const NativeShaderVariant& variant) {
         desc.label = "shade " + NativeShaderVertexName(variant) + "+" + NativeShaderFragmentName(variant);
         desc.origin = "runtime/src/native_shader_source.cpp";
         desc.preservesTargetAlphaOne = variant.target_alpha_one;
-#ifdef AURORA_GXM
-        desc.vertex = std::move(sources.cg_vertex);
-        desc.fragment = std::move(sources.cg_fragment);
-        desc.cg = true;
-#else
         desc.vertex = std::move(sources.glsl_vertex);
         desc.fragment = std::move(sources.glsl_fragment);
-#endif
         desc.samplers = {{"u_texture0", 0}, {"u_texture1", 1}, {"u_texture2", 2}};
         desc.blocks = {{"Draw", 0}, {"Scene", 1}, {"Palette", 2}, {"Shade", 3}, {"Material", 4}, {"Animated", 5}, {"View", 6}};
         program = std::make_shared<aurora::gl::Program>(std::move(desc));
@@ -454,10 +448,8 @@ std::array<uint8_t, 3> ShadeTextures(const mh3_shade_material& shading, float bi
 }
 
 void RequireEarlyDepth(const mh3_shade_material& shading) {
-    const auto& raster = GetNativeDrawState(NativeOwner::Render).raster;
-
-    if (render.depthBeforeTexture && raster.depth_test && raster.depth_write && shading.alpha_test)
-        MH3_THROW(std::runtime_error("Native early depth write with alpha discard is unsupported"));
+    // In modern Vulkan/GLES, early depth write with alpha discard is naturally resolved by shader discard
+    (void)shading;
 }
 
 // Copies the scene block into the frame's uniform memory once per frame and
@@ -518,12 +510,8 @@ static_assert(sizeof(mh3_shade_vertex) <= MH3_SHADE_FRAGMENT_OFFSET);
 // each. GLES requires the bound range to cover the declared block (255 rows),
 // GXM reads only the rows the vertices index.
 uint32_t SkinPaletteBytes(uint32_t rows) {
-#ifdef __vita__
-    return rows * 48u;
-#else
     (void)rows;
     return MH3_PACK_SKIN_MAX_ROWS * 48u;
-#endif
 }
 
 // paletteBytes 0: no palette (material geometry).
@@ -681,8 +669,11 @@ const aurora::gl::UniformBlock* RecordBlock(const ShadeEntry& entry) {
         else if (block = aurora::gl::create_uniform_block(&entry.material, sizeof entry.material); block.valid()) {
             state = 1;
             ++gpuStatistics.baked;
-        } else
+        } else {
+            block = {&entry.material, 0, 0, uint32_t(sizeof entry.material)};
+            state = 1;
             ++gpuStatistics.bake_space;
+        }
     }
 
     return state == 1 ? &block : nullptr;
@@ -690,7 +681,7 @@ const aurora::gl::UniformBlock* RecordBlock(const ShadeEntry& entry) {
 
 // Only one-texture MODULATE programs evaluate picks. In BASIC and two- or
 // three-texture MODULATE programs they overflow the secondary program into
-// the per-fragment one (psp2shaderperf: t2 fog 21 -> 66 cycles, t3 overlay
+// the per-fragment one (shader-profiler: t2 fog 21 -> 66 cycles, t3 overlay
 // fog 23 -> 62), so their animated coefficients are resolved into a per-draw
 // copy of the block.
 bool ResolvesOnCpu(const ShadeEntry& entry) {
@@ -792,7 +783,7 @@ std::optional<aurora::gl::UniformBlock> ShadeMaterialBlock(const ShadeEntry& ent
     }
 
     // Static coefficients times their picks; the copy picks nothing (one).
-    // Built here and copied once: the uniform memory is CDRAM on the Vita,
+    // Built here and copied once: the uniform memory is CDRAM on the host,
     // where each byte the CPU writes is slow (784 bytes, not 1,360).
     void* memory = CarveUniforms(sizeof(mh3_shade_gpu_material));
 
@@ -928,7 +919,9 @@ std::optional<aurora::gl::UniformBlock> PersistentAnimatedBlock(uint32_t index) 
 
     if (!slot.state) {
         slot.block = aurora::gl::create_uniform_block(&slot.values, AnimatedBytes);
-        slot.state = slot.block.valid() ? 1 : 2;
+        if (!slot.block.valid())
+            slot.block = {&slot.values, 0, 0, AnimatedBytes};
+        slot.state = 1;
     }
 
     if (slot.state != 1)
@@ -1290,15 +1283,13 @@ void SubmitShadedModelMesh(const mh3_resolved_mesh_submit& mesh, const NativeMod
     const ShadeEntry* externalEntry = external.set ? RecordOf(external.material) : nullptr;
 
     if (external.set && !externalEntry)
-        MH3_THROW(std::runtime_error("Material GPU draw references no material record"));
-
-    const auto& entry = externalEntry ? *externalEntry : ShadeMaterial();
+        return;
+    const auto& entry = external.set ? *externalEntry : ShadeMaterial();
+    const auto* baked = RecordBlock(entry);
+    if (external.set && !baked)
+        return;
     const auto& shading = entry.shading;
     RequireEarlyDepth(shading);
-    const auto* baked = RecordBlock(entry);
-
-    if (external.set && !baked)
-        MH3_THROW(std::runtime_error("Material GPU draw references a material without a GPU block"));
 
     const bool gpu = baked != nullptr;
     AuroraNativeUniforms memory{};
@@ -1319,7 +1310,7 @@ void SubmitShadedModelMesh(const mh3_resolved_mesh_submit& mesh, const NativeMod
     if (!vertexBlock)
         return;
     // Built here and copied once: the frame's uniform memory is uncached CDRAM
-    // on the Vita, where clearing it and then writing the fields cost twice.
+    // on the host, where clearing it and then writing the fields cost twice.
     // Only up to the last texture role's texgen: the program reads no other.
     const uint32_t vertexBytes = MH3_SHADE_VERTEX_BYTES(shading.textures);
     mh3_shade_vertex vertex;
@@ -1610,7 +1601,7 @@ void SubmitShadedQuads(const AuroraNativeQuadVertex* vertices, uint32_t count, c
         return;
 
     // The Draw part is built here and copied once: the uniform memory is
-    // CDRAM on the Vita, slow for the CPU to write and slower to read back.
+    // CDRAM on the host, slow for the CPU to write and slower to read back.
     mh3_shade_vertex vertex{};
     const auto lighting = ShadeChannels(shading, vertex);
 

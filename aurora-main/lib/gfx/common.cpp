@@ -16,10 +16,6 @@
 #include <aurora/native_draw_memory.hpp>
 #include <aurora/gpu_completion.hpp>
 #include "../window.hpp"
-#ifdef AURORA_GXM
-#include "../gxm/memory.hpp"
-#include "../gxm/draw_memory.hpp"
-#endif
 
 #include <algorithm>
 #include <atomic>
@@ -110,10 +106,6 @@ static std::vector<std::shared_ptr<const TextureBindGroup>> g_retiredBindGroups;
 // Recording buffers of one staging batch. A small pool bounds how far the producer can run ahead
 // of the render thread, which returns each set once it has uploaded it.
 struct StagingSet {
-#ifdef AURORA_GXM
-  // These owners precede the borrowed ByteBuffer views so they are freed last.
-  std::array<gxm::MappedMemory, 4> memory;
-#endif
   ByteBuffer verts;
   ByteBuffer uniforms;
   ByteBuffer indices;
@@ -126,31 +118,6 @@ static std::condition_variable g_stagingPoolCv;
 static std::vector<std::unique_ptr<StagingSet>> g_stagingPool;
 static std::unique_ptr<StagingSet> g_staging;
 static std::array<std::unique_ptr<StagingSet>, FrameSlotCount> g_nativeDrawSlots;
-#ifdef AURORA_GXM
-struct RetiredStagingSet {
-  SceGxmNotification fence;
-  std::unique_ptr<StagingSet> set;
-};
-
-// Protected by the pool mutex; GPU writes its uncached notification word.
-static std::vector<RetiredStagingSet> g_retiredStaging;
-static void reclaim_staging_sets_locked() {
-  for (auto it = g_retiredStaging.begin(); it != g_retiredStaging.end();) {
-    if (it->fence.address && int32_t(*it->fence.address - it->fence.value) < 0) {
-      ++it;
-      continue;
-    }
-
-    auto set = std::move(it->set);
-    set->verts.clear();
-    set->uniforms.clear();
-    set->indices.clear();
-    set->storage.clear();
-    g_stagingPool.push_back(std::move(set));
-    it = g_retiredStaging.erase(it);
-  }
-}
-#endif
 static ByteBuffer& g_verts() noexcept {
   return g_staging->verts;
 }
@@ -183,9 +150,6 @@ struct GpuBuffers {
   std::array<gl::TexturePtr, FrameSlotCount> verts;
   std::array<gl::TexturePtr, FrameSlotCount> storage;
   size_t slot = 0;
-#ifdef AURORA_GXM
-  std::unique_ptr<StagingSet> active;
-#endif
 };
 
 static GpuBuffers g_gpu;
@@ -330,11 +294,7 @@ static StagingSizes g_stagingHighWater{};
 static std::atomic<uint64_t> g_stagingWaitMicros{};
 static std::atomic<uint64_t> g_stagingWaitCount{};
 std::array<uint64_t, 4> staging_wait_counters() noexcept {
-#ifdef AURORA_GXM
-  const auto finish = gxm::finish_wait_counters();
-#else
   const std::array<uint64_t, 2> finish{};
-#endif
   return {g_stagingWaitMicros.load(std::memory_order_relaxed), finish[0], g_stagingWaitCount.load(std::memory_order_relaxed), finish[1]};
 }
 
@@ -793,14 +753,6 @@ PipelineRef pipeline_ref(const gx::PipelineConfig& config) {
 
 static std::unique_ptr<StagingSet> new_staging_set() {
   auto set = std::make_unique<StagingSet>();
-#ifdef AURORA_GXM
-  auto& memory = set->memory[0];
-  memory = gxm::MappedMemory(gxm::NativeSlotBytes, gxm::MappedMemory::Kind::Draw, "Aurora native draw slot");
-  auto* base = static_cast<uint8_t*>(memory.data());
-  set->verts = ByteBuffer{base + gxm::NativeVertexOffset, VertexBufferSize};
-  set->uniforms = ByteBuffer{base + gxm::NativeUniformOffset, UniformBufferSize};
-  set->indices = ByteBuffer{base + gxm::NativeIndexOffset, IndexBufferSize};
-#else
   const auto reserve = [](ByteBuffer& buffer, uint64_t size) {
     buffer = ByteBuffer{static_cast<size_t>(size)};
     buffer.clear();
@@ -814,7 +766,6 @@ static std::unique_ptr<StagingSet> new_staging_set() {
 
   // Word buffers upload whole rows.
   reserve(set->storage, StorageBufferSize + WordBufferRowBytes);
-#endif
   return set;
 }
 
@@ -839,21 +790,9 @@ static void acquire_staging_set() {
   }
 
   std::unique_lock lock(g_stagingPoolMutex);
-#ifdef AURORA_GXM
-  reclaim_staging_sets_locked();
-#endif
   if (g_stagingPool.empty()) {
     const auto started = std::chrono::steady_clock::now();
-#ifdef AURORA_GXM
-    // GPU completion does not signal a CPU condition variable. Poll only when
-    // every slot is occupied, without a global context finish.
-    while (g_stagingPool.empty()) {
-      g_stagingPoolCv.wait_for(lock, std::chrono::milliseconds(1));
-      reclaim_staging_sets_locked();
-    }
-#else
     g_stagingPoolCv.wait(lock, [] { return !g_stagingPool.empty(); });
-#endif
     const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count();
     g_stagingWaitMicros.fetch_add(micros, std::memory_order_relaxed);
     g_stagingWaitCount.fetch_add(1, std::memory_order_relaxed);
@@ -865,10 +804,6 @@ static void acquire_staging_set() {
 
 // Render thread: copy a finished batch into the GPU buffers the following draws read.
 static void upload_batch(StagingSet& set) {
-#ifdef AURORA_GXM
-  // No upload or word textures: native Cg reads explicit uniform buffers.
-  gxm::bind_draw_memory(set.uniforms.data(), set.uniforms.size(), set.indices.data(), set.indices.size(), set.verts.data(), set.verts.size(), set.storage.data(), set.storage.size());
-#else
   auto& gpu = g_gpu;
   gpu.slot = (gpu.slot + 1) % FrameSlotCount;
 
@@ -901,7 +836,6 @@ static void upload_batch(StagingSet& set) {
 
   uploadWords(gpu.verts[gpu.slot], set.verts);
   uploadWords(gpu.storage[gpu.slot], set.storage);
-#endif
 }
 
 void initialize() {
@@ -923,12 +857,10 @@ void initialize() {
 
   g_staging.reset();
   currentStagingBuffer = 0;
-#ifndef AURORA_GXM
   for (size_t i = 0; i < FrameSlotCount; ++i) {
     g_gpu.verts[i] = gl::create_texture(WordBufferRowWords, word_buffer_rows(VertexBufferSize) + 1, 1, gl::Format::R32UI, "Vertex word buffer");
     g_gpu.storage[i] = gl::create_texture(WordBufferRowWords, word_buffer_rows(StorageBufferSize) + 1, 1, gl::Format::R32UI, "Storage word buffer");
   }
-#endif
   gl::post([] {
     g_gpu.uniform = gl::create_buffer();
     g_gpu.index = gl::create_buffer();
@@ -953,13 +885,6 @@ void shutdown() {
 
   for (auto& slot : g_nativeDrawSlots)
     slot.reset();
-#ifdef AURORA_GXM
-  gl::call([] { g_gpu.active.reset(); });
-  {
-    std::lock_guard lock(g_stagingPoolMutex);
-    g_retiredStaging.clear();
-  }
-#endif
   g_cachedBindGroups.clear();
   g_retiredBindGroups.clear();
   g_staging.reset();
@@ -1132,24 +1057,8 @@ static void end_batch_impl(bool advanceFrame) {
     port_capture::frame(g_frameIndex, g_drawCallCount, g_mergedDrawCallCount, static_cast<uint32_t>(g_renderPasses.size()), g_verts().size(), g_uniforms().size(), g_indices().size(),
                         g_storage().size());
     gl::post([set = std::move(g_staging)]() mutable {
-#ifdef AURORA_GXM
-      // End the last scene using the previous slot and retain its memory until
-      // the GPU notification completes. No sceGxmFinish on batch rotation.
-      const auto fence = gxm::draw_memory_fence();
-
-      if (g_gpu.active) {
-        std::lock_guard lock(g_stagingPoolMutex);
-        g_retiredStaging.push_back({fence, std::move(g_gpu.active)});
-        reclaim_staging_sets_locked();
-        g_stagingPoolCv.notify_one();
-      }
-
-      upload_batch(*set);
-      g_gpu.active = std::move(set);
-#else
       upload_batch(*set);
       release_staging_set(std::move(set));
-#endif
     });
   }
 
@@ -1499,11 +1408,9 @@ void after_submit() noexcept {
 }
 
 static void bind_word_buffers() {
-#ifndef AURORA_GXM
   const GLuint sampler = gl::sampler(gl::NearestClamp);
   gl::bind_texture(VertexBufferUnit, g_gpu.verts[g_gpu.slot]->gl(), sampler);
   gl::bind_texture(StorageBufferUnit, g_gpu.storage[g_gpu.slot]->gl(), sampler);
-#endif
 }
 
 GLuint uniform_buffer() noexcept {

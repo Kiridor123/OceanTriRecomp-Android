@@ -58,7 +58,7 @@ mh3_res_span Span(const uint8_t* data, size_t size) {
     return {data, size};
 }
 
-// Aligned word compare (memcmp is a byte loop on the Vita).
+// Aligned word compare (memcmp is a byte loop on the host).
 bool SameWords(const void* a, const void* b, size_t bytes) {
     const auto* x = static_cast<const uint32_t*>(a);
     const auto* y = static_cast<const uint32_t*>(b);

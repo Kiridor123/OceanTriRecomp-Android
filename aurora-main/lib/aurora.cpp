@@ -2,10 +2,6 @@
 #include <aurora/native_frame_gate.hpp>
 #include <aurora/native_draw_memory.hpp>
 #include <aurora/native_texture.hpp>
-#ifdef AURORA_GXM
-#include "gxm/draw_memory.hpp"
-#include "gxm/device.hpp"
-#endif
 
 #ifdef AURORA_ENABLE_GX
 #include "gfx/common.hpp"
@@ -259,8 +255,6 @@ constexpr const char* backend_name(AuroraBackend backend) noexcept {
     return "OpenGL";
   case BACKEND_OPENGLES:
     return "OpenGLES";
-  case BACKEND_GXM:
-    return "GXM";
   case BACKEND_WEBGPU:
     return "WebGPU";
   case BACKEND_NULL:
@@ -323,25 +317,37 @@ AuroraInfo initialize(int argc, char* argv[], const AuroraConfig& config) noexce
   ASSERT(window::initialize_event_watch(), "Error initializing SDL event watch");
 
 #ifdef AURORA_ENABLE_GX
-#ifdef AURORA_GXM
-  const AuroraBackend selectedBackend = BACKEND_GXM;
-#elif defined(AURORA_WEBGPU)
-  const AuroraBackend selectedBackend = BACKEND_WEBGPU;
+#if defined(AURORA_WEBGPU)
+  AuroraBackend selectedBackend = BACKEND_WEBGPU;
+#elif defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  AuroraBackend selectedBackend = config.desiredBackend == BACKEND_OPENGLES ? BACKEND_OPENGLES : BACKEND_VULKAN;
 #else
-  const AuroraBackend selectedBackend = BACKEND_OPENGLES;
+  AuroraBackend selectedBackend = BACKEND_OPENGLES;
 #endif
   if (config.desiredBackend != BACKEND_AUTO && config.desiredBackend != selectedBackend) {
     Log.warn("Requested graphics backend {} is unavailable; using {}", backend_name(config.desiredBackend),
              backend_name(selectedBackend));
   }
 
-  if (!window::create_window(selectedBackend) || !gpu::initialize(window::get_sdl_window())) {
+  bool graphicsReady = window::create_window(selectedBackend);
+  if (graphicsReady) graphicsReady = gpu::initialize(window::get_sdl_window());
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  if (!graphicsReady && selectedBackend == BACKEND_VULKAN) {
+    const std::string vulkanError = SDL_GetError();
+    Log.warn("ANGLE/Vulkan unavailable ({}); retrying with OpenGL ES", vulkanError);
+    window::destroy_window();
+    SDL_ClearError();
+    selectedBackend = BACKEND_OPENGLES;
+    g_config.desiredBackend = selectedBackend;
+    graphicsReady = window::create_window(selectedBackend);
+    if (graphicsReady) graphicsReady = gpu::initialize(window::get_sdl_window());
+    if (graphicsReady)
+      Log.warn("MH3 started with OpenGL ES fallback because Vulkan initialization failed: {}", vulkanError);
+  }
+#endif
+  if (!graphicsReady) {
     std::string error = SDL_GetError();
-
-    if (error.empty()) {
-      error = std::string(backend_name(selectedBackend)) + " is unavailable";
-    }
-
+    if (error.empty()) error = std::string(backend_name(selectedBackend)) + " is unavailable";
     window::destroy_window();
     SDL_SetError("%s", error.c_str());
     Log.error("Graphics initialization failed: {}", error);
@@ -503,25 +509,13 @@ bool begin_native_frame() noexcept {
 
   if (g_nativeFrame.active()) Log.fatal("Native frame begun before the previous frame ended");
   window::pump_events();
-#ifdef AURORA_GXM
-  // CDRAM lease and queue admission are mandatory for the native GXM path.
-  // Disabling optional frameskip cannot authorize overwriting a busy slot.
-  constexpr bool skipBusy = true;
-#else
   const bool skipBusy = g_nativeFrameskip;
-#endif
   const bool draw = g_nativeFrame.begin(skipBusy,
       window::is_presentable() && !window::is_paused(), [] { return gl::gpu_frame_pending(); });
   gfx::g_stats.presentedFrameCount = 0;
   gfx::g_stats.interpolatedFrameCount = 0;
 
   if (!draw) return false;
-#ifdef AURORA_GXM
-  const auto memory = gfx::native_draw_memory(gl::native_frame_slot());
-  gxm::bind_draw_memory(memory.uniforms.data(), memory.uniforms.size(), memory.indices.data(), memory.indices.size(),
-                        memory.vertices.data(), memory.vertices.size(), memory.attributes.data(), memory.attributes.size());
-  gl::native_frame_admitted();
-#endif
   // A skipped frame must not recreate surfaces, rotate staging or touch the
   // previous frame's CDRAM. Resize only once its notification has arrived.
   if (window::native_resize_pending() ||
@@ -663,14 +657,7 @@ AuroraInfo aurora_initialize(int argc, char* argv[], const AuroraConfig* config)
 
 void aurora_shutdown() { aurora::shutdown(); }
 void aurora_set_common_dialog_active(bool active) {
-#ifdef AURORA_GXM
-  if (!aurora::gl::on_render_thread())
-    aurora::Log.fatal("Common dialog changed outside the game thread");
-
-  aurora::gxm::set_common_dialog_active(active);
-#else
   (void)active;
-#endif
 }
 
 const AuroraEvent* aurora_update() { return aurora::update(); }
@@ -839,15 +826,15 @@ bool aurora_flush_draws() {
 
 AuroraBackend aurora_get_backend() { return aurora::g_config.desiredBackend; }
 const AuroraBackend* aurora_get_available_backends(size_t* count) {
-#ifdef AURORA_GXM
-  static constexpr AuroraBackend Backends[] = {BACKEND_GXM};
-#elif defined(AURORA_WEBGPU)
+#if defined(AURORA_WEBGPU)
   static constexpr AuroraBackend Backends[] = {BACKEND_WEBGPU};
+#elif defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  static constexpr AuroraBackend Backends[] = {BACKEND_VULKAN, BACKEND_OPENGLES};
 #else
   static constexpr AuroraBackend Backends[] = {BACKEND_OPENGLES};
 #endif
   if (count != nullptr) {
-    *count = 1;
+    *count = sizeof(Backends) / sizeof(Backends[0]);
   }
 
   return Backends;

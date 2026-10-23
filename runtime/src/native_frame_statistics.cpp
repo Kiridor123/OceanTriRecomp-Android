@@ -2,9 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
-#ifdef __vita__
-#include <psp2/kernel/threadmgr.h>
-#elif defined(__linux__)
+#if defined(__linux__)
 #include <sched.h>
 #include <sys/syscall.h>
 #include <time.h>
@@ -91,19 +89,7 @@ uint64_t monotonic_ns() noexcept {
 
 mh3::statistics::OwnerCpuSample owner_cpu() noexcept {
     mh3::statistics::OwnerCpuSample result;
-#ifdef __vita__
-    SceKernelThreadInfo info{};
-    info.size = sizeof(info);
-    const auto thread = sceKernelGetThreadId();
-
-    if (sceKernelGetThreadInfo(thread, &info) >= 0) {
-        result.running_us = info.runClocks;
-        result.thread = thread;
-        result.core = info.currentCpuId;
-        result.affinity = info.currentCpuAffinityMask;
-        result.available = true;
-    }
-#elif defined(__linux__)
+#if defined(__linux__)
     timespec time{};
     const auto thread = syscall(SYS_gettid);
 

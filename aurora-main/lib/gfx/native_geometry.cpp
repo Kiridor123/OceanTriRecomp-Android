@@ -6,10 +6,6 @@
 #include "../internal.hpp"
 #include <algorithm>
 #include <cstdlib>
-#ifdef __vita__
-#include <psp2/gxm.h>
-#include <psp2/kernel/sysmem.h>
-#endif
 #include <limits>
 
 namespace {
@@ -157,22 +153,6 @@ extern "C" void aurora_submit_native_geometry(const AuroraNativeGeometry* geomet
 }
 
 extern "C" void* aurora_map_native_quad_memory(uint32_t bytes) {
-#ifdef __vita__
-  const uint32_t size = (bytes + 4095u) & ~4095u;
-  const SceUID block = sceKernelAllocMemBlock("aurora native quads", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW_UNCACHE, size, nullptr);
-  void* data = nullptr;
-
-  if (block < 0)
-    return nullptr;
-
-  if (sceKernelGetMemBlockBase(block, &data) < 0 || sceGxmMapMemory(data, size, SCE_GXM_MEMORY_ATTRIB_READ) < 0) {
-    sceKernelFreeMemBlock(block);
-    return nullptr;
-  }
-
-  return data;
-#else
   return std::malloc(bytes);
-#endif
 }
 

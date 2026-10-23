@@ -1,4 +1,4 @@
-// Wii network IOS devices (ios_net.h). Request layouts follow Dolphin's
+﻿// Wii network IOS devices (ios_net.h). Request layouts follow Dolphin's
 // Core/IOS/Network (IP/Top.cpp, Socket.cpp, SSL.cpp, NCD/Manage.cpp).
 #include "ios_net.h"
 
@@ -171,7 +171,7 @@ bool TraceNet() {
 }
 #else
 constexpr bool TraceNet() {
-    return false;
+    return true;
 }
 #endif
 

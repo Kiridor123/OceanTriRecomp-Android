@@ -5,11 +5,7 @@
 // other threads carry their metadata immediately and receive their GPU name
 // when the creation task runs, which always precedes any task using them.
 
-#ifdef AURORA_GXM
-#include "../gxm/state_values.hpp"
-#else
 #include <GLES3/gl3.h>
-#endif
 
 #include <array>
 #include <cstdint>
@@ -41,6 +37,7 @@ struct Caps {
 };
 
 bool initialize(SDL_Window* window) noexcept;
+void set_vsync(bool enabled) noexcept;
 void shutdown() noexcept;
 bool initialized() noexcept;
 const Caps& caps() noexcept;
@@ -235,7 +232,7 @@ struct ProgramDesc {
 // Render owner only. GLES returns false. No submission, waits or pixel reads.
 bool shaded_target_alpha_one() noexcept;
 
-// One immutable converted-pack payload. Vita reads directly into CDRAM; GLES
+// One immutable converted-pack payload. Native reads directly into CDRAM; GLES
 // uploads once and retains a 16-byte-aligned CPU view for common pack validation.
 // Creation/destruction belong to the context owner. Retiring a live GPU buffer
 // never waits; its backing allocation survives all preceding submissions.
@@ -484,12 +481,19 @@ void draw_shaded_geometry(const AuroraNativeMaterialGeometry& geometry, const st
 // Compact effect quads (AuroraNativeQuadVertex, 4 per quad, at most
 // MaxNativeQuads): a static index pattern; the program's Quad block, in the
 // palette's place, holds the draw's matrices and which coordinate each role
-// reads. On the Vita `vertices` must be GPU-mapped memory, read in place.
+// reads. On the host `vertices` must be GPU-mapped memory, read in place.
 inline constexpr uint32_t MaxNativeQuads = 16384;
 void draw_shaded_quads(const AuroraNativeQuadVertex* vertices, uint32_t quads, GLuint program, const ShadedBlocks& blocks, const std::array<uint8_t, 3>& textureUnits) noexcept;
 
 // Render thread only: blit `source` into the window with the letterboxed
 // viewport and swap. Rows are stored top-down, so the blit flips.
+struct PostProcessSettings {
+  bool mh3u_mode = false;
+  bool enabled = false;
+  bool skipWhenOverlayActive = false;
+};
+void set_post_process_settings(const PostProcessSettings& settings) noexcept;
+PostProcessSettings get_post_process_settings() noexcept;
 void present(const TexturePtr& source, int32_t x, int32_t y, int32_t width, int32_t height) noexcept;
 
 // Nonblocking GPU completion check used for frameskip, independent of CPU tasks.
@@ -500,11 +504,6 @@ void discard_native_frame() noexcept;
 
 // Slot 0..2 selected for the next rendered frame. Skipping does not rotate it.
 uint32_t native_frame_slot() noexcept;
-#ifdef AURORA_GXM
-// Render thread: a native frame was admitted to native_frame_slot(). The
-// precomputed draw records count their frames by it.
-void native_frame_admitted() noexcept;
-#endif
 
 // Render thread only: window framebuffer size in pixels.
 std::pair<uint32_t, uint32_t> drawable_size() noexcept;

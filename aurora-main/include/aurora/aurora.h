@@ -22,7 +22,6 @@ typedef enum {
   BACKEND_OPENGLES,
   BACKEND_WEBGPU,
   BACKEND_NULL,
-  BACKEND_GXM,
 } AuroraBackend;
 
 typedef enum {
@@ -150,10 +149,6 @@ typedef struct {
 AuroraInfo aurora_initialize(int argc, char* argv[], const AuroraConfig* config);
 void aurora_shutdown();
 
-// Enable the Vita system-dialog overlay on submitted display frames. Call on
-// the graphics owner thread between dialog initialization and termination.
-// Other backends ignore this toggle.
-void aurora_set_common_dialog_active(bool active);
 const AuroraEvent* aurora_update();
 bool aurora_begin_frame();
 void aurora_end_frame();

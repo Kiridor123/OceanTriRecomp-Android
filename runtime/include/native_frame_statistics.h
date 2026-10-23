@@ -4,9 +4,9 @@
 
 namespace mh3::statistics {
 
-// Execution time of this owner thread, not process elapsed time. Vita uses
+// Execution time of this owner thread, not process elapsed time. Native uses
 // kernel runClocks (microseconds); Linux uses CLOCK_THREAD_CPUTIME_ID. Affinity
-// is Vita's encoded mask or Linux CPU-index bits (low 32 CPUs), respectively.
+// is host's encoded mask or Linux CPU-index bits (low 32 CPUs), respectively.
 struct OwnerCpuSample {
     uint64_t running_us = 0;
     int32_t thread = -1;

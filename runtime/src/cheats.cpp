@@ -3,7 +3,7 @@
 // development checkout, by author tag), in their order; codes that only work
 // online (city, lobby, chat, friends, servers) are not in the table. Codes
 // that do the same for the player as another are one entry (the merges are
-// listed in docs/vita-launcher.md): a code that always runs and its copy
+// listed in docs/launcher.md): a code that always runs and its copy
 // switched or held by buttons became one entry with an "Always" choice.
 #include "cheats.h"
 

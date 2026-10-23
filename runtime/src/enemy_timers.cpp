@@ -52,17 +52,21 @@ void S16(uint32_t address, int32_t value) {
     Memory::Write16(address, uint16_t(value));
 }
 
+inline uint32_t EnemyTicks() {
+    return GameStep::Ticks();
+}
+
 // Counts up by the step's ticks while below `cap`, stopping at it.
 void CountUp(uint32_t address, int32_t cap) {
     const int32_t steps = S16(address);
 
     if (steps < cap)
-        S16(address, std::min(steps + int32_t(GameStep::Ticks()), cap));
+        S16(address, std::min(steps + int32_t(EnemyTicks()), cap));
 }
 
 // Counts down by the step's ticks, stopping at 0 (a count below 0 becomes 0).
 void CountDown(uint32_t address) {
-    S16(address, std::max(S16(address) - int32_t(GameStep::Ticks()), 0));
+    S16(address, std::max(S16(address) - int32_t(EnemyTicks()), 0));
 }
 
 void StepsTo27000(CpuContext* ctx) {
@@ -80,16 +84,17 @@ void StepsTo7FFF(CpuContext* ctx) {
 
 void CycleAndCountdown(CpuContext* ctx) {
     const uint32_t self = ctx->gpr[3];
+    const uint32_t ticks = EnemyTicks();
 
     // The original: + 1, back to 0 at 50.
-    const uint32_t cycle = Memory::Read16(self + 0x33C), next = cycle + GameStep::Ticks();
+    const uint32_t cycle = Memory::Read16(self + 0x33C), next = cycle + ticks;
     Memory::Write16(self + 0x33C, uint16_t(next < 50 ? next : cycle < 50 ? next % 50 : 0));
 
     // The original: - 1 while above 0.
     const int32_t countdown = S16(self + 0x338);
 
     if (countdown > 0)
-        S16(self + 0x338, std::max(countdown - int32_t(GameStep::Ticks()), 0));
+        S16(self + 0x338, std::max(countdown - int32_t(ticks), 0));
 }
 
 constexpr uint32_t kSystem = 0x8065AA60; // system_w (its address is in r4 at some calls)

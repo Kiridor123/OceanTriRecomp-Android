@@ -45,10 +45,6 @@ else ()
   message(STATUS "aurora: Using existing xxhash")
 endif ()
 
-if(VITA)
-  target_compile_options(xxhash PRIVATE -gline-tables-only)
-endif()
-
 if (NOT TARGET fmt)
   message(STATUS "aurora: Fetching fmt")
   FetchContent_Declare(fmt
@@ -58,12 +54,6 @@ if (NOT TARGET fmt)
     EXCLUDE_FROM_ALL
   )
   FetchContent_MakeAvailable(fmt)
-
-  if(VITA)
-    include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AuroraVitaDependencyPatches.cmake")
-    aurora_patch_vita_fmt("${fmt_SOURCE_DIR}")
-    target_compile_definitions(fmt PUBLIC FMT_USE_FALLBACK_FILE=1)
-  endif()
 
   if (NOT TARGET fmt)
     message(FATAL_ERROR "Failed to make fmt available")
@@ -177,12 +167,6 @@ if (AURORA_ENABLE_GX)
     message(STATUS "aurora: Using existing Freetype")
   endif ()
 
-  if(VITA)
-    # FindFreetype does not propagate the VitaSDK archive's bzip2 dependency.
-    find_package(BZip2 REQUIRED)
-    target_link_libraries(Freetype::Freetype INTERFACE BZip2::BZip2)
-  endif()
-
   if (NOT TARGET imgui)
     message(STATUS "aurora: Fetching imgui")
     FetchContent_Declare(imgui
@@ -202,10 +186,6 @@ if (AURORA_ENABLE_GX)
       ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
     )
     target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
-
-    if(VITA)
-      target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS)
-    endif()
 
     # No renderer backend: the OpenGL ES renderer draws no ImGui.
     add_library(imgui_backends STATIC

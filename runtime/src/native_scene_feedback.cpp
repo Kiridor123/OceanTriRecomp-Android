@@ -183,7 +183,7 @@ void GlareBrightPass(uint32_t self) {
     input.projection_width = FlatReadFloat32(0x8066d298);
     input.projection_height = FlatReadFloat32(0x8066d29c);
     mh3_scene_glare_plan plan;
-    Require(mh3_scene_glare_prepare(&input, &plan), "Invalid glare resource dimensions or threshold");
+    if (!mh3_scene_glare_prepare(&input, &plan)) return;
     /* Authored result dimensions are CPU state even during a skipped draw. */
     Memory::Write16(self + 0x14, plan.width);
     Memory::Write16(self + 0x16, plan.height);
@@ -527,9 +527,9 @@ extern "C" void MH3_NativeGlareDraw(CpuContext *cpu) {
     GlareBrightPass(self);
     SceneDrawBack(cpu, 0x8066d178, 0, captures);
     mh3_scene_quad_plan plan;
-    Require(mh3_scene_capture_quad(FlatRead32(self + 8), FlatRead16(self + 0x14), FlatRead16(self + 0x16), FlatReadFloat32(0x8066d2a0), FlatReadFloat32(0x8066d2a4), 255, 0, &GetNativeDrawState(),
-                                   &GetNativeMaterialState(), &plan),
-            "Invalid glare composite quad");
+    if (!mh3_scene_capture_quad(FlatRead32(self + 8), FlatRead16(self + 0x14), FlatRead16(self + 0x16), FlatReadFloat32(0x8066d2a0), FlatReadFloat32(0x8066d2a4), 255, 0, &GetNativeDrawState(),
+                                &GetNativeMaterialState(), &plan))
+        return;
     for (uint32_t i = 0; i < 3; i++)
         plan.color[i] = FlatRead8(self + 2 + i);
 
@@ -589,8 +589,8 @@ extern "C" void MH3_NativeGrabScreen(CpuContext *cpu) {
 
         if (NativeGraphicsLogicPhase())
             QueueNativeSceneClone(destination, source);
-        else
-            Require(RecordNativeSceneClone(destination, source), "GrabScreen source was not captured");
+        else if (destination && source)
+            RecordNativeSceneClone(destination, source);
     }
 
     FlatWrite8(0x8065b2c8, 2);

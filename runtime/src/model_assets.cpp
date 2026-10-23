@@ -36,10 +36,10 @@ constexpr size_t MaxMetadataBytes = 8 * 1024 * 1024;
 constexpr size_t MaxIdentityBytes = 4 * 1024 * 1024;
 
 // The packs' GPU data, released ones included until their last scene: the
-// Vita's CDRAM model reservation (aurora-main gxm/device.cpp). Least recently
+// host's CDRAM model reservation (aurora-main gxm/device.cpp). Least recently
 // drawn packs of earlier areas make room within it. One quest's packs take
 // 5-8 MiB; at 32 MiB they outgrew the reservation over a few areas.
-constexpr size_t MaxGPUBytes = 16 * 1024 * 1024;
+constexpr size_t MaxGPUBytes = 128 * 1024 * 1024;
 constexpr uint32_t LegacyPack = UINT32_MAX;
 struct Assets {
     std::vector<uint8_t> metadata, identity;
@@ -568,7 +568,7 @@ class PackPreparer {
                 return waited ? Taken::Waited : Taken::Ready;
             }
 
-            // Timed: VitaSDK's condition variable can lose a notification.
+            // Timed: the platform's condition variable can lose a notification.
             waited = true;
             changed.wait_for(guard, std::chrono::milliseconds(5));
         }
@@ -640,7 +640,7 @@ class PackPreparer {
             {
                 std::unique_lock guard(lock);
 
-                // Timed: VitaSDK's condition variable can lose a notification.
+                // Timed: the platform's condition variable can lose a notification.
                 while (payloads.empty())
                     changed.wait_for(guard, std::chrono::milliseconds(100));
 
@@ -665,7 +665,7 @@ class PackPreparer {
                 std::unique_lock guard(lock);
                 auto next = entries.end();
 
-                // Timed: VitaSDK's condition variable can lose a notification.
+                // Timed: the platform's condition variable can lose a notification.
                 while ((next = std::find_if(entries.begin(), entries.end(), [](const Entry& e) { return e.state == Entry::Queued; })) == entries.end())
                     changed.wait_for(guard, std::chrono::milliseconds(100));
 

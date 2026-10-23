@@ -23,13 +23,13 @@ void HoldInputPlayback(bool hold);
 int DebugCameraMonster(float* distance = nullptr);
 #endif
 
-// The live controls: SDL keyboard/gamepad on Linux, the Vita's pad on the
-// Vita; MH3_INPUT=file= replaces them.
+// The live controls: SDL keyboard/gamepad on Linux, the host's pad on the
+// Native; MH3_INPUT=file= replaces them.
 ClassicControllerSample ReadLiveController();
-#ifdef __vita__
-// sceCtrl through mh3_vita_pad_to_classic (runtime/vita/vita_controller.cpp).
-ClassicControllerSample ReadVitaController();
-#endif
+
+// Relative mouse deltas collected by the SDL host; camera input consumes each axis once.
+int32_t TakeMouseLookXDelta();
+int32_t TakeMouseLookYDelta();
 void SetControllerTestSample(std::optional<ClassicControllerSample> sample);
 void ServiceHostController(CpuContext* cpu, bool force = false);
 void RunControllerSelfTests(CpuContext* cpu);

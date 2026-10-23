@@ -1,4 +1,4 @@
-#include "vita_launcher.h"
+#include "native_launcher.h"
 #include "fatal.h"
 #include "disc_image.h"
 #include "fs_status.h"
@@ -12,7 +12,7 @@
 #include <numeric>
 #include <stdexcept>
 
-namespace VitaLauncher {
+namespace NativeLauncher {
 namespace {
 uint32_t Word(std::span<const uint8_t> data, size_t at) {
     if (at > data.size() || data.size() - at < 4)
@@ -618,7 +618,7 @@ Status SaveCustomQuest(const std::filesystem::path& user, const CustomQuest& q) 
     if (!output)
         return Status::Error("Cannot save custom quest");
 
-    // An edited quest replaces its file. The Vita's rename refuses an existing
+    // An edited quest replaces its file. The host's rename refuses an existing
     // target, so remove the old record first.
     bool exists = false;
     MH3_RETURN_IF_ERROR(FsStatus::Exists(path, exists));
@@ -848,4 +848,4 @@ Status SupportsCapture(const CustomQuest& q, bool& supported) {
 
     return {};
 }
-} // namespace VitaLauncher
+} // namespace NativeLauncher

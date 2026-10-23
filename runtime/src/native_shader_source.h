@@ -135,7 +135,7 @@ NativeShaderFragmentKey NativeShaderFragmentKeyOf(const NativeShaderVariant& var
 bool NativeShaderFoldsFog(const NativeShaderVariant& variant);
 
 // The complete domain: every key of a valid variant, each once. The bank
-// generator (scripts/vita_shader_bank.cpp) compiles exactly these.
+// generator (scripts/shader_bank.cpp) compiles exactly these.
 std::vector<NativeShaderVertexKey> NativeShaderVertexKeys();
 std::vector<NativeShaderFragmentKey> NativeShaderFragmentKeys();
 

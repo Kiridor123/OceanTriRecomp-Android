@@ -19,6 +19,7 @@
 // without touching the object.
 #include "anm_obj_chr_res.h"
 #include "fatal.h"
+#include "game_step.h"
 #include "port_check.h"
 
 #include <cmath>
@@ -100,11 +101,21 @@ void SetFrame(GuestCall& game, uint32_t self, float frame) {
     FoldPointer(self);
 
     if (!std::isfinite(frame)) [[unlikely]]
-        Panic("Floating Point Value Error frame", 1050, Bits(frame));
+        frame = 0.0f;
     SetControlFrame(game, self + kFrameCtrl, frame);
 
     if (Memory::Read32(self + kCache))
         UpdateCache(game, self);
+}
+
+float SnapWholeTickFrame(float next) {
+    if (GameStep::Variable() && GameStep::Ticks() > 0 && std::isfinite(next)) {
+        const float doubled = next * 2.0f;
+        const float rounded = std::round(doubled);
+        if (std::fabs(doubled - rounded) <= 1e-4f)
+            return rounded * 0.5f;
+    }
+    return next;
 }
 
 void UpdateFrame(GuestCall& game, uint32_t self, uint32_t r2, uint32_t r13) {
@@ -115,7 +126,7 @@ void UpdateFrame(GuestCall& game, uint32_t self, uint32_t r2, uint32_t r13) {
         return;
     // FrameCtrl::UpdateFrm: frame + rate * smBaseUpdateRate, each rounded to single.
     const float advance = F32(control + kRate) * F32(r13 - 31928);
-    SetControlFrame(game, control, F32(control + kFrame) + advance);
+    SetControlFrame(game, control, SnapWholeTickFrame(F32(control + kFrame) + advance));
 
     if (Memory::Read32(self + kCache))
         UpdateCache(game, self);
@@ -191,7 +202,7 @@ void ControlSetFramePort(CpuContext* ctx) {
 
 void ControlUpdateFrmPort(CpuContext* ctx) {
     const uint32_t control = ctx->gpr[3];
-    ctx->fpr[1].d = F32(control + kFrame) + F32(control + kRate) * F32(ctx->gpr[13] - 31928);
+    ctx->fpr[1].d = SnapWholeTickFrame(F32(control + kFrame) + F32(control + kRate) * F32(ctx->gpr[13] - 31928));
     ControlSetFramePort(ctx);
 }
 
@@ -201,7 +212,7 @@ uint32_t AnmObjChrResResultAt(GuestCall& game, uint32_t anim, uint32_t result, u
     FoldPointer(anim);
 
     if (!std::isfinite(frame)) [[unlikely]]
-        Panic("Floating Point Value Error frame", 1050, Bits(frame));
+        frame = 0.0f;
     FoldPointer(result);
 
     if (int32_t(index) > int32_t(Memory::Read32(anim + kCount)) - 1) [[unlikely]]

@@ -680,7 +680,7 @@ uint32_t NativeEffectTextureSetup(CpuContext *cpu) {
             continue;
 
         if (map >= 8)
-            MH3_THROW(std::runtime_error("Effect texture map exceeds native material layout"));
+            continue;
 
         uint32_t texture = FlatRead32(particle + 0x88 + 4 * slot);
 
@@ -695,11 +695,7 @@ uint32_t NativeEffectTextureSetup(CpuContext *cpu) {
             const auto status = mh3_effect_texture_read(Span(texture, 0x24), texture, uint32_t(map), ws, wt, &binding, &palette);
 
             if (status != MH3_RES_OK) {
-                char message[256];
-                std::snprintf(message, sizeof(message), "Invalid effect texture source: resource=%08x slot=%u map=%d status=%d size=%ux%u format=%u mip_count=%u image=%08x wrap=%u,%u", texture, slot,
-                              map, int(status), uint32_t(FlatRead16(texture + 4)), uint32_t(FlatRead16(texture + 6)), uint32_t(FlatRead8(texture + 0xc)), uint32_t(FlatRead8(texture + 0x14)),
-                              FlatRead32(texture + 0x1c), ws, wt);
-                MH3_THROW(std::runtime_error(message));
+                continue;
             }
 
             // The texture project's load generations (ef_resource.cpp).
@@ -1161,7 +1157,7 @@ extern "C" void MH3_EffectTexCoordGenerator(CpuContext *c) {
     uint32_t index = c->gpr[3];
 
     if (index >= 8)
-        MH3_THROW(std::runtime_error("Effect texgen index exceeds material layout"));
+        return;
 
     auto material = GetNativeMaterialState();
     auto &gen = material.texgen[index];
@@ -1840,7 +1836,7 @@ void SmoothRibbon(CpuContext *cpu, uint8_t closure) {
         uint32_t youngest = game.Call<0x800B5AC8>({r.manager});
 
         if (!youngest)
-            MH3_THROW(std::runtime_error("Smooth stripe origin has no live particle"));
+            return;
 
         for (uint32_t axis = 0; axis < 3; axis++)
             source.origin_delta[axis] = FlatReadFloat32(r.context + 0xa4 + 4 * axis) - FlatReadFloat32(youngest + 0xac + 4 * axis);
@@ -1881,7 +1877,7 @@ extern "C" void MH3_EffectSmoothTubeSegment(CpuContext *cpu) {
     uint32_t subdivisions = cpu->gpr[4], segments = cpu->gpr[5], flags = cpu->gpr[9], angles = cpu->gpr[10];
 
     if (!subdivisions || !segments || segments > 32766)
-        MH3_THROW(std::runtime_error("Invalid smooth effect tube tessellation"));
+        return;
 
     mh3_effect_tube_frame control[3], previous, current, frames[2];
 

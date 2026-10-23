@@ -29,7 +29,7 @@
 #include "guest_call.h"
 #include "memory.h"
 #include "save_data.h"
-#include "vita_launcher.h"
+#include "native_launcher.h"
 
 #include <algorithm>
 #include <array>
@@ -137,7 +137,7 @@ void StartVillageBoot(unsigned fileIndex, unsigned character, bool city) {
     if (files[fileIndex].empty())
         MH3_THROW(std::runtime_error("Quest launch requires the selected existing save: " + (directory / ("data0" + std::to_string(fileIndex))).string()));
 
-    if (!VitaLauncher::ValidSave(files[fileIndex], character))
+    if (!NativeLauncher::ValidSave(files[fileIndex], character))
         MH3_THROW(std::runtime_error("The selected save character is invalid; create one through normal startup first"));
 
     state = State::Waiting;

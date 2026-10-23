@@ -1,8 +1,11 @@
 #include "controller_host.h"
+#include "mh3_mouse_look_sensitivity.h"
 #include "fatal.h"
 #include "dev_options.h"
 #include "../native/mh3_classic_map.h"
+#include "mh3_control_map.h"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -11,13 +14,29 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-#if defined(MH3_HAS_AURORA) && !defined(__vita__)
+#if defined(MH3_HAS_AURORA)
 #include <SDL3/SDL.h>
 #endif
 namespace {
 std::optional<ClassicControllerSample> testSample;
 uint64_t inputFrame = 0;
 bool playbackHeld = false;
+std::atomic<int32_t> pendingMouseLookX{0};
+std::atomic<int32_t> pendingMouseLookY{0};
+
+void QueueMouseDelta(std::atomic<int32_t>& target, int32_t delta) {
+    if (delta == 0)
+        return;
+
+    int32_t current = target.load(std::memory_order_relaxed);
+
+    for (;;) {
+        const int32_t next = std::clamp<int32_t>(current + delta, -512, 512);
+
+        if (target.compare_exchange_weak(current, next, std::memory_order_relaxed, std::memory_order_relaxed))
+            return;
+    }
+}
 
 // MH3_INPUT=[file=PATH][,record=PATH][,playback=PATH][,camera=N]: scripted controller
 // input. file: a one-sample control file, read every frame, replaces the host
@@ -118,6 +137,15 @@ std::optional<ClassicControllerSample> PlaybackInput() {
     return entries[next - 1].sample;
 }
 } // namespace
+
+int32_t TakeMouseLookXDelta() {
+    return pendingMouseLookX.exchange(0, std::memory_order_relaxed);
+}
+
+int32_t TakeMouseLookYDelta() {
+    return pendingMouseLookY.exchange(0, std::memory_order_relaxed);
+}
+
 #ifdef MH3_DEVELOPMENT
 int DebugCameraMonster(float* distance) {
     static float eyeDistance = 0.0f;
@@ -182,12 +210,9 @@ ClassicControllerSample ReadLiveController() {
         sample = {true, uint16_t(buttons), int16_t(lx), int16_t(ly), int16_t(rx), int16_t(ry)};
         return sample;
     }
-#if defined(__vita__)
-    (void)sample;
-    return ReadVitaController();
-#elif defined(MH3_HAS_AURORA)
+#if defined(MH3_HAS_AURORA)
     // The keyboard and the first SDL gamepad, as the Classic Controller on
-    // channel 0 (docs/optimizations/system/controller-input.md, docs/vita-controls.md).
+    // channel 0 (docs/optimizations/system/controller-input.md, docs/controls.md).
     sample.connected = true;
 
     if (!SDL_WasInit(SDL_INIT_VIDEO))
@@ -196,28 +221,76 @@ ClassicControllerSample ReadLiveController() {
     if (!SDL_WasInit(SDL_INIT_GAMEPAD) && !SDL_InitSubSystem(SDL_INIT_GAMEPAD))
         MH3_THROW(std::runtime_error(std::string("SDL controller initialization: ") + SDL_GetError()));
 
+    SDL_Window* focusedWindow = SDL_GetKeyboardFocus();
+    float mouseDeltaX = 0.0f, mouseDeltaY = 0.0f;
+    SDL_MouseButtonFlags mouseButtons = 0;
+    static SDL_Window* relativeModeWindow = nullptr;
+    static bool relativeModeUnavailable = false;
+    static bool haveFallbackMousePosition = false;
+    static float fallbackMouseX = 0.0f, fallbackMouseY = 0.0f;
+
+    if (focusedWindow) {
+        if (relativeModeWindow != focusedWindow) {
+            relativeModeWindow = focusedWindow;
+            relativeModeUnavailable = false;
+            haveFallbackMousePosition = false;
+        }
+
+        if (!relativeModeUnavailable && !SDL_GetWindowRelativeMouseMode(focusedWindow) &&
+            !SDL_SetWindowRelativeMouseMode(focusedWindow, true)) {
+            relativeModeUnavailable = true;
+            std::fprintf(stderr, "MH3: SDL relative mouse mode failed; using cursor deltas: %s\n", SDL_GetError());
+        }
+
+        if (!relativeModeUnavailable && SDL_GetWindowRelativeMouseMode(focusedWindow)) {
+            mouseButtons = SDL_GetRelativeMouseState(&mouseDeltaX, &mouseDeltaY);
+            haveFallbackMousePosition = false;
+        } else {
+            // Fallback for hosts where SDL cannot enable relative mode. It works inside the window;
+            // relative mode remains preferred because it has no edge limit.
+            float x = 0.0f, y = 0.0f;
+            mouseButtons = SDL_GetMouseState(&x, &y);
+            if (haveFallbackMousePosition) {
+                mouseDeltaX = x - fallbackMouseX;
+                mouseDeltaY = y - fallbackMouseY;
+            }
+            fallbackMouseX = x;
+            fallbackMouseY = y;
+            haveFallbackMousePosition = true;
+        }
+    } else {
+        // Drain stale movement while the game window is not focused.
+        (void)SDL_GetRelativeMouseState(nullptr, nullptr);
+        haveFallbackMousePosition = false;
+        relativeModeWindow = nullptr;
+        relativeModeUnavailable = false;
+    }
+
     const bool* keys = SDL_GetKeyboardState(nullptr);
 
-    if (SDL_GetKeyboardFocus()) {
-        static const struct {
-            SDL_Scancode key;
-            uint16_t button;
-        } bindings[] = {
-            {SDL_SCANCODE_SPACE, MH3_CL_A},       {SDL_SCANCODE_LSHIFT, MH3_CL_B},     {SDL_SCANCODE_E, MH3_CL_X},
-            {SDL_SCANCODE_F, MH3_CL_Y},           {SDL_SCANCODE_Q, MH3_CL_L},          {SDL_SCANCODE_R, MH3_CL_R},
-            {SDL_SCANCODE_Z, MH3_CL_ZL},          {SDL_SCANCODE_C, MH3_CL_ZR},         {SDL_SCANCODE_RETURN, MH3_CL_PLUS},
-            {SDL_SCANCODE_BACKSPACE, MH3_CL_MINUS}, {SDL_SCANCODE_ESCAPE, MH3_CL_HOME}, {SDL_SCANCODE_HOME, MH3_CL_HOME},
-            {SDL_SCANCODE_UP, MH3_CL_UP},         {SDL_SCANCODE_DOWN, MH3_CL_DOWN},    {SDL_SCANCODE_LEFT, MH3_CL_LEFT},
-            {SDL_SCANCODE_RIGHT, MH3_CL_RIGHT},
+    if (focusedWindow) {
+        // Teclado y raton segun Opciones > Controles (mh3_control_map.h; por defecto
+        // son los mismos que estaban fijos aqui).
+        const mh3_control_map::Mapping controls = mh3_control_map::Snapshot();
+        const auto keyBindingDown = [&](int value) {
+            if (value >= mh3_control_map::kMouseBase)
+                return (mouseButtons & SDL_BUTTON_MASK(value - mh3_control_map::kMouseBase)) != 0;
+            return value > 0 && value < SDL_SCANCODE_COUNT && keys[value];
+        };
+        const auto keyActionDown = [&](int action) {
+            for (const int value : controls.key[action])
+                if (value != mh3_control_map::kNone && keyBindingDown(value))
+                    return true;
+            return false;
         };
 
-        for (const auto& binding : bindings)
-            if (keys[binding.key])
-                sample.buttons |= binding.button;
-        sample.leftX = int16_t((int(keys[SDL_SCANCODE_D]) - int(keys[SDL_SCANCODE_A])) * 511);
-        sample.leftY = int16_t((int(keys[SDL_SCANCODE_W]) - int(keys[SDL_SCANCODE_S])) * 511);
-        sample.rightX = int16_t((int(keys[SDL_SCANCODE_L]) - int(keys[SDL_SCANCODE_J])) * 511);
-        sample.rightY = int16_t((int(keys[SDL_SCANCODE_I]) - int(keys[SDL_SCANCODE_K])) * 511);
+        for (int action = 0; action < mh3_control_map::kPadActionCount; ++action)
+            if (keyActionDown(action))
+                sample.buttons |= mh3_control_map::ClassicBit(action);
+
+        sample.leftX = int16_t((int(keyActionDown(mh3_control_map::kMoveRight)) - int(keyActionDown(mh3_control_map::kMoveLeft))) * 511);
+        sample.leftY = int16_t((int(keyActionDown(mh3_control_map::kMoveUp)) - int(keyActionDown(mh3_control_map::kMoveDown))) * 511);
+        // The mouse controls yaw/pitch through relative deltas, not a held virtual stick.
     }
 
     static SDL_Gamepad* pad = nullptr;
@@ -236,25 +309,45 @@ ClassicControllerSample ReadLiveController() {
 
         SDL_free(ids);
     }
+// MH3_MOUSE_LOOK_TUNE: sensibilidad configurable desde Opciones > Controles.
+    static double mh3MouseLookRemainderX = 0.0;
+    static double mh3MouseLookRemainderY = 0.0;
+const double mh3MouseLookSensitivity = mh3_mouse_look_sensitivity::GetSensitivity();
+    if (focusedWindow) {
+        // SDL suma X hacia la derecha e Y hacia abajo; invertimos ambos para la camara.
+        mh3MouseLookRemainderX -= std::clamp(double(mouseDeltaX), -512.0, 512.0) * mh3MouseLookSensitivity;
+        mh3MouseLookRemainderY += std::clamp(double(mouseDeltaY), -512.0, 512.0) * mh3MouseLookSensitivity;
+        const int32_t adjustedMouseX = int32_t(std::trunc(mh3MouseLookRemainderX));
+        const int32_t adjustedMouseY = int32_t(std::trunc(mh3MouseLookRemainderY));
+        mh3MouseLookRemainderX -= double(adjustedMouseX);
+        mh3MouseLookRemainderY -= double(adjustedMouseY);
+        QueueMouseDelta(pendingMouseLookX, std::clamp<int32_t>(adjustedMouseX, -512, 512));
+        QueueMouseDelta(pendingMouseLookY, std::clamp<int32_t>(adjustedMouseY, -512, 512));
+    } else {
+        pendingMouseLookX.store(0, std::memory_order_relaxed);
+        pendingMouseLookY.store(0, std::memory_order_relaxed);
+        mh3MouseLookRemainderX = 0.0;
+        mh3MouseLookRemainderY = 0.0;
+    }
 
     if (pad) {
-        // Face buttons by position (east = A, south = B, north = X, west =
-        // Y). The analog triggers are the Classic L/R triggers, the bumpers
-        // ZL/ZR, as on the original Classic Controller.
-        static const struct {
-            SDL_GamepadButton source;
-            uint16_t button;
-        } bindings[] = {
-            {SDL_GAMEPAD_BUTTON_EAST, MH3_CL_A},           {SDL_GAMEPAD_BUTTON_SOUTH, MH3_CL_B},          {SDL_GAMEPAD_BUTTON_NORTH, MH3_CL_X},
-            {SDL_GAMEPAD_BUTTON_WEST, MH3_CL_Y},           {SDL_GAMEPAD_BUTTON_DPAD_UP, MH3_CL_UP},       {SDL_GAMEPAD_BUTTON_DPAD_DOWN, MH3_CL_DOWN},
-            {SDL_GAMEPAD_BUTTON_DPAD_LEFT, MH3_CL_LEFT},   {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, MH3_CL_RIGHT}, {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, MH3_CL_ZL},
-            {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, MH3_CL_ZR}, {SDL_GAMEPAD_BUTTON_START, MH3_CL_PLUS},      {SDL_GAMEPAD_BUTTON_BACK, MH3_CL_MINUS},
-            {SDL_GAMEPAD_BUTTON_GUIDE, MH3_CL_HOME},
+        // Botones y gatillos segun Opciones > Controles. Por defecto: botones de la
+        // cara por posicion (este = A, sur = B, norte = X, oeste = Y), hombros
+        // superiores = L/R y gatillos inferiores analogicos = ZL/ZR.
+        const mh3_control_map::Mapping padControls = mh3_control_map::Snapshot();
+        const auto padBindingDown = [&](int value) {
+            if (value >= mh3_control_map::kAxisBase)
+                return SDL_GetGamepadAxis(pad, SDL_GamepadAxis(value - mh3_control_map::kAxisBase)) > 16383;
+            return SDL_GetGamepadButton(pad, SDL_GamepadButton(value));
         };
 
-        for (const auto& binding : bindings)
-            if (SDL_GetGamepadButton(pad, binding.source))
-                sample.buttons |= binding.button;
+        for (int action = 0; action < mh3_control_map::kPadActionCount; ++action)
+            for (const int value : padControls.pad[action])
+                if (value != mh3_control_map::kNone && padBindingDown(value)) {
+                    sample.buttons |= mh3_control_map::ClassicBit(action);
+                    break;
+                }
+
         const auto axis = [&](SDL_GamepadAxis source) {
             return std::clamp(SDL_GetGamepadAxis(pad, source) / 32767.0f, -1.0f, 1.0f);
         };
@@ -265,20 +358,9 @@ ClassicControllerSample ReadLiveController() {
 
         if (!sample.rightX && !sample.rightY)
             mh3_classic_stick(axis(SDL_GAMEPAD_AXIS_RIGHTX), -axis(SDL_GAMEPAD_AXIS_RIGHTY), &mh3_gamepad_stick_curve, &sample.rightX, &sample.rightY);
-
-        sample.triggerL = uint8_t(std::lround(std::max(0.0f, axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER)) * 255));
-        sample.triggerR = uint8_t(std::lround(std::max(0.0f, axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)) * 255));
-
-        // The Classic's digital L/R close at the end of the trigger's travel;
-        // half way is kinder to worn gamepad triggers.
-        if (sample.triggerL > 127)
-            sample.buttons |= MH3_CL_L;
-
-        if (sample.triggerR > 127)
-            sample.buttons |= MH3_CL_R;
     }
 
-    // A digital L/R (keyboard) is a fully pressed trigger.
+    // Digital L/R inputs (keyboard, mouse or shoulder) report a full press.
     if (sample.buttons & MH3_CL_L)
         sample.triggerL = 255;
 

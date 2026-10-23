@@ -10,24 +10,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-#ifdef __vita__
-#include <psp2/kernel/processmgr.h>
-#include <unwind.h>
-#endif
 
 namespace {
-#if defined(__vita__) && !defined(MH3_NO_UNWIND_TABLES)
-_Unwind_Reason_Code NativeFrame(_Unwind_Context *context, void *user) {
-    auto &count = *static_cast<unsigned *>(user);
-    const uintptr_t address = _Unwind_GetIP(context);
-
-    if (!address || count == 64)
-        return _URC_END_OF_STACK;
-
-    std::fprintf(stderr, "  #%u %p\n", count++, reinterpret_cast<void *>(address));
-    return _URC_NO_REASON;
-}
-#endif
 Status FatalMessage(uint32_t address, mh3_res_span &message) {
     size_t bytes = 0;
 
@@ -90,15 +74,6 @@ extern "C" [[noreturn]] void MH3_OSFatal(CpuContext *cpu) {
     ShowRuntimeFatalPopup("MH3 fatal error", diagnostic);
     MarkFatalErrorReported();
     DumpHostStackTraceForRuntimeHelper();
-#ifdef __vita__
-#ifndef MH3_NO_UNWIND_TABLES
-    unsigned frames = 0;
-    std::fputs("Native OSFatal backtrace:\n", stderr);
-    _Unwind_Backtrace(NativeFrame, &frames);
-#endif
-    std::fflush(nullptr);
-    sceKernelExitProcess(1);
-#endif
     std::fflush(nullptr);
     std::_Exit(EXIT_FAILURE);
 }

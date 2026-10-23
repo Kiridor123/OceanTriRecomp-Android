@@ -26,7 +26,7 @@ class GuestThread {
         uint64_t jobs = 0, jobNs = 0, waits = 0, waitNs = 0;
     };
 
-    // role: its PpcThread record (Worker or Draw); core: the Vita core it
+    // role: its PpcThread record (Worker or Draw); core: the host core it
     // asks for (core 0 when that one is not available).
     GuestThread(const char* name, unsigned role, unsigned core) : name_(name), role_(role), core_(core) {}
 
@@ -69,7 +69,7 @@ class GuestThread {
     void Await() const;
 
     // How long the thread spins for the next job before it parks (0: parks at
-    // once). Waking a parked thread on the Vita takes up to 2 ms; a thread
+    // once). Waking a parked thread on the host takes up to 2 ms; a thread
     // alone on its core can spin through its idle time instead.
     void SetIdleSpin(uint32_t us) { idleSpinUs_.store(us, std::memory_order_relaxed); }
 

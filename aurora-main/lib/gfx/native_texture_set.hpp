@@ -18,16 +18,10 @@
 #include <mutex>
 #include <string>
 #include <vector>
-#ifdef __vita__
-#include <psp2/io/fcntl.h>
-#include <psp2/io/stat.h>
-#include <psp2/kernel/sysmem.h>
-#else
 #include <cerrno>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#endif
 
 namespace aurora::gfx {
 class NativeTextureSet {
@@ -86,7 +80,7 @@ public:
 
     // The payloads into memory now, in one read (the asset cache adds a pack
     // while the game loads): a texture's first use then copies from RAM. On
-    // the Vita's card a read at first use stalled the render thread 12-30 ms
+    // the host's card a read at first use stalled the render thread 12-30 ms
     // each, most of it opening the file.
     pack->first = 32 + table.size();
     const uint64_t payloadBytes = end - pack->first;
@@ -103,7 +97,7 @@ public:
       file.read(region, pack->first, payloadBytes);
 
     // A resident pack's file closes: the process's open files are limited
-    // (the Vita's sceIo), and a session reads hundreds of packs. One evicted
+    // (the host's hostIo), and a session reads hundreds of packs. One evicted
     // later reads from its file reopened (read below).
     if (!region)
       pack->file = std::make_unique<File>(std::move(file));
@@ -206,7 +200,7 @@ public:
   };
 
 private:
-  // The resident payloads share one 48 MiB ring of main memory (on the Vita
+  // The resident payloads share one 48 MiB ring of main memory (on the host
   // its own memory block, outside the libc heap). Packs go in at the head;
   // the head wrapping round evicts the oldest, which read from their files
   // again.
@@ -220,17 +214,7 @@ private:
   static Arena& resident_arena() {
     static Arena arena = [] {
       Arena a;
-#ifdef __vita__
-      const SceUID block = sceKernelAllocMemBlock("MH3 texture packs", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW, ArenaBytes, nullptr);
-      void* base = nullptr;
-
-      if (block >= 0 && sceKernelGetMemBlockBase(block, &base) >= 0)
-        a = {static_cast<uint8_t*>(base), ArenaBytes, 0};
-      else
-        std::fprintf(stderr, "aurora: no memory for resident texture packs (%08x); they read from their files\n", unsigned(block));
-#else
       a = {new uint8_t[ArenaBytes], ArenaBytes, 0};
-#endif
       return a;
     }();
     return arena;
@@ -285,21 +269,6 @@ private:
 
     File(File&& other) noexcept : size(other.size), m_path(std::move(other.m_path)), m_fd(std::exchange(other.m_fd, -1)) {}
     explicit File(const std::string& path) : m_path(path) {
-#ifdef __vita__
-      m_fd = sceIoOpen(path.c_str(), SCE_O_RDONLY, 0);
-      SceIoStat st{};
-
-      if (m_fd < 0) {
-        char what[32];
-        std::snprintf(what, sizeof(what), "open (0x%08X)", unsigned(m_fd));
-        fail(what);
-      }
-
-      if (sceIoGetstatByFd(m_fd, &st) < 0)
-        fail("stat");
-
-      size = st.st_size;
-#else
       m_fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
       struct stat st{};
 
@@ -307,17 +276,11 @@ private:
         fail("open");
 
       size = st.st_size;
-#endif
     }
 
     ~File() {
-#ifdef __vita__
-      if (m_fd >= 0)
-        sceIoClose(m_fd);
-#else
       if (m_fd >= 0)
         ::close(m_fd);
-#endif
     }
 
     void read(void* out, uint64_t offset, size_t bytes) const {
@@ -328,14 +291,10 @@ private:
 
       for (size_t done = 0; done < bytes;) {
         const size_t amount = std::min<size_t>(bytes - done, 1u << 20);
-#ifdef __vita__
-        const int n = sceIoPread(m_fd, p + done, amount, offset + done);
-#else
         const auto n = ::pread(m_fd, p + done, amount, off_t(offset + done));
 
         if (n < 0 && errno == EINTR)
           continue;
-#endif
         if (n <= 0)
           fail("read");
 

@@ -5,7 +5,7 @@
 #include <cstdlib>
 
 // What main sets to add to a fatal report: the guest CPU state, and the
-// report in the crash log (on the Vita stderr reaches only a devkit's TTY).
+// report in the crash log (on the host stderr reaches only a devkit's TTY).
 inline void (*fatalReportHook)(const char* what) = nullptr;
 
 // Stops the game with a message, as an exception that reached main's report

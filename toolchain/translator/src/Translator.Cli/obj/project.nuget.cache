@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "oGnlAAsprys=",
+  "success": true,
+  "projectFilePath": "C:\\mh3src\\toolchain\\translator\\src\\Translator.Cli\\Translator.Cli.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Kris\\.nuget\\packages\\yamldotnet\\15.1.2\\yamldotnet.15.1.2.nupkg.sha512"
+  ],
+  "logs": []
+}

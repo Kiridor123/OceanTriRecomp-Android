@@ -26,7 +26,7 @@ void UnregisterNativeModelGPU(uintptr_t handle, uint64_t generation);
 void ClearNativeModelGPU();
 /* Physical model backing only, including retired storage until notifications
  * complete. Queries collect completed storage without waiting. The allocation
- * cost includes Vita's 256 KiB memblock rounding. */
+ * cost includes host's 256 KiB memblock rounding. */
 size_t NativeModelGPUAllocationBytes(uint32_t payload_bytes);
 size_t NativeModelGPUResidentBytes();
 

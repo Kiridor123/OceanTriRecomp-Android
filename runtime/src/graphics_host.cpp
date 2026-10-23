@@ -1,3 +1,11 @@
+void aurora_enable_vsync(bool enabled);
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+#include <fstream>
 #include "gx_host.h"
 #include "fatal.h"
 #include "gx_panic.h"
@@ -9,6 +17,7 @@
 #include "native_frame_packet.h"
 #include "guest_worker.h"
 #include "asset_cache.h"
+#include "settings_overlay.h"
 #include "button_glyphs.h"
 #include "model_assets.h"
 #include "runtime/native/adapters/model_scope_bridge.h"
@@ -18,11 +27,6 @@
 #include "ios_host.h"
 #include "audio_output_statistics.h"
 #include "audio_dma_statistics.h"
-#ifdef __vita__
-#include "../vita/platform.h"
-#include "gxm/device.hpp"
-#include "gxm/residency.hpp"
-#endif
 #include "memory.h"
 #include "game_step.h"
 #include "gx_stream.h"
@@ -88,6 +92,23 @@ uint32_t process(const uint8_t*, uint32_t, bool);
 } // namespace aurora::gx::fifo
 
 namespace {
+std::atomic<bool> g_nativeVsyncEnabled{true};
+} // namespace
+
+bool NativeVsyncEnabled() noexcept {
+    return g_nativeVsyncEnabled.load(std::memory_order_relaxed);
+}
+
+void aurora_enable_vsync(bool enabled) {
+    g_nativeVsyncEnabled.store(enabled, std::memory_order_relaxed);
+    // Una vez iniciado, el contexto GL pertenece al hilo de render. Desde el hilo del juego
+    // el cambio se encola; llamarlo directo aborta con "GL task called outside the game thread".
+    if (aurora::gl::on_render_thread() || !NativeRenderThreadRunning())
+        aurora::gl::set_vsync(enabled);
+    else
+        QueueNativeGraphicsTask(NativeTaskOrder::BeforeDraws, [enabled] { aurora::gl::set_vsync(enabled); });
+}
+namespace {
 bool initialized = false;
 bool frameActive = false;
 bool gpuSynchronized = true, displayCopyPending = false;
@@ -111,11 +132,8 @@ bool displayWidescreen = false;
 bool upscaling = true;
 uint32_t msaa = 1;
 
-// Every host renders for the Vita's display; other hosts scale it into their window.
+// Every host renders for the host's display; other hosts scale it into their window.
 constexpr uint32_t DisplayWidth = 960, DisplayHeight = 544;
-#ifdef __vita__
-static_assert(DisplayWidth == aurora::gxm::Device::Width && DisplayHeight == aurora::gxm::Device::Height);
-#endif
 AuroraNativeTargetAspect DisplayAspect(bool widescreen) {
     return widescreen ? AURORA_NATIVE_TARGET_FILL : AURORA_NATIVE_TARGET_FIT;
 }
@@ -123,14 +141,30 @@ AuroraNativeTargetAspect DisplayAspect(bool widescreen) {
 // The target's scale (VISetFrameBufferScale): 0 sizes it for the display
 // surface, 1 gives it the Wii's 448 rows at the display aspect (FILL) or its
 // own 640x448 (FIT); presentation scales it to the display, filtered.
+// MH3_SCALE_FROM_FILE: escala guardada en MH3UI.graphics (3er valor), independiente del orden de arranque.
+static float Mh3SavedRenderScale() {
+#if defined(_WIN32)
+    static constexpr float scales[] = {1.2053571f, 1.6071429f, 2.0089286f, 2.4107143f, 3.2142857f, 4.8214286f};
+    wchar_t path[32768]{};
+    const DWORD len = GetModuleFileNameW(nullptr, path, 32768);
+    if (len > 0 && len < 32768) {
+        std::ifstream f(std::filesystem::path(std::wstring(path, len)).parent_path() / L"MH3UI.graphics");
+        int samples = 0, vsync = 0, res = 0;
+        if (f >> samples >> vsync >> res)
+            return scales[std::clamp(res, 0, 5)];
+    }
+#endif
+    return 0.f;
+}
 float RenderScale() {
-#ifdef MH3_DEVELOPMENT
+#if 1 // habilitado tambien en release (Windows)
     // MH3_RENDER_SCALE=n: n times the native resolution, whatever the window
     // size and the upscaling setting (captures are at that size).
     if (const char* v = std::getenv("MH3_RENDER_SCALE"))
         if (const float n = std::strtof(v, nullptr); n > 0)
             return n;
 #endif
+    if (const float saved = Mh3SavedRenderScale(); saved > 0) return saved; // MH3_SCALE_FROM_FILE
     return upscaling ? 0.f : 1.f;
 }
 
@@ -170,6 +204,7 @@ std::atomic<uint64_t> guestCopies{0}; // logical frames, counted on the game thr
 #endif
 
 void ShutdownGraphics() {
+    settings_overlay::ReleaseControllers();
     if (initialized) {
         // Drain the render thread; it hands the graphics context back.
         StopNativeRenderThread();
@@ -193,7 +228,7 @@ void ShutdownGraphics() {
 // Opens the texture packs the asset cache hands on while the game loads, one
 // at a time, reading each pack's payloads into memory (aurora's native
 // texture set): at a texture's first use the render thread then copies from
-// RAM instead of reading the card (12-30 ms a texture on the Vita, a visible
+// RAM instead of reading the card (12-30 ms a texture on the host, a visible
 // stutter when something new appears).
 class PackPreloader {
   public:
@@ -224,7 +259,7 @@ class PackPreloader {
             {
                 std::unique_lock guard(lock);
 
-                // Timed: VitaSDK's condition variable can lose a notification.
+                // Timed: the platform's condition variable can lose a notification.
                 while (packs.empty())
                     wake.wait_for(guard, std::chrono::milliseconds(100));
 
@@ -248,14 +283,10 @@ void OpenNativeAssets() {
     const auto nativePack = std::filesystem::path(nativeRoot ? nativeRoot
                                                   : discRoot ? discRoot
                                                              :
-#ifdef __vita__
-                                                             "ux0:/data/mh3-wii"
-#else
                                                              "Assets/DATA"
-#endif
                                                   ) /
                             "native-textures.bin";
-    // The Vita's buttons on the atlases decoded from guest memory.
+    // The host's buttons on the atlases decoded from guest memory.
     aurora::set_native_texture_patch([](const aurora::NativeTextureSource& source, uint8_t* rgba) {
         ButtonGlyphs::PatchSource(source.format, source.width, source.height, source.bytes, rgba);
     });
@@ -291,61 +322,106 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
     const char* userRoot = std::getenv("MH3_USER_DIR");
     const auto graphicsRoot = (userRoot ? std::filesystem::path(userRoot) : "saves") / "graphics";
     std::filesystem::create_directories(graphicsRoot / "cache");
-#ifdef __vita__
-    // libstdc++'s POSIX absolute() treats the Vita mount prefix as relative.
-    const auto user = graphicsRoot.string();
-    const auto cache = (graphicsRoot / "cache").string();
-#else
     const auto user = std::filesystem::absolute(graphicsRoot).string();
     const auto cache = std::filesystem::absolute(graphicsRoot / "cache").string();
-#endif
     AuroraConfig config{};
     config.appName = "Monster Hunter Tri";
     config.userPath = user.c_str();
     config.cachePath = cache.c_str();
-#ifdef AURORA_GXM
-    config.desiredBackend = BACKEND_GXM;
-#elif defined(AURORA_WEBGPU)
+#if defined(AURORA_WEBGPU)
     config.desiredBackend = BACKEND_WEBGPU;
 #else
     config.desiredBackend = BACKEND_OPENGLES;
 #endif
-    // The window starts at the display size; any size shows the same target.
+    // Start with a compact desktop window. The in-game settings panel can resize
+    // the SDL window and persists its choice beside the executable.
     config.windowWidth = DisplayWidth;
     config.windowHeight = DisplayHeight;
-#ifdef MH3_DEVELOPMENT
-    // MH3_WINDOW_SCALE=n: an n times larger window. It only shows the picture
-    // larger: pair it with MH3_RENDER_SCALE to render at that resolution.
-    if (const char* v = std::getenv("MH3_WINDOW_SCALE")) {
-        const int n = std::atoi(v);
-
-        if (n > 1) {
-            config.windowWidth *= n;
-            config.windowHeight *= n;
-        }
-    }
-#endif
     // MH3_MSAA=2, 4 or off: the launcher's MSAA setting for runs started without it.
     uint32_t samples = msaa;
-#ifdef MH3_DEVELOPMENT
+#if 1 // habilitado tambien en release (Windows)
     if (const char* v = std::getenv("MH3_MSAA"))
         samples = std::strcmp(v, "4") == 0 ? 4 : std::strcmp(v, "2") == 0 ? 2 : 1;
 #endif
     config.msaa = samples;
     config.maxTextureAnisotropy = 1;
+    // MH3_PERGAMINO_GRAPHICS_SETTINGS_BEGIN
+    bool mh3UiVsyncAtStartup = true;
+    int mh3UiRenderer = 0; // 0 = Vulkan (ANGLE), 1 = OpenGL ES
+    {
+        int mh3UiMsaaSamples = 1;
+        int mh3UiVsync = 1;
+        int mh3UiRenderResolution = 0;
+#if defined(_WIN32)
+        wchar_t mh3UiModulePath[32768]{};
+        const DWORD mh3UiPathLength = GetModuleFileNameW(nullptr, mh3UiModulePath, 32768);
+        if (mh3UiPathLength > 0 && mh3UiPathLength < 32768) {
+            const std::filesystem::path mh3UiExePath(std::wstring(mh3UiModulePath, mh3UiPathLength));
+            std::ifstream mh3UiGraphicsFile(mh3UiExePath.parent_path() / L"MH3UI.graphics");
+            if (mh3UiGraphicsFile >> mh3UiMsaaSamples >> mh3UiVsync) {
+                mh3UiGraphicsFile >> mh3UiRenderResolution;
+                int mh3UiSavedFpsLimit = 60;
+                mh3UiGraphicsFile >> mh3UiSavedFpsLimit;
+                mh3UiGraphicsFile >> mh3UiRenderer;
+                int mh3UiSavedFullscreen = 0; // MH3_FULLSCREEN_START
+                if (mh3UiGraphicsFile >> mh3UiSavedFullscreen)
+                    config.startFullscreen = mh3UiSavedFullscreen != 0;
+            }
+        }
+#endif
+        mh3UiVsyncAtStartup = mh3UiVsync != 0;
+        if (mh3UiMsaaSamples == 1 || mh3UiMsaaSamples == 4)
+            config.msaa = static_cast<decltype(config.msaa)>(mh3UiMsaaSamples);
+
+        static constexpr const char* mh3UiRenderScaleValues[] = {
+            "1.2053571", "1.6071429", "2.0089286", "2.4107143", "3.2142857", "4.8214286"
+        };
+        const int mh3UiScaleIndex = std::clamp(mh3UiRenderResolution, 0, 5);
+#if defined(_WIN32)
+        _putenv_s("MH3_RENDER_SCALE", mh3UiRenderScaleValues[mh3UiScaleIndex]);
+#else
+        setenv("MH3_RENDER_SCALE", mh3UiRenderScaleValues[mh3UiScaleIndex], 1);
+#endif
+    }
+    // MH3_PERGAMINO_GRAPHICS_SETTINGS_END
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+    config.desiredBackend = (mh3UiRenderer == 1) ? BACKEND_OPENGLES : BACKEND_VULKAN;
+#endif
     const auto info = aurora_initialize(argc, argv, &config);
+    aurora_enable_vsync(mh3UiVsyncAtStartup);
 
     if (info.initializationStatus != AURORA_INITIALIZATION_SUCCESS)
         MH3_THROW(std::runtime_error(info.initializationError ? info.initializationError : "Aurora initialization failed"));
 
+    settings_overlay::AttachWindow(info.window);
+    settings_overlay::InitializeRuntimeSettings();
     initialized = true;
     std::atexit(ShutdownGraphics);
 
     if (loadNativeAssets)
         OpenNativeAssets();
 
-    if (info.backend != config.desiredBackend)
-        MH3_THROW(std::runtime_error("Aurora did not select the required renderer"));
+    // MH3_ALLOW_VULKAN_FALLBACK_TO_GLES
+    if (info.backend != config.desiredBackend) {
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+        if (config.desiredBackend == BACKEND_VULKAN && info.backend == BACKEND_OPENGLES) {
+            // Aurora already logged the EGL/Vulkan initialization failure and switched to ANGLE/GLES.
+            // Keep the game running on that fallback rather than aborting startup.
+            config.desiredBackend = info.backend;
+            MessageBoxW(nullptr,
+                L"Vulkan could not be initialized. Monster Hunter Tri will continue using ANGLE/OpenGL ES via Direct3D 11. See MH3.log for the EGL error.",
+                L"Monster Hunter Tri - Vulkan fallback",
+                MB_OK | MB_ICONWARNING);
+        } else
+#endif
+        {
+            if (info.backend != BACKEND_NULL) {
+                config.desiredBackend = info.backend;
+            } else {
+                MH3_THROW(std::runtime_error("Aurora did not select the required renderer"));
+            }
+        }
+    }
     // Frameskip polls GPU completion before native draw preparation.
     aurora_set_frameskip(true);
 #ifdef MH3_DEVELOPMENT
@@ -378,7 +454,7 @@ void SealDisplayFrame() {
 
     if (captureInterval && frame >= captureStart && frame % captureInterval == 0) {
         const auto path = capturePath.parent_path() / (capturePath.stem().string() + "-" + std::to_string(frame) + ".bmp");
-        aurora_request_frame_capture(frame, path.c_str());
+        aurora_request_frame_capture(frame, path.string().c_str());
     }
 #ifdef MH3_DEVELOPMENT
     {
@@ -393,6 +469,7 @@ void SealDisplayFrame() {
 #endif
 
     { aurora_end_frame(); }
+    settings_overlay::AdvancePresentedFrame();
     frameActive = false;
     displayCopyPending = false;
 }
@@ -401,9 +478,14 @@ bool quitRequested = false;
 
 // Reads the host events; a quit is kept for ServiceHostGraphicsEvents.
 void PollHostGraphicsEvents() {
-    for (const auto* event = aurora_update(); event && event->type != AURORA_NONE; ++event)
+    const auto* events = aurora_update();
+    settings_overlay::HandleEvents(events);
+
+    for (const auto* event = events; event && event->type != AURORA_NONE; ++event)
         if (event->type == AURORA_EXIT)
             quitRequested = true;
+
+    settings_overlay::Pump();
 }
 
 #ifdef MH3_DEVELOPMENT
@@ -645,9 +727,6 @@ aurora::SceneFeedbackStats ReadSceneFeedbackStats() {
 // Logical FPS counts complete game steps. Submitted FPS counts presentation
 // requests; on GXM a separate counter measures completed display flips.
 void ReportHostSpeed([[maybe_unused]] double ticks, [[maybe_unused]] double nominalHz) {
-#ifdef __vita__
-    ReportVitaMemory();
-#endif
 #ifdef MH3_DEVELOPMENT
     static const bool enabled = [] {
         const char* value = std::getenv("MH3_STATS");
@@ -664,9 +743,6 @@ void ReportHostSpeed([[maybe_unused]] double ticks, [[maybe_unused]] double nomi
     static auto lastWaits = aurora::gfx::staging_wait_counters();
     static auto previousFeedback = ReadSceneFeedbackStats();
     static auto previousRender = ReadNativeRenderThreadStatistics();
-#ifdef AURORA_GXM
-    static auto previousDisplay = aurora::gxm::display_statistics();
-#endif
     const auto now = Clock::now();
     const double seconds = std::chrono::duration<double>(now - last).count();
 
@@ -765,38 +841,6 @@ void ReportHostSpeed([[maybe_unused]] double ticks, [[maybe_unused]] double nomi
 
     previousRender = render;
     ReportNativeRenderThreadStall();
-#ifdef AURORA_GXM
-    const auto display = aurora::gxm::display_statistics();
-    std::fprintf(stderr, "MH3 native work: displayed %.1f fps, backlog %u, scenes_pending %u, display_errors %u, callback wait %.2f ms/s (core 3)\n",
-                 uint32_t(display.presented - previousDisplay.presented) / seconds, display.backlog, display.pending_scenes, display.failures,
-                 (display.callback_wait_us - previousDisplay.callback_wait_us) / (1000.0 * seconds));
-    // Pacing: how much each flip interval differs from the game time its frame
-    // advanced (0 = even motion), and the flip intervals in VBlanks.
-    if (const uint64_t flips = display.paced_flips - previousDisplay.paced_flips)
-        std::fprintf(stderr, "MH3 native work: pacing error %.2f ms avg/%.2f max over %llu flips; flip intervals 1/2/3/4+ VBlanks %llu/%llu/%llu/%llu\n",
-                     (display.pacing_error_us - previousDisplay.pacing_error_us) / (1000.0 * double(flips)), display.pacing_error_max_us / 1000.0,
-                     static_cast<unsigned long long>(flips), static_cast<unsigned long long>(display.flip_vblanks[0] - previousDisplay.flip_vblanks[0]),
-                     static_cast<unsigned long long>(display.flip_vblanks[1] - previousDisplay.flip_vblanks[1]),
-                     static_cast<unsigned long long>(display.flip_vblanks[2] - previousDisplay.flip_vblanks[2]),
-                     static_cast<unsigned long long>(display.flip_vblanks[3] - previousDisplay.flip_vblanks[3]));
-
-    // Latency: input read to flip, and its parts.
-    if (const uint64_t flips = display.latency_flips - previousDisplay.latency_flips) {
-        const auto ms = [&](unsigned part) { return (display.latency_us[part] - previousDisplay.latency_us[part]) / (1000.0 * double(flips)); };
-        std::fprintf(stderr, "MH3 native work: latency input to flip %.2f ms avg/%.2f max over %llu flips: game %.2f, render queue+replay %.2f, GPU+display queue %.2f, VBlank %.2f\n",
-                     ms(0) + ms(1) + ms(2) + ms(3), display.latency_max_us / 1000.0, static_cast<unsigned long long>(flips), ms(0), ms(1), ms(2), ms(3));
-    }
-
-    previousDisplay = display;
-
-    const auto residency = aurora::gxm::residency_statistics();
-    std::fprintf(stderr,
-                 "MH3 native CDRAM: arena %.2f/%.2f MiB, textures %.2f MiB (%u live/%u pinned/%u GPU-written), retired textures %.2f MiB, models %.2f MiB + %.2f MiB retired, spill main/phycont "
-                 "%.2f/%.2f MiB\n",
-                 residency.arena_used / 1048576.0, residency.arena_capacity / 1048576.0, residency.texture_bytes / 1048576.0, residency.textures, residency.pinned_textures,
-                 residency.gpu_written_textures, residency.retired_texture_bytes / 1048576.0, residency.model_bytes / 1048576.0, residency.retired_model_bytes / 1048576.0,
-                 residency.main_spill_bytes / 1048576.0, residency.phycont_spill_bytes / 1048576.0);
-#endif
     NativeAudio::ReportNativeAudioStatistics(seconds);
     ReportDiscStatistics(seconds);
     const auto feedback = ReadSceneFeedbackStats();
@@ -1150,3 +1194,19 @@ int RunGraphicsCheck(int argc, char** argv) {
                  pixel[0], pixel[1], pixel[2], pixel[3]);
     return 0;
 }
+
+// MH3_FORCE_SDL_EGL: el contexto OpenGL ES de SDL debe crearse por EGL (ANGLE), porque las funciones gl*
+// se enlazan contra libGLESv2.dll de ANGLE. Con un contexto WGL nativo, glGetString devuelve NULL y el
+// juego no abre en algunos equipos. Se fija antes de main(), antes de que SDL se inicialice.
+#if defined(_WIN32) && defined(AURORA_ANGLE_VULKAN)
+#include <SDL3/SDL_hints.h>
+namespace {
+struct Mh3ForceSdlEgl {
+    Mh3ForceSdlEgl() {
+        SDL_SetHint(SDL_HINT_VIDEO_FORCE_EGL, "1");
+        SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
+    }
+};
+const Mh3ForceSdlEgl g_mh3ForceSdlEgl;
+} // namespace
+#endif

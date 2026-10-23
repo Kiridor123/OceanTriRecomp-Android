@@ -1,0 +1,12 @@
+prefix=C:/Program Files (x86)/MH3Recompiled
+exec_prefix=C:/Program Files (x86)/MH3Recompiled
+libdir=C:/Program Files (x86)/MH3Recompiled/lib
+includedir=C:/Program Files (x86)/MH3Recompiled/include/libpng16
+
+Name: libpng
+Description: Loads and saves PNG files
+Version: 1.6.58
+Requires.private: zlib
+Libs: -L${libdir} -lpng16
+Libs.private: -lz -lm
+Cflags: -I${includedir}

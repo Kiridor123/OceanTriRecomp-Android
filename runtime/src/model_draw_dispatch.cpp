@@ -285,7 +285,7 @@ struct Scene {
     // A slow model draw's parts (MH3_ModelSceneDraw): task virtual, handler,
     // virtual, callback, source, draw pass; the slowest handler task. Timed
     // with MH3_PROFILE=split only: the clock reads and conversions of every
-    // part took about 3% of the Vita's draw thread.
+    // part took about 3% of the host's draw thread.
     double ms[6]{};
     unsigned slowTask = 0;
     double slowTaskMs = 0;

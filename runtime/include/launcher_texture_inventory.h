@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace VitaLauncher::TextureInventory {
+namespace NativeLauncher::TextureInventory {
 inline constexpr uint32_t MaxSourceBytes = 8 * 1024 * 1024, MaxAssets = 32768, MaxContainers = 4096;
 inline constexpr size_t MaxNameBytes = 256;
 struct Texture {
@@ -469,4 +469,4 @@ inline Status ValidateSource(std::span<const uint8_t> source, uint64_t partition
 
     return {};
 }
-} // namespace VitaLauncher::TextureInventory
+} // namespace NativeLauncher::TextureInventory

@@ -3,7 +3,7 @@
 #include "gx_host.h"
 #include "efb_host.h"
 
-#ifndef __vita__
+#if !defined(_WIN32)
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -103,7 +103,7 @@ void ExpectPanic(const char* name, const char* message, CpuContext* cpu, const s
 #endif
 
 void RunGxPanicSelfTests(CpuContext* cpu) {
-#ifndef __vita__
+#if !defined(_WIN32)
     unsigned checked = 0;
     const auto expect = [&](const char* name, const char* message, auto operation) {
         ExpectPanic(name, message, cpu, operation);
@@ -165,6 +165,6 @@ void RunGxPanicSelfTests(CpuContext* cpu) {
 #endif
     std::fprintf(stderr, "MH3 GX tripwire self-test: %u fatal paths, guest and native backtraces matched\n", checked);
 #else
-    (void)cpu; // Fatal-path isolation uses Linux fork; the same entries ship on Vita.
+    (void)cpu; // Fatal-path isolation uses Linux fork; the same entries ship on Native.
 #endif
 }

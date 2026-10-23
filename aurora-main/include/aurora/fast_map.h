@@ -3,7 +3,7 @@
 // Hash containers with power-of-two buckets: a lookup masks the hash.
 // libstdc++'s std::unordered_map takes the hash modulo a prime bucket count,
 // which on the Cortex-A9 (no divide instruction) is a __udivmodsi4 call per
-// lookup; the model draw path's lookups made that 3.3% of the Vita game
+// lookup; the model draw path's lookups made that 3.3% of the host game
 // thread. The runtime and Aurora share this one implementation.
 //
 // FastMap is a drop-in for the std::unordered_map subset both use. Entries

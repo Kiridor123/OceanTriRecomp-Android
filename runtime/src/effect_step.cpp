@@ -68,7 +68,7 @@ extern "C" void MH3_AnimCurveExecuteRotate(CpuContext*);
 #ifdef MH3_DEVELOPMENT
 #include "dev_options.h"
 #endif
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
 #include "guest_flat_memory.h"
 #include "recomp_mod_loader.h"
 #include <signal.h>
@@ -816,7 +816,7 @@ void FinishPrevious() {
     deferral.launched = false;
     deferral.joinPending.store(false, std::memory_order_relaxed);
 }
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
 
 // MH3_EFFECT_TOUCH_CHECK=1 verifies the join points (Touch). The task pass
 // joins the calculation at its start again, and the effect pools are
@@ -957,7 +957,7 @@ void Defer(bool enabled) {
     // task pass's tasks before its first use of the effects run beside them,
     // and that use joins them (Touch); the list is the game thread's.
     if (overlap) {
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
         if (deferral.launched && !TouchCheck::Enabled())
 #else
         if (deferral.launched)
@@ -970,13 +970,13 @@ void Defer(bool enabled) {
     // Port checks compare whole RAM around a call: they need the game thread's order.
     deferral.enabled = enabled && GuestWorker::Available() && !PortCheck::Set();
     deferral.collecting = deferral.enabled;
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
     TouchCheck::Arm();
 #endif
 }
 
 void Touch() {
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
     if (TouchCheck::armed.load(std::memory_order_relaxed) && PpcThread::CurrentThread() == PpcThread::Game)
         TouchCheck::Disarm();
 #endif
@@ -988,7 +988,7 @@ void Touch() {
 
 void Collected() {
     deferral.collecting = false;
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
     TouchCheck::Disarm();
 #endif
 
@@ -1267,7 +1267,11 @@ static void ParticleManagerCalcPort(CpuContext* ctx) {
         if (dt != 1.0)
             MemoryInline::FlatWriteFloat32(p + kParticleMomentum, float(w.momentum * dt));
 
-        if (std::floor(age + dt) == std::floor(age)) {
+        double nextAge = age + dt;
+        if (std::fabs(nextAge - std::round(nextAge)) <= 1e-9)
+            nextAge = std::round(nextAge);
+
+        if (std::floor(nextAge) == std::floor(age)) {
             // Its step entry carries the stamp; a particle on a whole tick has
             // none, and the map takes it.
             if (found)
@@ -1311,7 +1315,9 @@ static void ParticleManagerCalcPort(CpuContext* ctx) {
             WriteVec(p + kParticlePrevPosition, previous);
         }
 
-        const double age = w.age + w.dt;
+        double age = w.age + w.dt;
+        if (std::fabs(age - std::round(age)) <= 1e-9)
+            age = std::round(age);
         MemoryInline::FlatWrite16(p + kParticleTick, uint16_t(age));
 
         if (age == std::floor(age)) {

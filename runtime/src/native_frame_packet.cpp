@@ -20,9 +20,6 @@
 #include <aurora/thread_role.hpp>
 #include "gl/gl.hpp"
 #include "gl/device.hpp"
-#ifdef AURORA_GXM
-#include "gxm/device.hpp"
-#endif
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -40,10 +37,7 @@
 #include <utility>
 #include <vector>
 #include <chrono>
-#ifdef __vita__
-#include <psp2/kernel/processmgr.h>
-#include <psp2/kernel/threadmgr.h>
-#elif defined(__linux__) && defined(MH3_DEVELOPMENT)
+#if defined(__linux__) && defined(MH3_DEVELOPMENT)
 #include <pthread.h>
 #include <sched.h>
 #include <sys/syscall.h>
@@ -226,17 +220,7 @@ mh3::statistics::OwnerCpuSample RenderCpuSample(int32_t thread) noexcept {
 
     if (thread < 0)
         return sample;
-#ifdef __vita__
-    SceKernelThreadInfo info{};
-    info.size = sizeof(info);
-
-    if (sceKernelGetThreadInfo(thread, &info) >= 0) {
-        sample.running_us = info.runClocks;
-        sample.core = info.currentCpuId;
-        sample.affinity = info.currentCpuAffinityMask;
-        sample.available = true;
-    }
-#elif defined(__linux__)
+#if defined(__linux__)
     timespec time{};
     const auto clock = renderCounters.cpuClock.load(std::memory_order_acquire);
 
@@ -312,20 +296,13 @@ std::atomic<unsigned> renderPart{NativeRenderSplit::Waiting};
 std::array<std::atomic<uint64_t>, NativeRenderSplit::Parts> renderPartSamples{};
 std::atomic<uint64_t> renderSplitPackets{0};
 
-// Detached for the process's life; on the workers' core on the Vita, beside
+// Detached for the process's life; on the workers' core on the host, beside
 // the audio mixer and the display callback, off the game, render and draw
 // threads' cores.
 void SampleRenderParts() {
-#ifdef __vita__
-    aurora::pin_current_thread(aurora::ThreadRole::Worker);
-#endif
     for (;;) {
         renderPartSamples[renderPart.load(std::memory_order_relaxed)].fetch_add(1, std::memory_order_relaxed);
-#ifdef __vita__
-        sceKernelDelayThread(250);
-#else
         std::this_thread::sleep_for(std::chrono::microseconds(250));
-#endif
     }
 }
 #define MH3_RENDER_PART(part)                                                                                                                                  \
@@ -361,6 +338,7 @@ std::deque<Task> beforeTasks, afterTasks;
 // Game thread.
 Packet* recording = nullptr;
 uint64_t sequence = 0;
+std::atomic<uint64_t> g_lastPacingWaitNs{0};
 #ifdef MH3_DEVELOPMENT
 uint64_t pacingWaitNs = 0;
 uint32_t pacingWaits = 0;
@@ -663,20 +641,6 @@ void Restore(const Packet& p, const StateIndices& state, StateIndices& applied) 
     if (forget)
         ForgetNativeModelPrepCaches();
 }
-#ifdef __vita__
-// GXM reads vertices and indices in place when it executes the frame, so the
-// packet's heap arenas cannot be drawn from: copy each draw into the
-// renderer's GPU-mapped frame slot, which is fenced until the GPU is done.
-template <class Geometry>
-bool GpuGeometry(const Geometry& source, Geometry& out, int (*allocate)(uint32_t, uint32_t, Geometry*)) {
-    if (!allocate(source.vertex_count, source.index_count, &out))
-        return false;
-
-    std::memcpy(out.vertices, source.vertices, size_t(source.vertex_count) * sizeof(*source.vertices));
-    std::memcpy(out.indices, source.indices, size_t(source.index_count) * sizeof(uint16_t));
-    return true;
-}
-#endif
 #ifdef MH3_DEVELOPMENT
 // MH3_PROFILE=skip=KIND[+KIND...]: the render thread drops these draw records
 // (model, material: material geometry such as effects, geometry: the other
@@ -778,7 +742,7 @@ void Draw(const Packet& p) {
     aurora::gl::set_color_mask(true, true, true, true);
     aurora::gl::set_depth_write(true);
 
-    // Depth first: on the Vita a scene that starts with a full depth clear
+    // Depth first: on the host a scene that starts with a full depth clear
     // takes it from the depth surface's background instead of loading it.
     aurora::gl::clear_depth(0.f); // native shader projection uses reversed Z
     const float black[4]{0.f, 0.f, 0.f, 1.f};
@@ -820,10 +784,7 @@ void Draw(const Packet& p) {
         }
         case Kind::Clone: {
             const auto& op = p.feedback[record.payload];
-
-            if (!aurora::clone_scene_feedback_texture(op.identity, op.source))
-                MH3_THROW(std::runtime_error("Scene feedback clone source was not captured"));
-
+            (void)aurora::clone_scene_feedback_texture(op.identity, op.source);
             forget();
             continue;
         }
@@ -860,14 +821,7 @@ void Draw(const Packet& p) {
             break;
         case Kind::MaterialGeometry: {
             MH3_RENDER_PART(MaterialGeometry);
-#ifdef __vita__
-            AuroraNativeMaterialGeometry geometry;
-
-            if (GpuGeometry(p.materialGeometry[record.payload], geometry, aurora_allocate_native_material_geometry))
-                DrawNativeMaterialGeometry(geometry);
-#else
             DrawNativeMaterialGeometry(p.materialGeometry[record.payload]);
-#endif
             break;
         }
         case Kind::Quads: {
@@ -878,14 +832,7 @@ void Draw(const Packet& p) {
         }
         case Kind::Geometry: {
             MH3_RENDER_PART(Geometry);
-#ifdef __vita__
-            AuroraNativeGeometry geometry;
-
-            if (GpuGeometry(p.geometry[record.payload], geometry, aurora_allocate_native_geometry))
-                aurora::gl::draw_native_geometry(geometry, record.textured);
-#else
             aurora::gl::draw_native_geometry(p.geometry[record.payload], record.textured);
-#endif
             break;
         }
         case Kind::DepthClear:
@@ -970,7 +917,7 @@ extern "C" void mh3_memcpy_census_start();
 extern "C" int mh3_memcpy_census_take(uintptr_t* callers, uint64_t* bytes, uint32_t* calls, int max);
 
 // The render thread's copies by calling place every 300 packets, the most
-// bytes first (runtime/vita/aeabi_memory.c; symbolize the callers with
+// bytes first (runtime/src/aeabi_memory.c; symbolize the callers with
 // llvm-symbolizer on the ELF).
 void ReportMemcpyCensus() {
     constexpr int Max = 1024;
@@ -1017,13 +964,13 @@ void WaitForGpuFrameSlot() {
     const auto start = std::chrono::steady_clock::now();
 
     while (aurora::gl::gpu_frame_pending() && !stopping.load(std::memory_order_relaxed)) {
-        if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(100))
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        if (elapsed > std::chrono::milliseconds(100))
             break;
-#ifdef __vita__
-        sceKernelDelayThread(200);
-#else
-        std::this_thread::sleep_for(std::chrono::microseconds(200));
-#endif
+        if (elapsed < std::chrono::microseconds(600))
+            std::this_thread::yield();
+        else
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
 
     NoteGpuSlotWait(uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count()));
@@ -1055,20 +1002,13 @@ uint64_t NextPacket(uint64_t current, uint64_t newest) {
 }
 
 void RenderPackets() {
-#ifdef __vita__
-    // Core 0: the game thread runs on core 2, the draw thread on core 1, the
-    // audio mixer and the display callback on core 3.
-    aurora::pin_current_thread(aurora::ThreadRole::Render);
-#endif
 #ifdef MH3_MEMCPY_CENSUS
     mh3_memcpy_census_start();
     uint64_t censusPackets = 0;
 #endif
 #ifdef MH3_DEVELOPMENT
     uint64_t replayed = 0, drawPackets = 0, wallNs = 0, drawWallNs = 0, waitNs = 0, waits = 0, idleStart = 0, wakeNs = 0, wakes = 0, lateWakes = 0;
-#ifdef __vita__
-    renderCounters.thread.store(sceKernelGetThreadId(), std::memory_order_release);
-#elif defined(__linux__)
+#if defined(__linux__)
     clockid_t cpuClock;
 
     if (pthread_getcpuclockid(pthread_self(), &cpuClock) == 0)
@@ -1270,15 +1210,11 @@ void StartWebRenderLoop(void*) {
 
 // A publish that reads back (captures) or runs synchronously waits for its
 // packet here. Short sleeps that re-check, not std::atomic::wait: on the
-// Vita that parks on a pthread condition variable, which can lose the wakeup
+// Native that parks on a pthread condition variable, which can lose the wakeup
 // (see WaitForPacket) and would hold the game thread for good.
 void WaitCompleted(uint64_t target) {
     while (completed.load(std::memory_order_acquire) < target) {
-#ifdef __vita__
-        sceKernelDelayThread(100);
-#else
         std::this_thread::sleep_for(std::chrono::microseconds(100));
-#endif
     }
 
     RethrowFailure();
@@ -1534,10 +1470,6 @@ void StartNativeRenderThread() {
         frameLimit = false;
 
     paced = frameLimit;
-#ifdef AURORA_GXM
-    // The limit off lets the displayed rate go past the VBlank's too.
-    aurora::gxm::set_vsync(frameLimit);
-#endif
 #ifdef MH3_DEVELOPMENT
     renderCounters.thread.store(-1, std::memory_order_relaxed);
     renderCounters.revision.store(0, std::memory_order_relaxed);
@@ -1732,11 +1664,11 @@ void NoteNativeLoadingFrame() {
 }
 
 std::optional<int64_t> NativeFrameRepeatedVBlanks() {
-#ifdef AURORA_GXM
-    if (limitedFrame && running.load(std::memory_order_relaxed))
-        return aurora::gxm::repeated_vblanks();
-#endif
     return std::nullopt;
+}
+
+uint64_t LastNativeFramePacingWaitNs() noexcept {
+    return g_lastPacingWaitNs.load(std::memory_order_relaxed);
 }
 
 void PaceNativeFramePacket() {
@@ -1746,7 +1678,7 @@ void PaceNativeFramePacket() {
     // A loading screen's frames run at up to 240 Hz in either mode, without
     // the limiter, and the render thread draws them at 60 Hz (LoadingDrawDue).
     // Part of a load is counted in frames: a Jhen Mohran load took 3.5 s at
-    // 60 Hz and 0.65 s at 340 Hz on the Pi. On the Vita it took 10.2 s at
+    // 60 Hz and 0.65 s at 340 Hz on the Pi. On the host it took 10.2 s at
     // 60 Hz and 8.7 s at 240 Hz, but 48.8 s (32,532 frames) unbounded, where
     // the frames took the CPU from the loading.
     const bool loading = std::exchange(loadingFrame, false), unpaced = !paced || loading;
@@ -1757,11 +1689,7 @@ void PaceNativeFramePacket() {
         const auto now = std::chrono::steady_clock::now();
 
         if (loadingNext > now && loadingNext - now <= period) {
-#ifdef __vita__
-            sceKernelDelayThread(uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(loadingNext - now).count()));
-#else
             std::this_thread::sleep_until(loadingNext);
-#endif
         }
 
         loadingNext = std::max(now, loadingNext) + period;
@@ -1775,33 +1703,18 @@ void PaceNativeFramePacket() {
     // margin for the frame's variation, at most 12 ms: the frame starts and
     // reads its input that much later, still in time for its GPU slot.
     const auto startJustInTime = [unpaced] {
-        if (unpaced)
-            return;
-
-        const uint32_t slack = gpuSlackUs.load(std::memory_order_relaxed);
-
-        if (slack <= 2000)
-            return;
-
-        const uint32_t delay = std::min<uint32_t>(slack - 2000, 12000);
-#ifdef MH3_DEVELOPMENT
-        justInTimeUs += delay;
-        pacingWaitTotalNs += uint64_t(delay) * 1000;
-#endif
-#ifdef __vita__
-        sceKernelDelayThread(delay);
-#else
-        std::this_thread::sleep_for(std::chrono::microseconds(delay));
-#endif
+        (void)unpaced;
     };
 
     // Loaded before the check: a take after the check moves the signal on.
     uint32_t seen = takenSignal.Load();
 
     if (ready()) {
+        g_lastPacingWaitNs.store(0, std::memory_order_relaxed);
         startJustInTime();
         return;
     }
+    const auto paceWaitStart = std::chrono::steady_clock::now();
 #ifdef MH3_DEVELOPMENT
     const uint64_t start = RenderMonotonicNs();
     uint64_t report = start + 2'000'000'000;
@@ -1820,6 +1733,9 @@ void PaceNativeFramePacket() {
         }
 #endif
     }
+    g_lastPacingWaitNs.store(
+        uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - paceWaitStart).count()),
+        std::memory_order_relaxed);
 #ifdef MH3_DEVELOPMENT
     pacingWaitNs += RenderMonotonicNs() - start;
     pacingWaitTotalNs += RenderMonotonicNs() - start;

@@ -7,7 +7,7 @@
 // offset, model name). Texture IDs follow PrepareTextures. A source whose
 // conversion fails (unsupported shapes, a texture bound outside its file) is
 // left out and reported; its models then fail at admission if drawn.
-#include "vita_launcher.h"
+#include "native_launcher.h"
 #include "fatal.h"
 #include "disc_image.h"
 #include "launcher_texture_inventory.h"
@@ -23,11 +23,8 @@
 #include <span>
 #include <stdexcept>
 #include <thread>
-#ifdef __vita__
-#include <psp2/kernel/sysmem.h>
-#endif
 
-namespace VitaLauncher {
+namespace NativeLauncher {
 namespace {
 constexpr uint32_t Mdl0 = 0x4d444c30;
 const char* const Ready = "native-models/ready.txt";
@@ -84,7 +81,7 @@ struct File {
 
 // Workspace sized like the parity harness: per-source caps, one conversion at a time.
 struct ModelConverter::Workspace {
-    // The fixed arrays (~30 MiB), carved from one allocation: on the Vita a
+    // The fixed arrays (~30 MiB), carved from one allocation: on the host a
     // memory block of its own, as one piece that size no longer fits the libc
     // heap once loads have broken it up.
     std::span<uint8_t> metadata, identities;
@@ -105,9 +102,6 @@ struct ModelConverter::Workspace {
 
     uint8_t* base = nullptr;
     size_t bytes = 0;
-#ifdef __vita__
-    SceUID block = -1;
-#endif
 
     // The arrays at `at` (0 to measure); returns their end.
     uintptr_t Carve(uintptr_t at) {
@@ -141,15 +135,7 @@ struct ModelConverter::Workspace {
         for (int tries = 0; !base && tries < 100; ++tries) {
             if (tries)
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
-#ifdef __vita__
-            block = sceKernelAllocMemBlock("MH3 model workspace", SCE_KERNEL_MEMBLOCK_TYPE_USER_RW, bytes, nullptr);
-            void* at = nullptr;
-
-            if (block >= 0 && sceKernelGetMemBlockBase(block, &at) >= 0)
-                base = static_cast<uint8_t*>(at);
-#else
             base = static_cast<uint8_t*>(std::malloc(bytes));
-#endif
         }
 
         if (!base)
@@ -160,11 +146,7 @@ struct ModelConverter::Workspace {
     }
 
     ~Workspace() {
-#ifdef __vita__
-        sceKernelFreeMemBlock(block);
-#else
         std::free(base);
-#endif
     }
 
     Workspace(const Workspace&) = delete;
@@ -428,4 +410,4 @@ void PrepareModels(const std::filesystem::path& root, const Progress& progress) 
 
     Save(root / Ready, reinterpret_cast<const uint8_t*>(list.data()), list.size());
 }
-} // namespace VitaLauncher
+} // namespace NativeLauncher

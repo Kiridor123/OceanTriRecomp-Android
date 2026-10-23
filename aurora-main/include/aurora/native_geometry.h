@@ -65,7 +65,7 @@ AuroraNativeDrawStats aurora_native_draw_stats(void);
 int aurora_allocate_native_geometry(uint32_t vertices, uint32_t indices, AuroraNativeGeometry* out);
 int aurora_allocate_native_material_geometry(uint32_t vertices, uint32_t indices, AuroraNativeMaterialGeometry* out);
 
-/* Memory the GPU reads in place, mapped once and kept (the Vita: uncached
+/* Memory the GPU reads in place, mapped once and kept (the host: uncached
  * main memory mapped for GXM; elsewhere heap): a frame packet's compact
  * quads. Null when it cannot be mapped. */
 void* aurora_map_native_quad_memory(uint32_t bytes);

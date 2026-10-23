@@ -257,7 +257,7 @@ mh3_res_status mh3_model_gpu_prepare_draw(const mh3_resolved_mesh_submit *mesh, 
 
             if (normal_required && (batch->normal_required & (1u << slot))) {
                 // The final GPU matrix's padding is exact +0. Built here and
-                // stored whole: the output is uncached GPU memory on the Vita,
+                // stored whole: the output is uncached GPU memory on the host,
                 // where twelve scalar stores cost more than one block copy.
                 mh3_matrix34 normal;
 

@@ -1,0 +1,1 @@
+Portable MH3 build: store runtime configuration in UserData beside MH3.exe.

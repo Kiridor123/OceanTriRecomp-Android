@@ -1,6 +1,6 @@
 // Startup conversion of external disc textures. The swizzle/CMPR routines
-// mirror the verified host packer in scripts/vita_texture_pack.cpp.
-#include "vita_launcher.h"
+// mirror the verified host packer in scripts/texture_pack.cpp.
+#include "native_launcher.h"
 #include "button_glyphs.h"
 #include "fatal.h"
 #include "disc_image.h"
@@ -17,11 +17,8 @@
 #include <map>
 #include <stdexcept>
 #include <thread>
-#ifdef __vita__
-#include <psp2/io/fcntl.h>
-#endif
 
-namespace VitaLauncher {
+namespace NativeLauncher {
 namespace {
 using Record = aurora::gfx::NativeTextureRecord;
 struct Source : TextureInventory::Texture {
@@ -309,7 +306,7 @@ std::vector<uint8_t> native(const TextureInventory::Texture& s, const uint8_t* r
     return output;
 }
 
-// The texels, with the Vita's buttons drawn over the Classic Controller's
+// The texels, with the host's buttons drawn over the Classic Controller's
 // (button_glyphs.cpp).
 aurora::gfx::ConvertedTexture Decode(const TextureInventory::Texture& s, std::span<const uint8_t> data) {
     const aurora::ArrayRef<uint8_t> bytes{data.data() + s.offset, s.bytes};
@@ -591,12 +588,8 @@ void PrepareTextures(const std::filesystem::path& root, const Progress& progress
 
     if (!map)
         MH3_THROW(std::runtime_error("Cannot close native texture patch table"));
-#ifdef __vita__
-    if (sceIoSync("ux0:", 0) < 0)
-        MH3_THROW(std::runtime_error("Cannot sync converted textures"));
-#endif
     Publish(root / "native-textures.bin.preparing", root / "native-textures.bin");
     Publish(root / "native-texture-map.bin.preparing", root / "native-texture-map.bin");
     progress("Native textures ready", sources.size(), sources.size());
 }
-} // namespace VitaLauncher
+} // namespace NativeLauncher

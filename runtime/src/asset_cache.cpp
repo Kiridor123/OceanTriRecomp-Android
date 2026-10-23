@@ -20,13 +20,9 @@
 #include <mutex>
 #include <pthread.h>
 #include <stdexcept>
-#ifdef __vita__
-#include <psp2/io/devctl.h>
-#include <psp2/io/fcntl.h>
-#endif
 
 namespace {
-using namespace VitaLauncher;
+using namespace NativeLauncher;
 
 // Bump when converted pack contents change: the whole cache is rebuilt.
 constexpr const char* Version = "mh3-asset-cache 1\n";
@@ -36,33 +32,25 @@ constexpr const char* Version = "mh3-asset-cache 1\n";
 constexpr const char* ModelFormat = "mh3-model-packs 2\n";
 
 // The same for the texture packs (2: exact small formats,
-// docs/optimizations/assets/compressed-textures.md; 3: the Vita's buttons,
+// docs/optimizations/assets/compressed-textures.md; 3: the host's buttons,
 // button_glyphs.cpp; 4: the buttons centred).
 constexpr const char* TextureFormat = "mh3-texture-packs 4\n";
 constexpr uint32_t RecordMagic = 0x5243334d; // "M3CR"
 constexpr unsigned Workers = 3;
-#ifdef __vita__
-// A model workspace is ~30 MiB of the 112 MiB newlib heap: one at a time.
-constexpr unsigned ModelWorkers = 1;
-
-// The game thread waits once this much indexed file data awaits conversion.
-constexpr size_t MaxPendingBytes = 16u << 20;
-#else
 constexpr unsigned ModelWorkers = Workers;
 constexpr size_t MaxPendingBytes = 48u << 20;
-#endif
 // Extracted stream files (cache/files): the disc's audio streams, copied out
 // as plain files at their first read so that later reads skip the image's
 // decompression and decryption. Least recently used files go beyond
 // AssetCache::StreamCacheBytes, or beyond what the storage holds at startup
-// less a reserve for saves (the Vita's launcher warns then).
+// less a reserve for saves (the host's launcher warns then).
 constexpr uint64_t StorageReserve = 32ull << 20;
 
 // Small enough that game reads waiting on the image's lock are not delayed long.
 constexpr size_t ExtractChunk = 256u << 10;
 
 // Extracted files open at once, the least recently read closing first: the
-// Vita gives a process 50 descriptors, shared with the texture packs and
+// Native gives a process 50 descriptors, shared with the texture packs and
 // online play's sockets, and 64 MiB of streams were dozens of files.
 constexpr size_t MaxOpenCopies = 6;
 
@@ -106,19 +94,9 @@ std::vector<uint8_t> Load(const std::filesystem::path& path) {
 
 // Free bytes on the storage holding `path`; UINT64_MAX when unknown.
 uint64_t FreeStorage(const std::filesystem::path& path) {
-#ifdef __vita__
-    const std::string device = path.string().substr(0, path.string().find(':') + 1);
-    SceIoDevInfo storage{};
-
-    if (device.empty() || sceIoDevctl(device.c_str(), 0x3001, nullptr, 0, &storage, sizeof storage) < 0)
-        return UINT64_MAX;
-
-    return uint64_t(storage.free_size);
-#else
     std::error_code error;
     const auto space = std::filesystem::space(path, error);
     return error ? UINT64_MAX : uint64_t(space.available);
-#endif
 }
 
 // Bytes of the regular files directly under `folder`.
@@ -315,7 +293,7 @@ struct AssetCache::Impl {
     void Watch();
 #endif
 
-    // VitaSDK's pthread condition variable (pthread-embedded) sometimes loses
+    // the platform's pthread condition variable (pthread-embedded) sometimes loses
     // a broadcast: a waiter whose condition already holds stays blocked
     // (a cold load of Moga Woods stalled on a published model pack). Every
     // wait here re-checks its condition at least every 20 ms.
@@ -448,7 +426,7 @@ struct AssetCache::Impl {
         openCopies += e.copy != nullptr;
 
         // Unbuffered: newlib reads each served range in one call (a buffered
-        // fread took 6.6 s for a 1.5 MiB model payload on the Vita).
+        // fread took 6.6 s for a 1.5 MiB model payload on the host).
         if (e.copy)
             std::setvbuf(e.copy, nullptr, _IONBF, 0);
 
@@ -1137,7 +1115,7 @@ struct AssetCache::Impl {
 
         work->Run(false);
         {
-            // Timed: VitaSDK's condition variable can lose a notification.
+            // Timed: the platform's condition variable can lose a notification.
             std::unique_lock guard(work->lock);
 
             while (work->active)

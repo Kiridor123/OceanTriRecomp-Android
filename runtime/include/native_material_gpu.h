@@ -86,14 +86,14 @@ NativeMaterialGpuAnimatedRef CreateNativeMaterialGpuAnimated(const mh3_shade_gpu
 void ReleaseNativeMaterialGpuAnimated(NativeMaterialGpuAnimatedRef animated);
 
 // Producer ring (8 segments of 64 KiB, 240 sections each): GPU-visible memory
-// the game thread writes directly (CDRAM on the Vita, no packet copy).
+// the game thread writes directly (CDRAM on the host, no packet copy).
 // Begin: game thread, before the first write of packet `sequence`; reuses the
 // segment of the packet 8 sequences earlier once the render thread ended it
 // (or a later packet) and the GPU completed it, waiting otherwise.
 void BeginNativeMaterialGpuPacket(uint64_t sequence);
 
 // Game thread: a write-only section of the current packet (fill all of it);
-// *animated identifies it for the packet item. On the Vita it is
+// *animated identifies it for the packet item. On the host it is
 // write-combined CDRAM: build the section in a local struct and copy it with
 // one memcpy; never read it back. Null when the ring is not created yet
 // (before the first EndNativeMaterialGpuPacket) or the segment is full: keep

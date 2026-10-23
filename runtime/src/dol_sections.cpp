@@ -5,7 +5,7 @@
 // the executable.
 #include "memory.h"
 #include "fatal.h"
-#include "../vita/rom_decoder.h"
+#include "rom_decoder.h"
 #include <array>
 #include <cstdint>
 #include <cstdlib>

@@ -12,7 +12,7 @@
 #include <cstdlib>
 #include <sstream>
 #include <type_traits>
-#if defined(MH3_AUDIT_GUEST_ALIAS) && !defined(__vita__)
+#if defined(MH3_AUDIT_GUEST_ALIAS)
 #include <dlfcn.h>
 #endif
 #if defined(MH3_AUDIT_HOST_ACCESS) || defined(MH3_AUDIT_GUEST_ALIAS)

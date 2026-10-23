@@ -112,7 +112,7 @@ void ClearNativeMaterialPrograms();
 void InitializeNativeGraphics(uint32_t width, uint32_t height, bool load_native_assets = true);
 
 // Game thread: the game's 16:9 mode is anamorphic, a 640x448 EFB the display
-// stretches. Every host renders for the Vita's 960x544 display (other hosts
+// stretches. Every host renders for the host's 960x544 display (other hosts
 // scale it into their window): widescreen fills it with the target, scaled
 // per axis; 4:3 keeps the target's own aspect (777x544, pillarboxed).
 // Applies at the next rendered frame.

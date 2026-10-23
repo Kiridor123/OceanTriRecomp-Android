@@ -185,9 +185,11 @@ double Evaluate(uint32_t r1, uint32_t r2, uint32_t anm, double frame) {
     Track t;
     static_cast<TrackBase&>(t) = TrackBase{anm, scratch, r1 - 16, Gqr(2), Gqr(3), Gqr(6), Gqr(7)};
     const uint32_t count = MemoryInline::FlatRead16(anm + kKeyCount);
+    if (count == 0)
+        return 0.0;
     const uint32_t first = t.Key(0), last = t.Key(count - 1);
 
-    if (frame <= t.Frame(first))
+    if (!std::isfinite(frame) || frame <= t.Frame(first))
         return t.Value(first);
 
     if (t.Frame(last) <= frame)
@@ -200,27 +202,29 @@ double Evaluate(uint32_t r1, uint32_t r2, uint32_t anm, double frame) {
     double estimate = PpcFmulsInline(past, countF);
     estimate = PpcFmulsInline(MemoryInline::FlatReadFloat32(anm + kInvSpan), estimate);
     PsqStore1<3u>(t.gqr3, scratch, ThroughSingle(scratch, estimate));
-    const uint32_t index = MemoryInline::FlatRead16(scratch);
+    uint32_t index = MemoryInline::FlatRead16(scratch);
 
-    if (int32_t(index) > int32_t(count) - 1)
-        Panic("estimatePos is out of bounds", index);
+    if (index >= count)
+        index = count - 1;
 
     // Walk to the key at or before the frame.
     const auto walk = t.Walk(frame);
     uint32_t key = t.Key(index);
 
     if (walk < t.Raw(key)) {
-        do
+        while (key > first && walk < t.Raw(key))
             key -= Track::kSize;
-        while (walk < t.Raw(key));
     } else {
-        do
+        while (key < last && t.Raw(key + Track::kSize) <= walk)
             key += Track::kSize;
-        while (t.Raw(key) <= walk);
-        key -= Track::kSize;
     }
 
-    if (frame == t.Frame(key))
+    while (key > first && frame < t.Frame(key))
+        key -= Track::kSize;
+    while (key + Track::kSize < last && t.Frame(key + Track::kSize) <= frame)
+        key += Track::kSize;
+
+    if (frame <= t.Frame(key) || key >= last)
         return t.Value(key);
 
     const uint32_t next = key + Track::kSize;
@@ -228,8 +232,8 @@ double Evaluate(uint32_t r1, uint32_t r2, uint32_t anm, double frame) {
     const double v1 = t.Value(next), t1 = t.Slope(next);
     const double f0 = t.Frame(key), f1 = t.Frame(next);
 
-    if (!(f0 <= frame && frame <= f1))
-        Panic("frame is out of bounds", 0);
+    if (frame >= f1 || f1 <= f0)
+        return v1;
 
     const double d = static_cast<double>(PpcForceSingleValueInline(frame - f0));
     const double span = static_cast<double>(PpcForceSingleValueInline(f1 - f0));
@@ -348,39 +352,43 @@ double EvaluateLean(uint32_t r2, uint32_t anm, float frame, const CpuContext& cp
 
     b.u16Load = LoadFactor(cpu.gqr[3]), b.u16Store = StoreFactor(cpu.gqr[3]);
     const uint32_t count = MemoryInline::FlatRead16(anm + kKeyCount);
+    if (count == 0)
+        return 0.0;
     const uint32_t first = t.Key(0), last = t.Key(count - 1);
 
     const float firstFrame = t.Frame(first);
 
-    if (frame <= firstFrame)
+    if (!std::isfinite(frame) || frame <= firstFrame)
         return t.Value(first);
 
     if (t.Frame(last) <= frame)
         return t.Value(last);
 
     const float estimate = MemoryInline::FlatReadFloat32(anm + kInvSpan) * ((frame - firstFrame) * (float(count) * b.u16Load));
-    const uint32_t index = Quantize<uint16_t>(estimate, b.u16Store);
+    uint32_t index = Quantize<uint16_t>(estimate, b.u16Store);
 
-    if (int32_t(index) > int32_t(count) - 1)
-        Panic("estimatePos is out of bounds", index);
+    if (index >= count)
+        index = count - 1;
 
     const auto walk = t.Walk(frame);
     uint32_t key = t.Key(index);
 
     if (walk < t.Raw(key)) {
-        do
+        while (key > first && walk < t.Raw(key))
             key -= Track::kSize;
-        while (walk < t.Raw(key));
     } else {
-        do
+        while (key < last && t.Raw(key + Track::kSize) <= walk)
             key += Track::kSize;
-        while (t.Raw(key) <= walk);
-        key -= Track::kSize;
     }
+
+    while (key > first && frame < t.Frame(key))
+        key -= Track::kSize;
+    while (key + Track::kSize < last && t.Frame(key + Track::kSize) <= frame)
+        key += Track::kSize;
 
     const float f0 = t.Frame(key);
 
-    if (frame == f0)
+    if (frame <= f0 || key >= last)
         return t.Value(key);
 
     const uint32_t next = key + Track::kSize;
@@ -388,8 +396,8 @@ double EvaluateLean(uint32_t r2, uint32_t anm, float frame, const CpuContext& cp
     const float v1 = t.Value(next), t1 = t.Slope(next);
     const float f1 = t.Frame(next);
 
-    if (!(f0 <= frame && frame <= f1))
-        Panic("frame is out of bounds", 0);
+    if (frame >= f1 || f1 <= f0)
+        return v1;
 
     const float d = frame - f0;
     const float s = d * (1.0f / (f1 - f0));
@@ -689,10 +697,7 @@ void GetAnmResult(CpuContext* ctx) {
     // NW4R's pointer checks always pass in the port; the pointers are folded
     // to their cached aliases instead.
     const uint32_t anm = GuestFlat::CachedAlias(ctx->gpr[3]), result = GuestFlat::CachedAlias(ctx->gpr[4]), index = ctx->gpr[5];
-    const double frame = ctx->fpr[1].d;
-
-    if (!std::isfinite(frame))
-        Panic("NW4R:Floating Point Value Error frame", 0);
+    const double frame = std::isfinite(ctx->fpr[1].d) ? ctx->fpr[1].d : 0.0;
 
     const uint32_t data = MemoryInline::FlatRead32(anm);
 

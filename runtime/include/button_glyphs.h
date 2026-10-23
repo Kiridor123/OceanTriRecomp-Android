@@ -1,4 +1,4 @@
-// The Vita's button symbols on the game's UI atlases (button_glyphs.cpp).
+// The host's button symbols on the game's UI atlases (button_glyphs.cpp).
 #pragma once
 
 #include <cstdint>
@@ -9,7 +9,7 @@ namespace ButtonGlyphs {
 
 // Redraws the Classic Controller's letter buttons of the atlas `name` in
 // its decoded RGBA8 level 0 (width x height, rows of width * 4 bytes) as
-// the Vita's buttons. Returns whether the atlas has any.
+// the host's buttons. Returns whether the atlas has any.
 bool Patch(std::string_view name, uint32_t width, uint32_t height, uint8_t* rgba);
 
 // The same for an image the renderer decodes from guest memory (a TPL's, or

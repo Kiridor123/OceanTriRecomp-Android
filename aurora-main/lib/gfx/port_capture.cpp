@@ -1,6 +1,6 @@
 #include "port_capture.hpp"
 #include "cg_shader.hpp"
-#include "../gxm/alpha_compare.hpp"
+#include "alpha_compare.hpp"
 #include <xxhash.h>
 #include <algorithm>
 #include <cstdio>
@@ -34,7 +34,7 @@ struct Capture {
       return;
     }
 
-    events = std::fopen((root / "events.tsv").c_str(), "w");
+    events = std::fopen((root / "events.tsv").string().c_str(), "w");
 
     if (!events)
       root.clear();
@@ -58,7 +58,7 @@ Capture& capture() {
 
 // Writes a capture file; false with the reason in `error`.
 bool write(const std::filesystem::path& path, std::string_view source, std::string& error) {
-  FILE* file = std::fopen(path.c_str(), "wb");
+  FILE* file = std::fopen(path.string().c_str(), "wb");
 
   if (!file) {
     error = "Cannot write shader capture: " + path.string();
@@ -249,21 +249,21 @@ ShaderCapture shader(std::string_view label, std::string_view vertex, std::strin
   if (counterpart && (portableVertex.empty() || portableFragment.empty()))
     return reject("Incomplete portable shader counterpart");
 
-  const auto vitaVertex = counterpart ? portableVertex : vertex;
-  const auto vitaFragment = counterpart ? portableFragment : fragment;
-  const uint64_t vitaVh = XXH3_64bits(vitaVertex.data(), vitaVertex.size());
-  std::string normalized(vitaFragment);
+  const auto portableV = counterpart ? portableVertex : vertex;
+  const auto portableF = counterpart ? portableFragment : fragment;
+  const uint64_t portableVh = XXH3_64bits(portableV.data(), portableV.size());
+  std::string normalized(portableF);
   std::array<float, 4> alpha{};
   bool alphaParameterized = false;
 
-  if (!gxm::try_parameterize_alpha_references(normalized, alpha, alphaParameterized, error))
+  if (!gfx::try_parameterize_alpha_references(normalized, alpha, alphaParameterized, error))
     return reject(error);
 
   const auto normalizedHash = XXH3_64bits(normalized.data(), normalized.size());
-  const auto cgName = pair(vitaVh, normalizedHash);
-  const auto metadataName = name + (counterpart ? ".vita-" + cgName : "") + ".origin.json";
+  const auto cgName = pair(portableVh, normalizedHash);
+  const auto metadataName = name + (counterpart ? ".cg-" + cgName : "") + ".origin.json";
   captureOrigin = metadataName;
-  const ShaderCapture identity{{vitaVh, normalizedHash}, metadataName};
+  const ShaderCapture identity{{portableVh, normalizedHash}, metadataName};
 
   if (c.failedOrigins.contains(metadataName))
     return {};
@@ -274,7 +274,7 @@ ShaderCapture shader(std::string_view label, std::string_view vertex, std::strin
   if (!c.cgPairs.contains(cgName)) {
     std::string vertexCg, fragmentCg, scalarCg;
 
-    if (!cg::try_convert(vitaVertex, cg::Stage::Vertex, vertexCg, error) || !cg::try_convert(normalized, cg::Stage::Fragment, fragmentCg, error) ||
+    if (!cg::try_convert(portableV, cg::Stage::Vertex, vertexCg, error) || !cg::try_convert(normalized, cg::Stage::Fragment, fragmentCg, error) ||
         !cg::try_scalar_fragment(fragmentCg, scalarCg, error))
       return reject(error);
 
@@ -287,11 +287,11 @@ ShaderCapture shader(std::string_view label, std::string_view vertex, std::strin
   }
 
   if (counterpart)
-    if (!write((c.root / "shaders" / metadataName).string() + ".vert", vitaVertex, error) || !write((c.root / "shaders" / metadataName).string() + ".frag", vitaFragment, error))
+    if (!write((c.root / "shaders" / metadataName).string() + ".vert", portableV, error) || !write((c.root / "shaders" / metadataName).string() + ".frag", portableF, error))
       return reject(error);
 
   const auto metadata = "{\n  \"generator\": \"aurora::gfx::cg\",\n  \"generator_version\": " + std::to_string(cg::Version) + ",\n  \"label\": " + json(label) +
-                        ",\n  \"source_origin\": " + json(origin.empty() ? "Aurora ProgramDesc" : origin) + ",\n  \"glsl_pair\": " + json(name) + ",\n  \"vita_pair\": " + json(cgName) +
+                        ",\n  \"source_origin\": " + json(origin.empty() ? "Aurora ProgramDesc" : origin) + ",\n  \"glsl_pair\": " + json(name) + ",\n  \"cg_pair\": " + json(cgName) +
                         ",\n  \"portable_counterpart\": " + (counterpart ? "true" : "false") + ",\n  \"portable_origin\": " + json(portableOrigin) +
                         (counterpart ? ",\n  \"portable_vertex_glsl\": " + json(metadataName + ".vert") + ",\n  \"portable_fragment_glsl\": " + json(metadataName + ".frag") : "") +
                         ",\n  \"vertex_glsl\": " + json(name + ".vert") + ",\n  \"fragment_glsl\": " + json(name + ".frag") + ",\n  \"vertex_cg\": " + json(cgName + "_v.cg") +

@@ -26,6 +26,7 @@
 #include "game_step.h"
 #include "guest_call.h"
 #include "port_check.h"
+#include "controller_host.h"
 
 #include <algorithm>
 #include <cmath>
@@ -75,6 +76,7 @@ enum : uint32_t {
 
 constexpr uint32_t kSwingLo = 0x8079C9F0, kSwingHi = 0x8079C9F4, kSwingGain = 0x8079C9F8; // f32
 constexpr uint32_t kFloatZero = 0x8079C998;                                                // f32 0.0
+constexpr int32_t kMouseLookAngleUnitsPerPixel = 64; // 0.35 degrees per mouse pixel
 constexpr uint32_t kPitchRampSteps = 0x8079CA10;                                           // f32 20.0
 
 bool Command(uint32_t plw, uint32_t bit) {
@@ -115,9 +117,27 @@ static void CameraYawInputPort(CpuContext* ctx) {
     GuestFrame frame(ctx, 0x40);
     GuestCall game{ctx};
     const uint32_t camera = frame.Arg(3), work = frame.Arg(4), plw = frame.Arg(5);
+    const int32_t mouseDeltaX = TakeMouseLookXDelta();
+    // PitchInput runs first in normal field updates. If climb/cutscene skips it,
+    // discard the pending Y motion here rather than applying it late afterwards.
+    (void)TakeMouseLookYDelta();
 
     if (Memory::Read8(kSystem + kCameraFrozen) != 0)
         return;
+
+    if (mouseDeltaX != 0 && game.Call<CameraUsable>({plw}) == 1) {
+        const int32_t pixels = std::clamp<int32_t>(mouseDeltaX, -512, 512);
+        int32_t angleDelta = pixels * kMouseLookAngleUnitsPerPixel;
+
+        if (Memory::Read8(camera + kFlags) & 1)
+            angleDelta = -angleDelta;
+
+        Memory::Write32(work + kYawTarget, Memory::Read32(work + kYawTarget) + uint32_t(angleDelta));
+        Memory::Write8(work + kTurned, 0);
+        Memory::Write8(work + kFollowing, 0);
+        Memory::Write8(work + kSnapped, 0);
+        return;
+    }
 
     uint32_t speed = 1035;
 
@@ -198,27 +218,24 @@ static void CameraPitchInputPort(CpuContext* ctx) {
     GuestCall game{ctx};
     const uint32_t camera = frame.Arg(3), work = frame.Arg(4), plw = frame.Arg(5);
 
-    if (Memory::Read8(kSystem + kCameraFrozen) != 0 || !Command(plw, 9) || game.Call<CameraUsable>({plw}) == 0)
+    const int32_t mouseDeltaY = TakeMouseLookYDelta();
+
+    if (Memory::Read8(kSystem + kCameraFrozen) != 0 || (!Command(plw, 9) && mouseDeltaY == 0) || game.Call<CameraUsable>({plw}) == 0)
         return;
 
     const bool swapped = Memory::Read8(camera + kFlags) & 2;
 
-    if (Memory::Read8(plw + kPlwState) != 3) {
-        // On land the stick's flicks (edges) step the distance level.
-        const uint32_t closer = swapped ? 3 : 1, farther = swapped ? 1 : 3;
-        const uint32_t level = Memory::Read8(work + kDistance);
+    const bool swimming = Memory::Read8(plw + kPlwState) == 3;
 
-        if (Command(plw, closer))
-            Memory::Write8(work + kDistance, uint8_t(std::min<uint32_t>((level + 1) & 0xFF, 4)));
-        else if (Command(plw, farther) && level != 0)
-            Memory::Write8(work + kDistance, uint8_t(level - 1));
-
-        Memory::Write8(work + kPitchRamp, 0);
+    if (!swimming) {
+        // Do not turn vertical stick flicks into discrete zoom/distance levels.
+        // The held vertical commands below control camera pitch continuously.
         Memory::Write8(work + kPitchSnap, 0);
-        return;
+        Memory::Write16(work + kPitchSnap + 2, 0);
     }
 
-    // Swimming: the stick tilts the pitch target, ramping up over 20 ticks.
+    // The vertical stick tilts the pitch target on land and underwater,
+    // ramping up over 20 ticks. The existing angle bounds avoid camera flips.
     uint32_t speed = 560;
 
     if (Memory::Read8(work + kSlowA) == 0 && Memory::Read8(work + kSlowB) == 1)
@@ -227,10 +244,28 @@ static void CameraPitchInputPort(CpuContext* ctx) {
     uint32_t pitch = Memory::Read32(work + kPitchTarget);
     Memory::Write8(work + kManualPitch, 0);
 
+    if (mouseDeltaY != 0) {
+        const int32_t pixels = std::clamp<int32_t>(mouseDeltaY, -512, 512);
+        int32_t angleDelta = -pixels * kMouseLookAngleUnitsPerPixel;
+
+        if (swapped)
+            angleDelta = -angleDelta;
+
+        const int32_t currentPitch = int16_t(uint16_t(pitch));
+        const int32_t nextPitch = std::clamp<int32_t>(currentPitch + angleDelta, -8192, 13653);
+        pitch = uint32_t(uint16_t(nextPitch));
+        Memory::Write32(work + kPitchTarget, pitch);
+        Memory::Write8(work + kManualPitch, 1);
+        Memory::Write8(work + kPitchHold, 30);
+        Memory::Write8(work + kPitchRamp, 0);
+        Memory::Write8(work + kPitchSnap, 0);
+    }
+
     if (Command(plw, 2) || Command(plw, 4)) {
-        RampUp(work + kPitchRamp, 20);
+        const int32_t rampTop = swimming ? 10 : 1;
+        RampUp(work + kPitchRamp, rampTop);
         const float ramp = float(int8_t(Memory::Read8(work + kPitchRamp)));
-        const int32_t amount = int32_t(float(speed) * (ramp / GuestFloat(kPitchRampSteps)));
+        const int32_t amount = int32_t(float(speed) * (ramp / float(rampTop)));
         const uint32_t tilt = uint32_t(GameStep::Share(amount)) & 0xFFFF;
         const uint32_t up = swapped ? 4 : 2, down = swapped ? 2 : 4;
 
@@ -250,7 +285,7 @@ static void CameraPitchInputPort(CpuContext* ctx) {
         Memory::Write8(work + kManualPitch, 1);
         Memory::Write8(work + kPitchHold, 30);
     } else {
-        if (Command(plw, 0) && (game.Call<StickTilted>({plw, 0}) & 0xFF) == 0 &&
+        if (swimming && Command(plw, 0) && (game.Call<StickTilted>({plw, 0}) & 0xFF) == 0 &&
             (game.Call<AimingUp>({plw}) != 1 || game.Call<AimAllowed>() != 0)) {
             const uint32_t level = -Memory::Read32(plw + kPlwPitch) & 0xFFFF;
             Memory::Write32(work + kPitchTarget, level);
@@ -266,7 +301,8 @@ static void CameraPitchInputPort(CpuContext* ctx) {
             Memory::Write8(work + kPitchHold, uint8_t(hold - std::min(hold, GameStep::Ticks())));
     }
 
-    Memory::Write8(work + kDistance, 2);
+    if (swimming)
+        Memory::Write8(work + kDistance, 2);
 }
 
 // `angle += CameraAngleEase(target, angle, shift)` closes 1/2^shift of the

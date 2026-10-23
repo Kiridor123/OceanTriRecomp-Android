@@ -6,7 +6,7 @@
 namespace aurora {
 struct MaterialSource {
   uint32_t width = 0, height = 0, format = 0, nativeAsset = 0;
-  std::vector<uint8_t> bytes; // host fallback; Vita uses the external native pack
+  std::vector<uint8_t> bytes; // host fallback; Native uses the external native pack
 };
 
 struct MaterialComposition {

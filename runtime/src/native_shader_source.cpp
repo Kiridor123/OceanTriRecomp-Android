@@ -890,7 +890,7 @@ float2 texgen(int role, float2 uv, float selector, float3 position, float3 norma
 #endif
     if ((bits & 8) == 0)
         coordinate = mul(float4(coordinate, 1.0f), t.post);
-    // Selects, not branches: psp2cgc turns a vector ?: or an if on a vertex's
+    // Selects, not branches: shader-compiler turns a vector ?: or an if on a vertex's
     // values into dynamic flow control, which runs the program in per-instance
     // mode (one vertex per USSE thread instead of four).
     float projective = coordinate.z != 0.0f ? 1.0f : 0.0f;
@@ -996,7 +996,7 @@ void main(float3 a_position, float3 a_uv0, float3 a_uv1,
 // Texture reads take the interpolated coordinate directly; LOD bias is in the
 // texture control words, so no read depends on fragment arithmetic. Colours
 // are computed in half precision (real), which halves the primary attributes
-// and shortens most programs (psp2shaderperf: modulate_t1 12 -> 8 cycles,
+// and shortens most programs (shader-profiler: modulate_t1 12 -> 8 cycles,
 // modulate_t1_fog_linear 19 -> 16, basic_t1_fog_linear 67 -> 51); half keeps
 // 11 significant bits, the 8-bit target 8. Programs that evaluate picks stay
 // in float: converting the picked coefficients costs them 1 to 8 cycles.
@@ -1091,7 +1091,7 @@ real4 main(real4 v_color0 : COLOR0, float2 v_uv0 : TEXCOORD0, float2 v_uv1 : TEX
 #if MODULATE && PURE_MODULATE && FOG
     // The vertices folded the fog blend into the colour (fog_blend): one
     // multiply-add, no saturation (texel and colour are in [0, 1], the colour
-    // at most 1 - f). psp2shaderperf modulate_t1_pure_fog_linear 7 -> 1 cycle.
+    // at most 1 - f). shader-profiler modulate_t1_pure_fog_linear 7 -> 1 cycle.
     real4 result = t0 * v + v_fog;
 #elif MODULATE && PURE_MODULATE
     real4 result;
@@ -1137,7 +1137,7 @@ real4 main(real4 v_color0 : COLOR0, float2 v_uv0 : TEXCOORD0, float2 v_uv1 : TEX
     result.ba = saturate(saturate(sum_ba * shade.s.ba) * (v.ba * shade.mv.ba + shade.mc.ba));
 #elif BASIC_LERP
     // Constant inputs are their offsets; only c (texture role 0) varies.
-    // Affine in the texture (as the GLSL): psp2shaderperf basic_t1_lerp_gpu
+    // Affine in the texture (as the GLSL): shader-profiler basic_t1_lerp_gpu
     // 13 -> 7 cycles.
     real3 range = LERP_COLOR_OFFSET(1).rgb - LERP_COLOR_OFFSET(0).rgb;
     real3 slope = range * LERP_COLOR_SCALE.rgb * (COLOR_EQUATION.z * COLOR_EQUATION.y);
@@ -1179,7 +1179,7 @@ std::string Define(const char* name, int value) {
 }
 
 // One statement per role; TEXGEN_OUTPUTS expands inside the mesh main().
-// General texgens first: psp2cgc -O3 crashed (a null read in the compiler)
+// General texgens first: shader-compiler -O3 crashed (a null read in the compiler)
 // on skinned programs with SRT roles 0 and 1 before a general role 2, and
 // the bank fell back to -O2 (mesh_spot*_ssg_gpu_skin: 646.5 cycles; with the
 // texgen first, -O3: 324.25).
@@ -1225,7 +1225,7 @@ bool PureModulate(const NativeShaderVariant& variant) {
 }
 
 // Animated picks are evaluated by one-texture MODULATE programs only: their
-// uniform-only coefficient code fits GXM's secondary program (psp2shaderperf:
+// uniform-only coefficient code fits GXM's secondary program (shader-profiler:
 // +0..1 cycle). BASIC already needs ~100 secondary attributes; its picks would
 // move into the per-fragment program (77 -> 184 cycles), as do those of two-
 // and three-texture MODULATE (21 -> 66, 23 -> 62), so such a material with

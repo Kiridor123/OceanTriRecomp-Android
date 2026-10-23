@@ -36,9 +36,11 @@ void Begin(double s) {
     Memory::WriteFloat32(kFrameRate, float(variable ? 30.0 : 30.0 / s));
     elapsed += s;
     clock += s;
-    const double whole = std::floor(clock);
+    const double whole = std::floor(clock + 1e-9);
     ticks = uint32_t(whole);
-    clock -= whole;
+    clock = std::max(0.0, clock - whole);
+    if (std::fabs(clock) <= 1e-9)
+        clock = 0.0;
 }
 
 double Scale() {

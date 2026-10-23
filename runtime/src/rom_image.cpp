@@ -1,3 +1,4 @@
+#include "win_posix_dir.h"
 #include "rom_image.h"
 #include "fatal.h"
 #include <aurora/thread_role.hpp>
@@ -9,21 +10,11 @@
 #include <cstdio>
 #include <stdexcept>
 #include <string>
-#include "../vita/rom_decoder.h"
-#ifdef __vita__
-#include "../vita/aligned_io.h"
-#endif
-#ifdef __vita__
-#include <psp2/io/fcntl.h>
-#include <psp2/io/stat.h>
-#include <psp2/kernel/sysmem.h>
-#include <psp2/kernel/threadmgr.h>
-#else
+#include "rom_decoder.h"
 #include <cerrno>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#endif
 
 namespace {
 class File {
@@ -32,13 +23,16 @@ class File {
     File() = default;
 
     Status Open(const std::filesystem::path& path) {
-#ifdef __vita__
-        fd = sceIoOpen(path.string().c_str(), SCE_O_RDONLY, 0);
-        SceIoStat st{};
-        const int result = fd < 0 ? -1 : sceIoGetstatByFd(fd, &st);
+        #ifdef _WIN32
+        fd = ::mh3_open(path.string().c_str(), O_RDONLY);
 #else
-        fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+        fd = ::open(path.string().c_str(), O_RDONLY | O_CLOEXEC);
+#endif
         struct stat st {};
+        #ifdef _WIN32
+        const long long winSize = fd < 0 ? -1 : mh3_filelength(fd);
+        const int result = winSize < 0 ? -1 : 0;
+#else
         const int result = fd < 0 ? -1 : fstat(fd, &st);
 #endif
         if (result < 0) {
@@ -46,7 +40,11 @@ class File {
             return Status::Error("Cannot read ROM: " + path.string());
         }
 
+        #ifdef _WIN32
+        size = uint64_t(winSize);
+#else
         size = st.st_size;
+#endif
         return {};
     }
 
@@ -64,14 +62,14 @@ class File {
         size_t done = 0;
 
         while (done < count) {
-#ifdef __vita__
-            const auto n = VitaIo::Pread(fd, bytes + done, count - done, at + done);
+            #ifdef _WIN32
+            const auto n = mh3_pread(fd, bytes + done, count - done, at + done);
 #else
             const auto n = pread(fd, bytes + done, count - done, at + done);
+#endif
 
             if (n < 0 && errno == EINTR)
                 continue;
-#endif
             if (n <= 0)
                 return Status::Error("ROM read failed");
 
@@ -94,26 +92,16 @@ class File {
     void Close() {
         if (fd < 0)
             return;
-#ifdef __vita__
-        sceIoClose(fd);
-#else
         ::close(fd);
-#endif
         fd = -1;
     }
 };
 
-// The decoder's read-ahead worker. Vita: on the workers' core beside the DVD
+// The decoder's read-ahead worker. Native: on the workers' core beside the DVD
 // reader that calls the decoder (cores 0-1 are the render and draw threads'),
 // below the default priority so the guest worker and the reader run first.
 void PinDecodeWorker() {
-#ifdef __vita__
     aurora::pin_current_thread(aurora::ThreadRole::Worker);
-    constexpr int DefaultPriority = 0x10000100; // SCE_KERNEL_DEFAULT_PRIORITY_USER
-    sceKernelChangeThreadPriority(sceKernelGetThreadId(), DefaultPriority + 16);
-#else
-    aurora::pin_current_thread(aurora::ThreadRole::Worker);
-#endif
 }
 
 uint32_t Word(const std::vector<uint8_t>& b, size_t at) {
@@ -126,7 +114,7 @@ uint32_t Word(const std::vector<uint8_t>& b, size_t at) {
 
 // The decoder (rom_decoder.cpp) handles RVZ/WIA decompression and Wii
 // title-key/AES decoding. Its read callback keeps full 64-bit source offsets
-// on Vita's 32-bit newlib.
+// on host's 32-bit newlib.
 class RomImage::Source {
   public:
     File file;
@@ -293,7 +281,7 @@ Status RomImage::ReadDisc(uint64_t at, size_t count, std::vector<uint8_t>& bytes
 
 #ifdef MH3_DEVELOPMENT
 // Each case reads its own 8 MiB of the image, so no read is served from a
-// cache: plain reads by size into ordinary and (Vita) physically contiguous
+// cache: plain reads by size into ordinary and (Native) physically contiguous
 // memory, then the decoder's 512 KiB partition reads (a DVD library chunk) of
 // game data with the share of their time spent in the image's reads.
 void RomImage::Benchmark(uint64_t sample) const {
@@ -310,15 +298,6 @@ void RomImage::Benchmark(uint64_t sample) const {
 
     std::vector<uint8_t> heap(kLargest);
     std::vector<Buffer> buffers{{"heap", heap.data()}};
-#ifdef __vita__
-    const SceUID block = sceKernelAllocMemBlock("MH3 disc benchmark", SCE_KERNEL_MEMBLOCK_TYPE_USER_MAIN_PHYCONT_RW, kLargest, nullptr);
-    void* base = nullptr;
-
-    if (block >= 0 && sceKernelGetMemBlockBase(block, &base) >= 0)
-        buffers.push_back({"phycont", static_cast<uint8_t*>(base)});
-    else
-        std::fprintf(stderr, "MH3 disc benchmark: no phycont block (%08x)\n", unsigned(block));
-#endif
     uint64_t at = file.size / 4 & ~uint64_t(0xFFFF);
 
     for (const auto& buffer : buffers)
@@ -340,10 +319,6 @@ void RomImage::Benchmark(uint64_t sample) const {
                          kCase / 1048576.0 / (total / 1000.0), total / double(kCase / size), worst);
             at += kCase;
         }
-#ifdef __vita__
-    if (block >= 0)
-        sceKernelFreeMemBlock(block);
-#endif
     constexpr size_t kChunk = 512u << 10;
     const uint64_t reads = file.reads.load(), readNs = file.readNs.load();
     const auto start = Clock::now();

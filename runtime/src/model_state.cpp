@@ -17,7 +17,7 @@ namespace {
 // both store and read them (a material bound on one while the other draws),
 // so every access takes objectsLock: a lookup while the other thread's insert
 // rehashed the map missed, and threw "no typed native producer" (a first load
-// of the village on the Vita, which inserts most of its objects). Recursive:
+// of the village on the host, which inserts most of its objects). Recursive:
 // the copies read and store under one hold.
 std::recursive_mutex objectsLock;
 

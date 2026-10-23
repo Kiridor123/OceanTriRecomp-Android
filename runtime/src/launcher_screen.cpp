@@ -17,9 +17,9 @@
 #include <stdexcept>
 #include <thread>
 
-namespace VitaLauncher {
+namespace NativeLauncher {
 namespace {
-// Four 28-byte vertices per rectangle. The Vita renderer copies each frame's
+// Four 28-byte vertices per rectangle. The host renderer copies each frame's
 // geometry into 1 MiB of per-frame vertex memory and cancels a frame that
 // does not fit, so a frame keeps below that: 9000 rectangles are 0.96 MiB.
 constexpr size_t RectangleBudget = 9000, ChunkRectangles = 3000;
@@ -116,7 +116,7 @@ void HandOffScreen() {
     OpenNativeAssets();
 }
 
-#if defined(MH3_DEVELOPMENT) && !defined(__vita__)
+#if defined(MH3_DEVELOPMENT)
 int RunLauncherScreenCheck() {
     constexpr uint32_t ink = 0xff28302c, paper = 0xffc8d7d8, gold = 0xff73b9de;
     const auto pump = [] {
@@ -187,4 +187,4 @@ int RunLauncherScreenCheck() {
     return 0;
 }
 #endif
-} // namespace VitaLauncher
+} // namespace NativeLauncher

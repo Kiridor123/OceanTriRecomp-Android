@@ -1,6 +1,6 @@
 // Native Wii disc image decoder: ISO, WIA and RVZ (docs/rom-decoder.md).
 //
-// Implements the C bridge in vita/rom_decoder.h for RomImage. It returns the
+// Implements the C bridge in rom_decoder.h for RomImage. It returns the
 // bytes the nod 1.4.4 bridge returned for the same calls: disc reads give
 // partition sectors decrypted (WIA/RVZ: zeroed hash block, hashes are not
 // rebuilt); flat reads give the game partition's data, 0x7c00 bytes per
@@ -11,7 +11,7 @@
 // Formats: WiiBrew's "Wii disc" (partition table, ticket, AES-128-CBC
 // sectors) and Dolphin's docs/WiaAndRvz.md (WIA/RVZ headers, groups,
 // exception lists, RVZ packing and its junk generator).
-#include "../vita/rom_decoder.h"
+#include "../include/rom_decoder.h"
 
 #include <algorithm>
 #include <array>
@@ -667,12 +667,12 @@ bool RomReader::IsoRaw(uint64_t at, uint8_t* out, size_t count) const {
 }
 
 bool RomReader::OpenWia(const uint8_t* header) {
-    // These limits bound every allocation below (Vita memory) and cover the
+    // These limits bound every allocation below (Native memory) and cover the
     // usual 128 KiB / 2 MiB chunks.
     if (Be32(header + 0x0c) > 0x1000 || Be32(header + 0x54) < 0x8000 || Be32(header + 0x54) > 0x200000 ||
         Be32(header + 0xd8) > 32 || Be32(header + 0xfc) > 16384 || Be32(header + 0x10c) > 131072 ||
         Be32(header + 0x108) > 0x100000 || Be32(header + 0x118) > 0x400000)
-        return Fail("RVZ metadata/chunk size exceeds the Vita processing limit");
+        return Fail("RVZ metadata/chunk size exceeds the host processing limit");
     wia = true;
     const bool rvz = header[0] == 'R';
 
@@ -1050,7 +1050,7 @@ void RomReader::RunAhead() {
         {
             std::unique_lock guard(a.lock);
 
-            // Timed: VitaSDK's condition variable can lose a notification.
+            // Timed: the platform's condition variable can lose a notification.
             while (!a.stop && a.queued == UINT32_MAX)
                 a.changed.wait_for(guard, std::chrono::milliseconds(5));
 

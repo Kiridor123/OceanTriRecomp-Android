@@ -12,6 +12,10 @@
 #include <cstdlib>
 #include <cstdio>
 #include <sched.h>
+#ifdef _WIN32
+#include <windows.h>
+#define sched_getcpu() int(GetCurrentProcessorNumber())
+#endif
 #include <stdexcept>
 #include <string>
 #include <sys/syscall.h>

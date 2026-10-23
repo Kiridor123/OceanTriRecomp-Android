@@ -29,7 +29,7 @@ static mh3_matrix34 identity(void) {
     return m;
 }
 
-/* Preserve IEEE finite admission without VitaSDK's per-float __fpclassifyf
+/* Preserve IEEE finite admission without the platform's per-float __fpclassifyf
  * call. No consumed/unused field rule changes. */
 static int finite_matrix(const mh3_matrix34 *m) {
     size_t r, c;

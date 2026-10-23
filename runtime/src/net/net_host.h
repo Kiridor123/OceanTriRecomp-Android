@@ -1,6 +1,6 @@
 // The host side of the Wii network devices (ios_net.cpp): sockets, name
 // lookups and TLS sessions on the platform's network stack: BSD sockets and
-// OpenSSL on Linux and the Vita (net_host_posix.cpp), none on the web.
+// OpenSSL on Linux and the host (net_host_posix.cpp), none on the web.
 //
 // Every socket is non-blocking on the host. A guest call that would block
 // waits in the guest thread scheduler (GuestThreads::BlockUntil) and retries.

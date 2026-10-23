@@ -181,7 +181,7 @@ REGISTER_NATIVE_FUNCTION(0x804CC9D0, MH3_OSInitAudioSystem);
 // MH3's translated C library and route its final byte stream to the host.
 // The game repeats some diagnostics every frame (nw4r's FSqrt domain warning
 // from the sway chains). Each write goes to the log (stderr; the TTY on the
-// Vita), so an identical consecutive write is only counted, and the count is
+// Native), so an identical consecutive write is only counted, and the count is
 // reported once per second or before the next different write.
 namespace {
 std::string lastConsoleWrite;

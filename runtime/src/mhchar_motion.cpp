@@ -365,6 +365,8 @@ static void MHcharRootMotionPort(CpuContext* ctx) {
 #ifdef MH3_DEVELOPMENT
     GuestWorker::NoteShared("MHchar motion counters");
 #endif
+    if (counters.size() > 512 && counters.find(self) == counters.end())
+        counters.clear();
     Counters& state = counters[self];
     const bool pausing = Memory::Read8(self + kPauseSteps) != 0;
     const double animated = pausing ? Spend(self + kPauseSteps, state.pause, step) : step;
@@ -427,13 +429,19 @@ static void MHcharRootMotionPort(CpuContext* ctx) {
         // join up at any step length.
         const float rate = F32(channel(i, kRate));
         const float span = rate * baseRate;
-        game.Virtual<kGetFrame>(anim);
-        const float frame = game.F1();
-        float from = span == rate ? frame : frame + (rate - span), to = frame + rate;
+        const float frame = F32(channel(i, kFrame));
+        const float end = F32(channel(i, kEndFrame));
+        float from = frame, to = frame + span;
 
-        if (to >= F32(channel(i, kEndFrame))) {
-            to = frame;
-            from = frame - span;
+        if (to >= end) {
+            if (span == rate) {
+                to = frame;
+                from = frame - span;
+            } else {
+                to = end;
+                if (from > end)
+                    from = end;
+            }
         }
 
         if (from < zero)
@@ -444,11 +452,13 @@ static void MHcharRootMotionPort(CpuContext* ctx) {
         // The translation at `from` is the last window's end when this window
         // starts there (to within rounding: both are sums of the same frames).
         RootSample& root = state.roots[i];
-        const float end = F32(channel(i, kEndFrame));
-        const bool joined = root.anim == anim && root.end == end && std::fabs(root.frame - from) <= 1e-5f * std::max(1.0f, std::fabs(from));
-        std::array<float, 3> atTo;
-        const std::array<float, 3> d = RootDelta(game, self, anim, from, to, rootResult, rootOut, joined ? &root.at : nullptr, &atTo);
-        root = {anim, to, end, atTo};
+        std::array<float, 3> d{zero, zero, zero};
+        if (from != to) {
+            const bool joined = root.anim == anim && root.end == end && std::fabs(root.frame - from) <= 2e-4f * std::max(1.0f, std::fabs(from));
+            std::array<float, 3> atTo;
+            d = RootDelta(game, self, anim, from, to, rootResult, rootOut, joined ? &root.at : nullptr, &atTo);
+            root = {anim, to, end, atTo};
+        }
 
         for (uint32_t k = 0; k < 3; ++k)
             Memory::WriteFloat32(delta + k * 4, d[k]);

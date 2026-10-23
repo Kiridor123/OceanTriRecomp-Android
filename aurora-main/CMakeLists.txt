@@ -8,21 +8,11 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-option(AURORA_GXM "Use the native PS Vita GXM renderer" ${VITA})
-
-if(AURORA_GXM)
-  if(NOT VITA)
-    message(FATAL_ERROR "AURORA_GXM requires a Vita toolchain")
-  endif()
-
-  # Vita ELF conversion rejects GOT relocations from position-independent code.
-  set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
-  enable_language(ASM)
-endif()
 
 # The WebGPU renderer (lib/webgpu) of the Emscripten web build
-# (docs/optimizations/platforms/web-build.md). The GLES and GXM builds never compile it.
+# (docs/optimizations/platforms/web-build.md). The GLES builds never compile it.
 option(AURORA_WEBGPU "Use the WebGPU renderer (Emscripten)" ${EMSCRIPTEN})
+option(AURORA_ANGLE_VULKAN "Use ANGLE EGL with the Vulkan renderer on Windows" ${WIN32})
 
 if(AURORA_WEBGPU AND NOT EMSCRIPTEN)
   message(FATAL_ERROR "AURORA_WEBGPU requires the Emscripten toolchain")

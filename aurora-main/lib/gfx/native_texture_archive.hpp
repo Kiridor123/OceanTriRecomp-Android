@@ -1,6 +1,6 @@
 #pragma once
 // Standard file I/O is used by host pack validation only. GXM NativeAssets uses
-// sceIoPread directly into the CDRAM image+palette allocation instead.
+// hostIoPread directly into the CDRAM image+palette allocation instead.
 #include "native_texture_pack.hpp"
 #include <fstream>
 

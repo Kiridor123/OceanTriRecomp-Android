@@ -69,7 +69,8 @@ constexpr uint32_t kOrganizerGuide = 0x244, kPackRatGuide = 0x245;
 // a new stack (Buy new item get 10, C2 at 0x8004BAF0/BB54) starts at 10.
 extern "C" void func_8004BAA0(CpuContext* ctx);
 
-extern "C" void MH3_CheatItemAdd(CpuContext* ctx) {
+extern "C" void MH3_DiagItemAddTrace(uint32_t lr, uint32_t item, uint32_t change, uint32_t slots, uint32_t count);
+extern "C" void MH3_CheatItemAdd(CpuContext* ctx) { MH3_DiagItemAddTrace(ctx->lr, ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], ctx->gpr[6]);
     const bool get10 = Cheats::Toggled(Id::ItemsGet10);
     const bool any = get10 || On(Id::InfiniteBombsInPouch) || On(Id::SellUseGet10) || On(Id::BuyNewGet10);
 
@@ -135,6 +136,7 @@ REGISTER_NATIVE_FUNCTION_AS(0x8004BAA0, MH3_CheatItemAdd, "CheatItemAdd");
 // none.
 extern "C" void func_80272E94(CpuContext* ctx);
 
+extern "C" void MH3_DiagPlayerItemTrace(uint32_t lr, uint32_t player, uint32_t item, uint32_t change, uint32_t result);
 extern "C" void MH3_CheatPlayerItemUse(CpuContext* ctx) {
     static constexpr uint32_t kItemUses[]{0x80249120, 0x8024B9D8, 0x8024C858, 0x8024D6E0, 0x8024F210, 0x8024F5FC};
     const uint32_t from = ctx->lr;
@@ -144,7 +146,7 @@ extern "C" void MH3_CheatPlayerItemUse(CpuContext* ctx) {
     if ((item || ammo) && int32_t(ctx->gpr[5]) < 0)
         ctx->gpr[5] = 0;
 
-    func_80272E94(ctx);
+    const uint32_t diagLr = ctx->lr, diagPlayer = ctx->gpr[3], diagItem = ctx->gpr[4], diagChange = ctx->gpr[5]; func_80272E94(ctx); MH3_DiagPlayerItemTrace(diagLr, diagPlayer, diagItem, diagChange, ctx->gpr[3]);
 }
 
 REGISTER_NATIVE_FUNCTION_AS(0x80272E94, MH3_CheatPlayerItemUse, "CheatPlayerItemUse");

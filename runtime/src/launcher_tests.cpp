@@ -1,4 +1,4 @@
-#include "vita_launcher.h"
+#include "native_launcher.h"
 #include "button_glyphs.h"
 #include "disc_image.h"
 #include "load_progress.h"
@@ -62,42 +62,42 @@ void SaveTests(const std::filesystem::path& root) {
     Word(file, 0, 1);
     Word(file, 0x48 + 0x6000, 1);
     Word(file, 4, 1);
-    Check(!VitaLauncher::ValidSave(file, 0), "empty character must be rejected");
-    Check(VitaLauncher::ValidSave(file, 1), "populated second character must be found");
+    Check(!NativeLauncher::ValidSave(file, 0), "empty character must be rejected");
+    Check(NativeLauncher::ValidSave(file, 1), "populated second character must be found");
     auto dir = root / "nand/title/00010000/524d4850/data/nocopy";
     std::filesystem::create_directories(dir);
     Save(dir / "data04", file);
-    const auto slots = VitaLauncher::ProbeSaves(root);
+    const auto slots = NativeLauncher::ProbeSaves(root);
     Check(slots.size() == 1 && slots[0].file == 4 && slots[0].character == 1, "real MH3 slot probe");
     file.back() = 1;
-    Check(!VitaLauncher::ValidSave(file, 1), "bad checksum must be rejected");
+    Check(!NativeLauncher::ValidSave(file, 1), "bad checksum must be rejected");
     file.resize(12);
-    Check(!VitaLauncher::ValidSave(file, 1), "short file must be rejected");
+    Check(!NativeLauncher::ValidSave(file, 1), "short file must be rejected");
     Check(std::filesystem::file_size(dir / "data04") == 0x14000, "probe must not change the save");
 }
 
 // The edited quest file; a failure stops the tests.
-std::vector<uint8_t> Edit(std::span<const uint8_t> source, const VitaLauncher::CustomQuest& quest) {
+std::vector<uint8_t> Edit(std::span<const uint8_t> source, const NativeLauncher::CustomQuest& quest) {
     std::vector<uint8_t> edited;
-    CheckStatus(VitaLauncher::EditQuestFile(source, quest, edited));
+    CheckStatus(NativeLauncher::EditQuestFile(source, quest, edited));
     return edited;
 }
 
 // Whether the edit is rejected.
-bool Rejected(std::span<const uint8_t> source, const VitaLauncher::CustomQuest& quest) {
+bool Rejected(std::span<const uint8_t> source, const NativeLauncher::CustomQuest& quest) {
     std::vector<uint8_t> edited;
-    return !VitaLauncher::EditQuestFile(source, quest, edited).ok();
+    return !NativeLauncher::EditQuestFile(source, quest, edited).ok();
 }
 
 std::vector<uint16_t> Options(std::span<const uint8_t> source, uint16_t base) {
     std::vector<uint16_t> options;
-    CheckStatus(VitaLauncher::QuestCompositionOptions(source, base, options));
+    CheckStatus(NativeLauncher::QuestCompositionOptions(source, base, options));
     return options;
 }
 
 void QuestTests() {
     const auto original = Quest();
-    VitaLauncher::CustomQuest custom{"Own quest", QuestCatalog::Set::Village, 1060, 1, true, 7};
+    NativeLauncher::CustomQuest custom{"Own quest", QuestCatalog::Set::Village, 1060, 1, true, 7};
     const auto edited = Edit(original, custom);
     Check(edited.size() == original.size() && std::string(edited.begin() + 16, edited.begin() + 25) == "Own quest", "quest name/extent");
     Check(edited[16 + 0x333] == 0x81 && edited[16 + 0x337] == 1 && edited[16 + 0x8a] == 7, "actual objective changes");
@@ -234,8 +234,8 @@ void DiscTests(const std::filesystem::path& root) {
     std::copy(partition.begin(), partition.end(), iso.begin() + dataAt + 0x400);
     Save(root / "game.iso", iso);
     unsigned updates = 0;
-    CheckStatus(VitaLauncher::ProcessDisc(root / "game.iso", root / "processed", [&](const auto&, uint64_t, uint64_t) { ++updates; }));
-    Check(updates > 1 && VitaLauncher::DiscReady(root / "processed"), "processing publishes validated game data");
+    CheckStatus(NativeLauncher::ProcessDisc(root / "game.iso", root / "processed", [&](const auto&, uint64_t, uint64_t) { ++updates; }));
+    Check(updates > 1 && NativeLauncher::DiscReady(root / "processed"), "processing publishes validated game data");
     Check(std::filesystem::file_size(root / "game.iso") == iso.size(), "ROM remains untouched");
     Check(!std::filesystem::exists(root / "processed/partition.bin") && std::filesystem::exists(root / "processed/rom.txt"), "the partition stays in the disc image");
     {
@@ -244,9 +244,9 @@ void DiscTests(const std::filesystem::path& root) {
     }
 
     std::filesystem::resize_file(root / "game.iso", iso.size() + 0x8000);
-    Check(!VitaLauncher::DiscReady(root / "processed"), "a changed disc image must not be ready");
+    Check(!NativeLauncher::DiscReady(root / "processed"), "a changed disc image must not be ready");
     std::filesystem::resize_file(root / "game.iso", iso.size());
-    Check(VitaLauncher::DiscReady(root / "processed"), "the restored disc image is ready again");
+    Check(NativeLauncher::DiscReady(root / "processed"), "the restored disc image is ready again");
 }
 
 // Every disc texture's converted payload, decoded as the GPU samples it,
@@ -257,23 +257,23 @@ void CheckTextures(const std::filesystem::path& root) {
     std::map<uint32_t, std::pair<unsigned, uint64_t>> formats;
     unsigned textures = 0, patched = 0;
 
-    for (const auto& path : VitaLauncher::TextureInventory::SourceNames(disc.FileNames())) {
+    for (const auto& path : NativeLauncher::TextureInventory::SourceNames(disc.FileNames())) {
         const auto data = disc.ReadFile(path);
-        std::vector<VitaLauncher::TextureInventory::Texture> parsed;
-        CheckStatus(VitaLauncher::TextureInventory::Parse(data, disc.FileOffset(path), parsed, 1));
+        std::vector<NativeLauncher::TextureInventory::Texture> parsed;
+        CheckStatus(NativeLauncher::TextureInventory::Parse(data, disc.FileOffset(path), parsed, 1));
 
         for (const auto& s : parsed) {
-            VitaLauncher::TextureConversion converted;
-            CheckStatus(VitaLauncher::ConvertTexture(s, data, disc.FileOffset(path), path, converted));
+            NativeLauncher::TextureConversion converted;
+            CheckStatus(NativeLauncher::ConvertTexture(s, data, disc.FileOffset(path), path, converted));
             uint64_t planned = 0;
-            CheckStatus(VitaLauncher::TexturePayloadBytes(s, data, disc.FileOffset(path), planned));
+            CheckStatus(NativeLauncher::TexturePayloadBytes(s, data, disc.FileOffset(path), planned));
             Check(planned == converted.payload.size(), "planned texture bytes differ from the payload");
             const aurora::ArrayRef<uint8_t> bytes{data.data() + s.offset, s.bytes};
             auto source = s.entries ? aurora::gfx::convert_texture_palette(s.format, s.width, s.height, s.mips, bytes, GXTlutFmt(s.paletteFormat), s.entries,
                                                                           {data.data() + s.palette, size_t(s.entries) * 2})
                                     : aurora::gfx::convert_texture(s.format, s.width, s.height, s.mips, bytes);
 
-            // The atlases with the Classic Controller's buttons carry the Vita's.
+            // The atlases with the Classic Controller's buttons carry the host's.
             if (source.format == aurora::gl::Format::RGBA8 && ButtonGlyphs::Patch(s.name, s.width, s.height, source.data.data())) {
                 ++patched;
                 std::cout << "button atlas " << path << " " << s.name << " " << s.width << "x" << s.height << " GX format " << s.format << " level 0 hash " << std::hex
@@ -307,14 +307,14 @@ void CheckTextures(const std::filesystem::path& root) {
     for (const auto& [format, count] : formats)
         std::cout << "tag " << format << ": " << count.first << " textures, " << count.second / 1048576.0 << " MiB\n";
 
-    std::cout << textures << " textures sample as their source, " << patched << " atlases with the Vita's buttons\n";
+    std::cout << textures << " textures sample as their source, " << patched << " atlases with the host's buttons\n";
 }
 } // namespace
 
 int main(int argc, char** argv) {
     try {
         if (argc == 3 && std::string_view(argv[1]) == "--disc-ready") {
-            return VitaLauncher::DiscReady(argv[2]) ? 0 : 1;
+            return NativeLauncher::DiscReady(argv[2]) ? 0 : 1;
         }
 
         if (argc == 3 && std::string_view(argv[1]) == "--check-textures") {
@@ -323,8 +323,8 @@ int main(int argc, char** argv) {
         }
 
         if (argc == 3 && std::string_view(argv[1]) == "--prepare-textures") {
-            VitaLauncher::PrepareTextures(argv[2], [](const std::string&, uint64_t, uint64_t) {});
-            Check(VitaLauncher::DiscReady(argv[2]), "prepared external texture readiness");
+            NativeLauncher::PrepareTextures(argv[2], [](const std::string&, uint64_t, uint64_t) {});
+            Check(NativeLauncher::DiscReady(argv[2]), "prepared external texture readiness");
             return 0;
         }
 
@@ -346,7 +346,7 @@ int main(int argc, char** argv) {
                         for (unsigned j = 0; j < ReadWord(file, 4); ++j)
                             if ((ReadWord(file, ReadWord(file, 8 + j * 8) + 0x2c) >> 16) == donor)
                                 source = ReadWord(file, 8 + j * 8);
-                        VitaLauncher::CustomQuest q{"Own encounter", QuestCatalog::Set(set), id, uint16_t(ReadWord(file, source + 0x334)), false, file[at + 0x8a]};
+                        NativeLauncher::CustomQuest q{"Own encounter", QuestCatalog::Set(set), id, uint16_t(ReadWord(file, source + 0x334)), false, file[at + 0x8a]};
                         q.encounter = donor;
                         q.minutes = 25;
 
@@ -355,7 +355,7 @@ int main(int argc, char** argv) {
 
                             if (capture) {
                                 bool supported = false;
-                                CheckStatus(VitaLauncher::SupportsCapture(q, supported));
+                                CheckStatus(NativeLauncher::SupportsCapture(q, supported));
 
                                 if (!supported)
                                     continue;
@@ -387,14 +387,14 @@ int main(int argc, char** argv) {
 
             unsigned scratch = 0;
 
-            for (const uint8_t map : VitaLauncher::ScratchMaps()) {
-                const auto allowed = VitaLauncher::ScratchMonsters(map);
+            for (const uint8_t map : NativeLauncher::ScratchMaps()) {
+                const auto allowed = NativeLauncher::ScratchMonsters(map);
 
                 for (uint8_t rank = 0; rank < 3; ++rank)
                     for (size_t i = 0; i < allowed.size(); ++i)
                         for (size_t count = 1; count <= std::min<size_t>(3, allowed.size()); ++count)
                             for (unsigned capture = 0; capture < 2; ++capture) {
-                                VitaLauncher::CustomQuest q{"Scratch"};
+                                NativeLauncher::CustomQuest q{"Scratch"};
                                 q.map = map;
                                 q.rank = rank;
                                 q.stars = 4;
@@ -405,20 +405,20 @@ int main(int argc, char** argv) {
                                 for (size_t k = 0; k < count; ++k)
                                     q.monsters[k] = allowed[(i + k) % allowed.size()];
 
-                                if (count > 1 && std::any_of(q.monsters.begin(), q.monsters.end(), VitaLauncher::ScratchAlone))
+                                if (count > 1 && std::any_of(q.monsters.begin(), q.monsters.end(), NativeLauncher::ScratchAlone))
                                     continue;
 
-                                VitaLauncher::SetScratchCarrier(q);
+                                NativeLauncher::SetScratchCarrier(q);
                                 bool supported = !capture;
 
                                 if (capture)
-                                    CheckStatus(VitaLauncher::ScratchCapture(q, supported));
+                                    CheckStatus(NativeLauncher::ScratchCapture(q, supported));
 
                                 if (!supported)
                                     continue;
 
                                 std::vector<uint8_t> edited;
-                                CheckStatus(VitaLauncher::ScratchQuestFile(sets, q, edited));
+                                CheckStatus(NativeLauncher::ScratchQuestFile(sets, q, edited));
                                 const auto& file = sets[unsigned(q.set)];
                                 Check(edited.size() == file.size(), "scratch quest keeps the quest file's size");
                                 size_t at = 0;
@@ -448,13 +448,13 @@ int main(int argc, char** argv) {
 
         if (argc == 4 && std::string_view(argv[1]) == "--process") {
             std::string last;
-            CheckStatus(VitaLauncher::ProcessDisc(argv[2], argv[3], [&](const std::string& phase, uint64_t done, uint64_t total) {
+            CheckStatus(NativeLauncher::ProcessDisc(argv[2], argv[3], [&](const std::string& phase, uint64_t done, uint64_t total) {
                 if (phase != last) {
                     std::cout << phase << " (" << total << ")\n";
                     last = phase;
                 }
             }));
-            Check(VitaLauncher::DiscReady(argv[3]), "processed external disc readiness");
+            Check(NativeLauncher::DiscReady(argv[3]), "processed external disc readiness");
             return 0;
         }
 

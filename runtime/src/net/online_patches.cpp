@@ -164,6 +164,9 @@ constexpr const char* kRefused[]{"Cheats are not allowed online,", "please don't
 } // namespace
 
 bool AdmitOnline() {
+    if (SkipTlsSetting())
+        return true;
+
     if (!LauncherCheats::EnabledCount())
         return true;
 

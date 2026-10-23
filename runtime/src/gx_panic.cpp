@@ -4,11 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <unwind.h>
-#ifdef __vita__
-#include <psp2/kernel/processmgr.h>
-#else
 #include <dlfcn.h>
-#endif
 #ifdef MH3_HAS_AURORA
 #include <aurora/legacy_gx.h>
 #endif
@@ -37,7 +33,6 @@ _Unwind_Reason_Code NativeFrame(_Unwind_Context* context, void* value) {
         return _URC_END_OF_STACK;
 
     std::fprintf(stderr, "  #%u %p", trace.count++, reinterpret_cast<void*>(ip));
-#ifndef __vita__
     Dl_info symbol{};
 
     // Unwind IPs are return addresses. A noreturn stub's return address can
@@ -48,7 +43,6 @@ _Unwind_Reason_Code NativeFrame(_Unwind_Context* context, void* value) {
 
     if (symbol.dli_fbase)
         std::fprintf(stderr, " (ELF + 0x%lx)", static_cast<unsigned long>(ip - reinterpret_cast<uintptr_t>(symbol.dli_fbase)));
-#endif
     std::fputc('\n', stderr);
     return _URC_NO_REASON;
 }
@@ -109,9 +103,6 @@ _Unwind_Reason_Code NativeFrame(_Unwind_Context* context, void* value) {
 #endif
     std::fprintf(stderr, "GX calls and FIFO decoding must be replaced with native submissions.\n");
     std::fflush(nullptr);
-#ifdef __vita__
-    sceKernelExitProcess(1);
-#endif
     std::_Exit(EXIT_FAILURE);
 }
 

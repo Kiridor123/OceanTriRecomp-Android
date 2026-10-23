@@ -155,6 +155,8 @@ REGISTER_NATIVE_FUNCTION_AS(0x803AF9F0, MH3_CheatFaint, "CheatFaint");
 // at +0x6A3C). Autofail (US 0x803B030C, EU 0x803B0370: the reward's check
 // dropped), always or while the buttons are held, empties the reward first.
 extern "C" void func_803B0228(CpuContext* ctx);
+extern "C" void func_803AFF98(CpuContext* ctx);
+extern "C" void func_803AFEB0(CpuContext* ctx);
 
 extern "C" void MH3_CheatQuestStep(CpuContext* ctx) {
     const uint32_t quest = Quest();
@@ -164,6 +166,41 @@ extern "C" void MH3_CheatQuestStep(CpuContext* ctx) {
         Memory::Write32(quest + kReward, 0);
 
     func_803B0228(ctx);
+
+    // FIX-ONLINE-QUEST-CLEAR:
+    // En el modo online (tanto en servidor local como en servidores comunitarios P2P),
+    // func_803B0228 detecta los objetivos completados y escribe quest + 27196 = 3 (o 5 si fallo).
+    // Sin embargo, func_803B0228 no llama a func_803AFF98 de inmediato, sino que transmite
+    // el paquete UDP 13:25. En servidores P2P comunitarios (o partidas individuales en Loc Lac),
+    // ningún servidor central Capcom reescribe packet[27]=1 ni procesa el eco, por lo que
+    // move + 250 se quedaba en 0 permanentemente y nunca se mostraba "Quest Clear".
+    // Aquí verificamos si la misión concluyó y sincronizamos el fin de misión localmente.
+    if (quest != 0) {
+        const uint8_t qState = Memory::Read8(quest + 27196);
+        if (qState >= 3) {
+            const uint32_t mgr = Memory::Read32(0x8065AB04);
+            const uint32_t move = mgr ? Memory::Read32(mgr + 16) : 0;
+            if (move != 0 && Memory::Read32(move + 220) == quest) {
+                const uint8_t mState = Memory::Read8(move + 250);
+                if (mState < 3) {
+                    Memory::Write8(move + 250, qState);
+                    Memory::Write8(move + 251, Memory::Read8(quest + 27199));
+                    Memory::Write8(move + 252, Memory::Read8(quest + 27198));
+                    Memory::Write8(move + 253, Memory::Read8(quest + 27197));
+                    Memory::Write8(quest + 27194, 1);
+
+                    CpuContext callCtx = *ctx;
+                    callCtx.gpr[3] = quest;
+                    callCtx.gpr[4] = move;
+                    callCtx.gpr[5] = 0;
+                    if (qState == 5)
+                        func_803AFEB0(&callCtx);
+                    else
+                        func_803AFF98(&callCtx);
+                }
+            }
+        }
+    }
 }
 
 REGISTER_NATIVE_FUNCTION_AS(0x803B0228, MH3_CheatQuestStep, "CheatQuestStep");

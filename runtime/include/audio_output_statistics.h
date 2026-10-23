@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-// Native Vita sink counters. Frames are interleaved stereo sample frames.
+// Native Native sink counters. Frames are interleaved stereo sample frames.
 // Underflow/padding is counted when preparing a block, not hardware completion;
 // authored zero PCM is not counted as padding. Getter never services playback.
 struct NativeAudioOutputStatistics {
@@ -11,6 +11,6 @@ struct NativeAudioOutputStatistics {
     bool available = false;
 };
 
-// Owner calls only; the live Vita instance snapshots its existing ring mutex.
+// Owner calls only; the live Native instance snapshots its existing ring mutex.
 // Other backends report unavailable. Counters are cumulative per sink lifetime.
 NativeAudioOutputStatistics GetNativeAudioOutputStatistics();

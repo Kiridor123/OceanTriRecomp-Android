@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace VitaLauncher {
+namespace NativeLauncher {
 struct TextureConversion {
     aurora::gfx::NativeTextureRecord record; // offset is assigned by the pack writer
     std::vector<uint8_t> payload;
@@ -79,4 +79,4 @@ class ModelConverter {
     std::unique_ptr<Workspace> work;
     std::vector<uint8_t> scratch = std::vector<uint8_t>(4096), payload;
 };
-} // namespace VitaLauncher
+} // namespace NativeLauncher

@@ -144,15 +144,6 @@ elseif (_aurora_sdl3_provider STREQUAL "vendor")
       endif ()
     endif ()
 
-    if(AURORA_GXM)
-      # Compile-only CMake probes see this declaration, but libc lacks it.
-      set(HAVE_SIGACTION OFF CACHE INTERNAL "Vita has no sigaction" FORCE)
-      set(SDL_OPENGL OFF CACHE BOOL "Aurora owns native GXM" FORCE)
-      set(SDL_OPENGLES OFF CACHE BOOL "Aurora owns native GXM" FORCE)
-      set(VIDEO_VITA_PIB OFF CACHE BOOL "Disable SDL GLES surface creation" FORCE)
-      set(VIDEO_VITA_PVR OFF CACHE BOOL "Disable SDL GLES surface creation" FORCE)
-    endif()
-
     include(FetchContent)
 
     # Source fixes for the vendored SDL (see AuroraSDL3Patches.cmake). A freshly
@@ -172,11 +163,6 @@ elseif (_aurora_sdl3_provider STREQUAL "vendor")
       EXCLUDE_FROM_ALL
     )
     FetchContent_MakeAvailable(SDL)
-
-    if(VITA AND AURORA_GXM)
-      include("${CMAKE_CURRENT_LIST_DIR}/AuroraVitaDependencyPatches.cmake")
-      aurora_patch_vita_sdl("${sdl_SOURCE_DIR}")
-    endif()
   else ()
     message(STATUS "aurora: Using existing SDL3")
   endif ()

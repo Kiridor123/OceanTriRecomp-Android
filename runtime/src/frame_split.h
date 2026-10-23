@@ -8,9 +8,6 @@
 #ifdef MH3_DEVELOPMENT
 #include "isa/ppc_isa_thread_state.h"
 #include <chrono>
-#ifdef __vita__
-#include <psp2/kernel/processmgr.h>
-#endif
 
 enum MH3SplitFamily : unsigned {
     MH3_SPLIT_TRAVERSE,
@@ -53,7 +50,7 @@ enum MH3SplitFamily : unsigned {
     MH3_SPLIT_FAMILIES
 };
 
-// The split's clock. On the Vita steady_clock reads gettimeofday through a
+// The split's clock. On the host steady_clock reads gettimeofday through a
 // system call (6 us); the process time is a 0.7 us microsecond counter.
 struct MH3SplitClock {
     using duration = std::chrono::microseconds;
@@ -62,11 +59,7 @@ struct MH3SplitClock {
     using time_point = std::chrono::time_point<MH3SplitClock>;
     static constexpr bool is_steady = true;
     static time_point now() noexcept {
-#ifdef __vita__
-        return time_point(duration(rep(sceKernelGetProcessTimeWide())));
-#else
         return time_point(std::chrono::duration_cast<duration>(std::chrono::steady_clock::now().time_since_epoch()));
-#endif
     }
 };
 
@@ -109,7 +102,7 @@ struct MH3FrameSplitScope {
 
 // Per-draw parts (material/shape preparation, packet record) run about a
 // hundred times per frame; MH3_PROFILE=split times them (two clock reads
-// each, ~1.5 ms/frame on the Vita).
+// each, ~1.5 ms/frame on the host).
 extern bool mh3SplitDetail;
 struct MH3FrameSplitDetailScope {
     unsigned family;

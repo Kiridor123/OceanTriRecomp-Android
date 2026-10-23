@@ -1,3 +1,5 @@
+#include <malloc.h>
+#include <SDL3/SDL_hints.h>
 #include "gl.hpp"
 #include <aurora/fatal.hpp>
 
@@ -23,6 +25,10 @@
 #include <new>
 #include <thread>
 #include <unordered_map>
+#include <memory>
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+#include "angle_vulkan_context.hpp"
+#endif
 
 namespace aurora::gfx {
 uint32_t current_frame() noexcept;
@@ -59,17 +65,39 @@ void NativeMeshBuffer::create(const char* path, uint64_t offset, const void* pay
   gfx::fill_mesh_payload(path, offset, payload, data.get(), bytes);
   GLint previous = 0;
   glGetIntegerv(GL_COPY_WRITE_BUFFER_BINDING, &previous);
+  while (glGetError() != GL_NO_ERROR);
   glGenBuffers(1, &m_buffer);
   glBindBuffer(GL_COPY_WRITE_BUFFER, m_buffer);
   glBufferData(GL_COPY_WRITE_BUFFER, bytes, data.get(), GL_STATIC_DRAW);
   const auto error = glGetError();
   glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(previous));
 
-  if (error != GL_NO_ERROR || !m_buffer) {
-    if (m_buffer)
-      glDeleteBuffers(1, &m_buffer);
+  if (!m_buffer || error == GL_OUT_OF_MEMORY) {
+    glFinish();
+    for (auto it = nativeMeshRetired.begin(); it != nativeMeshRetired.end();) {
+      if (it->first) {
+        glClientWaitSync(it->first, 0, 1000000000ull);
+        glDeleteSync(it->first);
+      }
+      it = nativeMeshRetired.erase(it);
+    }
+    while (glGetError() != GL_NO_ERROR);
+    if (!m_buffer) {
+      glGenBuffers(1, &m_buffer);
+    }
+    if (m_buffer) {
+      glBindBuffer(GL_COPY_WRITE_BUFFER, m_buffer);
+      glBufferData(GL_COPY_WRITE_BUFFER, bytes, data.get(), GL_STATIC_DRAW);
+      const auto retryError = glGetError();
+      glBindBuffer(GL_COPY_WRITE_BUFFER, GLuint(previous));
+      if (retryError == GL_OUT_OF_MEMORY) {
+        glDeleteBuffers(1, &m_buffer);
+        m_buffer = 0;
+      }
+    }
+  }
 
-    m_buffer = 0;
+  if (!m_buffer) {
     AURORA_THROW(std::runtime_error("Native mesh GPU allocation failed"));
   }
 
@@ -128,6 +156,9 @@ Module Log("aurora::gl");
 struct RenderContext {
   SDL_Window* window = nullptr;
   SDL_GLContext context = nullptr;
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  std::unique_ptr<AngleVulkanContext> angleContext;
+#endif
   std::thread::id threadId;
 };
 
@@ -220,7 +251,7 @@ uint64_t g_shadeSceneRevision = UINT64_MAX, g_shadeViewRevision = UINT64_MAX;
 
 // Persistent uniform blocks: ranges of one UBO, aligned to the offset
 // alignment. Retired ranges are reused after the frames that may read them.
-constexpr uint32_t UniformBlockCapacity = 2u << 20;
+constexpr uint32_t UniformBlockCapacity = 32u << 20;
 GLuint g_uniformBlockBuffer = 0;
 uint32_t g_uniformBlockCursor = 0;
 size_t g_uniformBlockBytes = 0;
@@ -336,25 +367,49 @@ GLuint compile_shader(GLenum stage, const std::string& source, const std::string
 
 // ---- Game-thread context ownership ----
 
+void set_vsync(bool enabled) noexcept {
+  call([enabled] {
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+    if (g_context && g_context->angleContext) {
+      if (!g_context->angleContext->set_swap_interval(enabled))
+        Log.warn("Failed to set ANGLE/Vulkan swap interval: {}", g_context->angleContext->error());
+      return;
+    }
+#endif
+    if (!SDL_GL_SetSwapInterval(enabled ? 1 : 0))
+      Log.warn("Failed to set the swap interval: {}", SDL_GetError());
+  });
+}
 bool initialize(SDL_Window* window) noexcept {
   if (g_context != nullptr) {
     return g_context->window == window;
   }
 
-  SDL_GLContext context = SDL_GL_CreateContext(window);
-
-  if (context == nullptr) {
-    Log.error("Failed to create an OpenGL ES 3.0 context: {}", SDL_GetError());
-    return false;
-  }
-
-  if (!SDL_GL_SetSwapInterval(0)) {
-    Log.warn("Failed to set the swap interval: {}", SDL_GetError());
-  }
-
   auto* rt = new RenderContext;
   rt->window = window;
-  rt->context = context;
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  if (g_config.desiredBackend == BACKEND_VULKAN) {
+    rt->angleContext.reset(new AngleVulkanContext());
+    if (!rt->angleContext->initialize(window)) {
+      SDL_SetError("%s", rt->angleContext->error());
+      Log.error("Failed to initialize ANGLE Vulkan: {}", rt->angleContext->error());
+      rt->angleContext->shutdown();
+      delete rt;
+      return false;
+    }
+  } else
+#endif
+  {
+    SDL_GLContext context = SDL_GL_CreateContext(window);
+    if (context == nullptr) {
+      Log.error("Failed to create an OpenGL ES 3.0 context: {}", SDL_GetError());
+      delete rt;
+      return false;
+    }
+    rt->context = context;
+    if (!SDL_GL_SetSwapInterval(1))
+      Log.warn("Failed to set the swap interval: {}", SDL_GetError());
+  }
   rt->threadId = std::this_thread::get_id();
   g_context = rt;
   bool ok = false;
@@ -388,7 +443,21 @@ bool initialize(SDL_Window* window) noexcept {
   });
 
   if (!ok) {
-    Log.error("OpenGL ES 3.0 is required; the context reports {}", g_caps.version);
+    {
+    #if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+      const bool viaAngleDirect = g_context != nullptr && g_context->angleContext != nullptr;
+    #else
+      const bool viaAngleDirect = false;
+    #endif
+      const char* videoDriver = SDL_GetCurrentVideoDriver();
+      const char* forceEgl = SDL_GetHint(SDL_HINT_VIDEO_FORCE_EGL);
+      const char* esDriver = SDL_GetHint(SDL_HINT_OPENGL_ES_DRIVER);
+      Log.error("OpenGL ES 3.0 is required; the context reports '{}' (vendor '{}', renderer '{}')", g_caps.version,
+                g_caps.vendor, g_caps.renderer);
+      Log.error("GL diagnostics: path={} sdl_video_driver={} SDL_VIDEO_FORCE_EGL={} SDL_OPENGL_ES_DRIVER={}",
+                viaAngleDirect ? "ANGLE-direct" : "SDL-GL", videoDriver != nullptr ? videoDriver : "?",
+                forceEgl != nullptr ? forceEgl : "(unset)", esDriver != nullptr ? esDriver : "(unset)");
+    }
     shutdown();
     return false;
   }
@@ -505,9 +574,17 @@ void shutdown() noexcept {
   }
 
   g_frameSlot = 0;
-  SDL_GL_MakeCurrent(rt->window, nullptr);
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  if (rt->angleContext) {
+    rt->angleContext->shutdown();
+    rt->angleContext.reset();
+  } else
+#endif
+  {
+    SDL_GL_MakeCurrent(rt->window, nullptr);
+    SDL_GL_DestroyContext(rt->context);
+  }
   g_context = nullptr;
-  SDL_GL_DestroyContext(rt->context);
   delete rt;
 }
 
@@ -529,6 +606,12 @@ void release_context() noexcept {
 
   glFlush();
 
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  if (g_context->angleContext) {
+    if (!g_context->angleContext->make_current(false))
+      Log.fatal("GL context release failed: {}", g_context->angleContext->error());
+  } else
+#endif
   if (!SDL_GL_MakeCurrent(g_context->window, nullptr))
     Log.fatal("GL context release failed: {}", SDL_GetError());
 
@@ -539,6 +622,12 @@ void acquire_context() noexcept {
   if (!g_context || g_context->threadId != std::thread::id{})
     Log.fatal("GL context acquired while another thread owns it");
 
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  if (g_context->angleContext) {
+    if (!g_context->angleContext->make_current(true))
+      Log.fatal("GL context acquisition failed: {}", g_context->angleContext->error());
+  } else
+#endif
   if (!SDL_GL_MakeCurrent(g_context->window, g_context->context))
     Log.fatal("GL context acquisition failed: {}", SDL_GetError());
 
@@ -1326,6 +1415,101 @@ void restore_offscreen_state(const OffscreenState& saved) noexcept {
 
 // ---- Presentation and readback ----
 
+static PostProcessSettings g_postProcess{};
+static GLuint g_postProcessProgram = 0;
+static GLint u_postTextureLoc = -1;
+static GLint u_postMh3uModeLoc = -1;
+static GLuint g_postProcessVao = 0;
+static GLuint g_postProcessVbo = 0;
+
+void set_post_process_settings(const PostProcessSettings& settings) noexcept {
+  g_postProcess = settings;
+}
+PostProcessSettings get_post_process_settings() noexcept {
+  return g_postProcess;
+}
+
+static void init_post_process_shader() {
+  if (g_postProcessProgram != 0) return;
+  const char* vsSrc =
+    "#version 300 es\n"
+    "layout(location = 0) in vec2 a_pos;\n"
+    "layout(location = 1) in vec2 a_uv;\n"
+    "out vec2 v_uv;\n"
+    "void main() {\n"
+    "  v_uv = a_uv;\n"
+    "  gl_Position = vec4(a_pos, 0.0, 1.0);\n"
+    "}\n";
+  const char* fsSrc =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec2 v_uv;\n"
+    "out vec4 fragColor;\n"
+    "uniform sampler2D u_texture;\n"
+    "uniform float u_mh3u_mode;\n"
+    "vec3 ACESFilm(vec3 x) {\n"
+    "  float a = 2.51;\n"
+    "  float b = 0.03;\n"
+    "  float c = 2.43;\n"
+    "  float d = 0.59;\n"
+    "  float e = 0.14;\n"
+    "  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);\n"
+    "}\n"
+    "void main() {\n"
+    "  vec4 c = texture(u_texture, v_uv);\n"
+    "  if (u_mh3u_mode > 0.5) {\n"
+    "    vec3 col = c.rgb;\n"
+    "    vec3 linearCol = pow(max(col, vec3(0.0)), vec3(2.2));\n"
+    "    vec3 highlights = max(linearCol - vec3(0.55), vec3(0.0));\n"
+    "    vec3 expanded = linearCol + highlights * 0.7;\n"
+    "    vec3 tonemapped = ACESFilm(expanded * 1.06);\n"
+    "    float luma = dot(tonemapped, vec3(0.2126, 0.7152, 0.0722));\n"
+    "    vec3 saturated = mix(vec3(luma), tonemapped, 1.25);\n"
+    "    saturated.b = mix(saturated.b, saturated.b * 1.04, 0.6);\n"
+    "    vec3 outColor = pow(clamp(saturated, 0.0, 1.0), vec3(1.0 / 2.2));\n"
+    "    fragColor = vec4(outColor, 1.0);\n"
+    "  } else {\n"
+    "    fragColor = vec4(c.rgb, 1.0);\n"
+    "  }\n"
+    "}\n";
+
+  GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vs, 1, &vsSrc, nullptr);
+  glCompileShader(vs);
+
+  GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fs, 1, &fsSrc, nullptr);
+  glCompileShader(fs);
+
+  g_postProcessProgram = glCreateProgram();
+  glAttachShader(g_postProcessProgram, vs);
+  glAttachShader(g_postProcessProgram, fs);
+  glLinkProgram(g_postProcessProgram);
+  glDeleteShader(vs);
+  glDeleteShader(fs);
+
+  u_postTextureLoc = glGetUniformLocation(g_postProcessProgram, "u_texture");
+  u_postMh3uModeLoc = glGetUniformLocation(g_postProcessProgram, "u_mh3u_mode");
+
+  glGenVertexArrays(1, &g_postProcessVao);
+  glGenBuffers(1, &g_postProcessVbo);
+  glBindVertexArray(g_postProcessVao);
+  glBindBuffer(GL_ARRAY_BUFFER, g_postProcessVbo);
+  static const float quadData[] = {
+    -1.0f, -1.0f,  0.0f, 1.0f,
+     1.0f, -1.0f,  1.0f, 1.0f,
+    -1.0f,  1.0f,  0.0f, 0.0f,
+     1.0f,  1.0f,  1.0f, 0.0f,
+  };
+  glBufferData(GL_ARRAY_BUFFER, sizeof(quadData), quadData, GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(0));
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+}
+
 std::pair<uint32_t, uint32_t> drawable_size() noexcept {
   int w = 0;
   int h = 0;
@@ -1350,12 +1534,29 @@ void present(const TexturePtr& source, int32_t x, int32_t y, int32_t width, int3
   glClear(GL_COLOR_BUFFER_BIT);
 
   if (source && width > 0 && height > 0) {
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer(source->gl(), 0));
+    if (g_postProcess.enabled && g_postProcess.mh3u_mode) {
+      init_post_process_shader();
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      g_state.drawFramebuffer = 0;
+      apply_raster_state({});
+      glDisable(GL_STENCIL_TEST);
+      glViewport(x, static_cast<GLint>(drawableHeight) - y - height, width, height);
+      use_program(g_postProcessProgram);
+      bind_texture(0, source->gl(), sampler(LinearClamp));
+      glUniform1i(u_postTextureLoc, 0);
+      glUniform1f(u_postMh3uModeLoc, g_postProcess.mh3u_mode ? 1.0f : 0.0f);
+      glBindVertexArray(g_postProcessVao);
+      glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+      glBindVertexArray(g_state.emptyVao);
+      invalidate_state();
+    } else {
+      glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer(source->gl(), 0));
 
-    // Texture rows are top-down while the window's row 0 is the bottom one.
-    const int32_t top = static_cast<int32_t>(drawableHeight) - y;
-    glBlitFramebuffer(0, 0, static_cast<GLint>(source->width), static_cast<GLint>(source->height), x, top, x + width, top - height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+      // Texture rows are top-down while the window's row 0 is the bottom one.
+      const int32_t top = static_cast<int32_t>(drawableHeight) - y;
+      glBlitFramebuffer(0, 0, static_cast<GLint>(source->width), static_cast<GLint>(source->height), x, top, x + width, top - height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+      glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    }
   }
 
   // Submit the scene without waiting for completion. The next game frame can
@@ -1371,6 +1572,12 @@ void present(const TexturePtr& source, int32_t x, int32_t y, int32_t width, int3
     Log.fatal("GL frame fence allocation failed");
 
   glFlush();
+#if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
+  if (g_context->angleContext) {
+    if (!g_context->angleContext->swap_buffers())
+      Log.fatal("ANGLE/Vulkan present failed: {}", g_context->angleContext->error());
+  } else
+#endif
   SDL_GL_SwapWindow(g_context->window);
   g_frameSlot = (g_frameSlot + 1) % aurora::GpuFrameRing::BufferCount;
 }
@@ -1666,13 +1873,13 @@ void retire_uniform_block(const UniformBlock& block) noexcept {
 
 size_t uniform_block_bytes() noexcept { return g_uniformBlockBytes; }
 UniformRing create_uniform_ring(uint32_t bytes) noexcept {
-  auto* data = static_cast<uint8_t*>(std::aligned_alloc(256, (size_t(bytes) + 255) & ~size_t(255)));
+  auto* data = static_cast<uint8_t*>(_aligned_malloc((size_t(bytes) + 255) & ~size_t(255), 256));
   return data ? UniformRing{data, bytes} : UniformRing{};
 }
 
 void destroy_uniform_ring(const UniformRing& ring) noexcept {
   // Host memory: blocks were uploaded when bound, nothing reads it later.
-  std::free(ring.data);
+  _aligned_free(ring.data);
 }
 
 GpuFence submitted_gpu_fence() noexcept { return {}; }

@@ -4,7 +4,7 @@
 #include <string_view>
 #include <string>
 
-// Opt-in host measurements and automatic Cg sources for Vita compilation.
+// Opt-in host measurements and automatic Cg sources for Native compilation.
 // Safe on producer and render threads; AURORA_PORT_CAPTURE enables output.
 namespace aurora::gfx::port_capture {
 bool enabled() noexcept;
@@ -66,7 +66,7 @@ struct NativeMeshSource {
 
 void native_mesh_source(const NativeMeshSource& source) noexcept;
 
-// Actual GLSL/draw hashes are retained; Cg uses Vita-normalized alpha hashes.
+// Actual GLSL/draw hashes are retained; Cg uses Native-normalized alpha hashes.
 // Optional origin identifies the producer/program when supplied by a caller.
 struct ShaderCapture {
   std::array<uint64_t, 2> portableHashes{};

@@ -38,9 +38,6 @@
 #ifdef MH3_DEVELOPMENT
 #include <cstdio>
 #endif
-#ifdef __vita__
-#include <psp2/kernel/processmgr.h>
-#endif
 
 namespace {
 
@@ -74,11 +71,7 @@ constexpr unsigned kMaxChildren = 64;
 uint32_t worldRoot = 0;
 
 uint64_t NowUs() {
-#ifdef __vita__
-    return sceKernelGetProcessTimeWide();
-#else
     return uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-#endif
 }
 
 // The last measured cost of each child, which decides the split.

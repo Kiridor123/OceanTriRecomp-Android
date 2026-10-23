@@ -53,7 +53,7 @@ struct NativeModelAssetStats {
     uint64_t read_ahead_ready = 0, read_ahead_waited = 0, read_ahead_own = 0;
 };
 
-// GPU bytes include retired backing pending completion, with Vita rounding.
+// GPU bytes include retired backing pending completion, with Native rounding.
 NativeModelAssetStats ReadNativeModelAssetStats();
 
 // Any thread: the packs admitted so far and the time spent getting them:

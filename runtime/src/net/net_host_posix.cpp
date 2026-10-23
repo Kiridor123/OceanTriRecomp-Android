@@ -1,7 +1,7 @@
 // NetHost (net_host.h) on BSD sockets, getaddrinfo and OpenSSL: Linux, and
-// the Vita, whose newlib implements them on sceNet (its first socket starts
-// the network stack: _vita_net_init loads SceNet and runs sceNetInit and
-// sceNetCtlInit).
+// the host, whose newlib implements them on hostNet (its first socket starts
+// the network stack: _host_net_init loads hostNet and runs hostNetInit and
+// hostNetCtlInit).
 #include "net_host.h"
 
 #include "guest_threads.h"
@@ -25,14 +25,8 @@
 #include <unistd.h>
 #include <vector>
 
-#ifdef __vita__
-#include <psp2/net/net.h>
-#include <psp2/net/netctl.h>
-#include <psp2/sysmodule.h>
-#else
 #include <ifaddrs.h>
 #include <resolv.h>
-#endif
 
 #ifdef MH3_HAS_OPENSSL
 #include <openssl/err.h>
@@ -41,12 +35,6 @@
 #include <openssl/x509v3.h>
 #endif
 
-#ifdef __vita__
-// sceNet has no SIGPIPE.
-#define MSG_NOSIGNAL 0
-
-extern "C" int _vita_net_init();
-#endif
 namespace NetHost {
 namespace {
 // A host errno as a negated Wii SO error (Dolphin's TranslateErrorCode).
@@ -130,7 +118,7 @@ uint16_t MapPort(uint16_t port) {
 
 // MH3_ONLINE_ADDRESSES (from=to[,from=to...]): IPv4 addresses to change, both
 // ways. A server that names itself by an address this machine cannot reach
-// (its ZeroTier address, to a Vita on the LAN) is reached at another one, and
+// (its ZeroTier address, to a Native on the LAN) is reached at another one, and
 // what comes from there reads as coming from the address it named.
 uint32_t MapAddress(uint32_t ip, bool outgoing) {
     const char* addresses = std::getenv("MH3_ONLINE_ADDRESSES");
@@ -292,13 +280,7 @@ void AddPortOverride(uint16_t from, uint16_t to) {
 }
 
 bool Startup() {
-#ifdef __vita__
-    // The stack's pool: runtime/vita/newlib_net.c.
-    static const bool started = _vita_net_init() >= 0;
-    return started;
-#else
     return true;
-#endif
 }
 
 int32_t OpenSocket(bool stream) {
@@ -499,7 +481,7 @@ int32_t Poll(std::vector<PollEntry>& entries) {
                 revents |= event.wii;
 
         // Only the events asked for, and the conditions always reported (the
-        // Vita's poll.h makes POLLPRI and POLLRDBAND POLLIN).
+        // host's poll.h makes POLLPRI and POLLRDBAND POLLIN).
         entries[i].revents = revents & (entries[i].events | 0xE0);
         count += entries[i].revents != 0;
     }
@@ -517,30 +499,6 @@ bool Writable(int handle) {
     return ::poll(&entry, 1, 0) > 0;
 }
 
-#ifdef __vita__
-Interface DefaultInterface() {
-    Interface result{};
-    inet_pton(AF_INET, "10.0.1.30", &result.ip);
-    inet_pton(AF_INET, "255.255.255.0", &result.netmask);
-    inet_pton(AF_INET, "10.0.1.1", &result.gateway);
-    inet_pton(AF_INET, "8.8.8.8", &result.dns);
-    Startup();
-
-    const auto read = [](int code, uint32_t* address) {
-        SceNetCtlInfo info{};
-
-        if (sceNetCtlInetGetInfo(code, &info) == 0)
-            inet_pton(AF_INET, info.ip_address, address);
-    };
-
-    read(SCE_NETCTL_INFO_GET_IP_ADDRESS, &result.ip);
-    read(SCE_NETCTL_INFO_GET_NETMASK, &result.netmask);
-    read(SCE_NETCTL_INFO_GET_DEFAULT_ROUTE, &result.gateway);
-    read(SCE_NETCTL_INFO_GET_PRIMARY_DNS, &result.dns);
-    result.broadcast = (result.ip & result.netmask) | ~result.netmask;
-    return result;
-}
-#else
 Interface DefaultInterface() {
     Interface result{};
     inet_pton(AF_INET, "10.0.1.30", &result.ip);
@@ -599,7 +557,6 @@ Interface DefaultInterface() {
     freeifaddrs(interfaces);
     return result;
 }
-#endif
 
 bool ParseIpv4(const std::string& text, uint32_t* ip) {
     return inet_pton(AF_INET, text.c_str(), ip) == 1;
@@ -607,7 +564,7 @@ bool ParseIpv4(const std::string& text, uint32_t* ip) {
 
 namespace {
 // One DNS A query over UDP to SERVER (network order), for when the system's
-// resolver fails: the Vita devkit's answered every name with ECONNREFUSED
+// resolver fails: the host devkit's answered every name with ECONNREFUSED
 // (getaddrinfo -5) while its network worked.
 bool QueryDns(const std::string& name, uint32_t server, std::vector<uint32_t>& addresses) {
     uint8_t packet[512] = {0x4d, 0x33, 0x01, 0x00, 0x00, 0x01}; // id, recursion desired, one question
@@ -708,7 +665,7 @@ Lookup::Lookup(std::string name) : state_(std::make_shared<State>()) {
 
     // getaddrinfo blocks; the guest thread waits in the scheduler meanwhile.
     // A detached pthread, not std::thread: without exceptions libc++ aborts
-    // the process when a thread call fails, which on the Vita stopped the
+    // the process when a thread call fails, which on the host stopped the
     // lookup thread (and its TTY) for good.
     const auto resolve = [](const std::shared_ptr<State>& state) {
         addrinfo hints{};
@@ -841,7 +798,7 @@ class OpenSslTls final : public Tls {
   public:
     OpenSslTls(const std::string& hostname, bool verify) : hostname_(hostname), verify_(verify) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-        // 1.1 initializes itself (the Vita has 1.0.2).
+        // 1.1 initializes itself (the host has 1.0.2).
         static std::once_flag initialized;
         std::call_once(initialized, [] {
             SSL_library_init();

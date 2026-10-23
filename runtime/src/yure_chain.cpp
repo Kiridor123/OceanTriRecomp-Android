@@ -278,7 +278,7 @@ static void YureChain(CpuContext* ctx) {
     if (mode == 1) {
         const uint32_t node = chain + kNode, velocity = chain + kVelocity, target = chain + kTarget;
         Store(node, Load(node) + Load(velocity) * s);
-        Store(velocity, Load(velocity) + (Load(chain + kLastAnchor) - Load(root)) * (F(set() + kGravityA) * s));
+        Store(velocity, Load(velocity) + (Load(chain + kLastAnchor) - Load(root)) * F(set() + kGravityA));
         Store(frame[sRot], Load(chain + kRest));
         call.Call<MulVecMtx>({frame[sRot], frame[sAnchorMtx]});
         const float length = F(frame[sLengths]);

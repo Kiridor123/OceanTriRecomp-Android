@@ -1,9 +1,6 @@
 #pragma once
 #include "staging_capacity.hpp"
 #include <aurora/native_draw_memory.hpp>
-#ifdef AURORA_GXM
-#include "../gxm/native_capacity.hpp"
-#endif
 
 #include "../internal.hpp"
 #include "../gl/device.hpp"
@@ -248,19 +245,10 @@ private:
 } // namespace aurora
 
 namespace aurora::gfx {
-#ifdef AURORA_GXM
-// Native mapped slots retain their live v/u/i capacities. Recorded GX raw
-// attribute words and word-texture/uniform tail padding have no native users.
-inline constexpr uint64_t UniformBufferSize = gxm::NativeUniformBytes;
-inline constexpr uint64_t VertexBufferSize = gxm::NativeVertexBytes;
-inline constexpr uint64_t IndexBufferSize = gxm::NativeIndexBytes;
-inline constexpr uint64_t StorageBufferSize = 0;
-#else
 inline constexpr uint64_t UniformBufferSize = 25165824; // 24mb
 inline constexpr uint64_t VertexBufferSize = 3145728;   // 3mb
 inline constexpr uint64_t IndexBufferSize = 2097152;    // 2mb
 inline constexpr uint64_t StorageBufferSize = 8388608;  // 8mb
-#endif
 
 extern AuroraStats g_stats;
 extern uint32_t g_drawCallCount;

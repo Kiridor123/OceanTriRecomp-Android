@@ -20,7 +20,7 @@ namespace {
 aurora::MaterialSource Snapshot(uint32_t object) {
     const uint32_t image = Memory::Read32(object + 8);
     // GX texture image addresses are physical; host memory reads take the
-    // cached alias (0x80000000 + MEM1 or MEM2 offset): on the Vita a release
+    // cached alias (0x80000000 + MEM1 or MEM2 offset): on the host a release
     // build's Read32 is one add from the cached base (HostCached), and a
     // physical address faulted there (retail, loading, 2026-10-05).
     const uint32_t address = ((Memory::Read32(object + 12) & 0xffffffu) << 5) | 0x80000000u;
@@ -31,15 +31,6 @@ aurora::MaterialSource Snapshot(uint32_t object) {
 
     if (source.width != 128 || source.height != 128 || (source.format >= 8 && source.format <= 10))
         MH3_THROW(std::runtime_error("Unexpected character material source: " + std::to_string(source.width) + "x" + std::to_string(source.height) + " format " + std::to_string(source.format)));
-#ifdef __vita__
-    if (address >= 64 && Memory::Contains(address - 64, 64)) {
-        const uint32_t header = address - 64, tag = Memory::Read32(header + 60);
-
-        if ((tag & 0xf0000000u) == AURORA_NATIVE_TEXTURE_TAG && Memory::Read32(header) == 0x54455830 && Memory::Read32(header + 16) == 64 && Memory::Read16(header + 28) == 128 &&
-            Memory::Read16(header + 30) == 128 && Memory::Read32(header + 32) == source.format)
-            source.nativeAsset = tag & 0x0fffffffu;
-    }
-#endif
     if (!source.nativeAsset) {
         uint32_t bytes = 128 * 128;
 

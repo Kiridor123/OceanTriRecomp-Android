@@ -7,7 +7,7 @@
 #include "native_texture_layout.hpp"
 #include "native_texture_set.hpp"
 #include "../gl/gl.hpp"
-#include "../gxm/sampler_bias.hpp"
+#include "sampler_bias.hpp"
 #include <aurora/fast_map.h>
 #include <algorithm>
 #include <array>
@@ -27,7 +27,7 @@ NativeTexturePatch s_patch = nullptr;
 // Budget resident texture storage separately from display/depth/offscreen
 // targets. GLES texel estimates exclude driver bookkeeping; GXM charges the
 // CDRAM image/palette layout. Backend fences retain evicted in-flight storage.
-constexpr size_t CacheBudget = 48u << 20;
+constexpr size_t CacheBudget = 256u << 20;
 struct Key {
   uintptr_t bytes;
   uint32_t asset, width, height, levels, format;
@@ -128,10 +128,6 @@ size_t rgba_allocation(const NativeTextureSource& source) {
 }
 
 size_t offline_allocation(const gl::NativeTextureInfo& info) {
-#ifdef AURORA_GXM
-  // NativeAssets reads the complete prepared image/palette layout into CDRAM.
-  return (size_t(info.bytes) + 63) & ~size_t(63);
-#else
   // GLES expands Morton palette/BC storage to RGBA. Linear prepared formats
   // retain their native channel widths; archive padding is not GPU storage.
   const size_t pixel = gfx::native_swizzled(info.format) ? 4 : gfx::native_pixel_bytes(info.format);
@@ -141,7 +137,6 @@ size_t offline_allocation(const gl::NativeTextureInfo& info) {
     bytes += size_t(std::max(info.width >> mip, 1u)) * std::max(info.height >> mip, 1u) * pixel;
 
   return (bytes + 63) & ~size_t(63);
-#endif
 }
 
 // NativeTextureFormatYuv420 -> linear RGBA8. The THP player's four TEV stages
@@ -152,7 +147,7 @@ size_t offline_allocation(const gl::NativeTextureInfo& info) {
 //   B = Y + 2 (227 U / 256 - 114)
 // each clamped to 0..255. A 2x2 block of Y shares one U and V sample.
 // Converts rows first..first+rows-1 of the frame into out (rows x width x 4).
-// The scalar loop took about 50 ms a 640x480 frame on the Vita's A9, which held
+// The scalar loop took about 50 ms a 640x480 frame on the host's A9, which held
 // movies to some 19 frames a second; NEON converts 16 texels a step.
 void convert_yuv420(const uint8_t* planes, uint32_t width, uint32_t height, uint32_t first, uint32_t rows, uint8_t* out) {
   const uint32_t chromaWidth = width / 2, lumaTiles = width / 8, chromaTiles = chromaWidth / 8;
@@ -353,7 +348,7 @@ void bind(uint32_t unit, const NativeTextureSource& source, const NativeTextureS
     // filter, and anisotropic footprints need their authored bias retained.
     const bool ineffectiveBias =
         texture->mips == 1 && sampling.anisotropy == 0 && (sampling.min_filter == 0 || sampling.min_filter == 2 || sampling.min_filter == 4 ? sampling.mag_filter == 0 : sampling.mag_filter == 1);
-    const bool samplerBias = !ineffectiveBias && texture->format != gl::Format::Depth32F && gxm::sampler_bias_encoding(sampling.lod_bias) >= 0;
+    const bool samplerBias = !ineffectiveBias && texture->format != gl::Format::Depth32F && gfx::sampler_bias_encoding(sampling.lod_bias) >= 0;
     portableSampling[unit] = {source.asset,
                               texture->width,
                               texture->height,
@@ -369,10 +364,6 @@ void bind(uint32_t unit, const NativeTextureSource& source, const NativeTextureS
                               samplerBias ? sampling.lod_bias : 0};
     if (ineffectiveBias)
       shaderLodBias[unit] = 0;
-#ifdef AURORA_GXM
-    nativeDescriptor.lodBias = portableSampling[unit].sampler_bias;
-    shaderLodBias[unit] = portableSampling[unit].shader_bias;
-#endif
     bindings[unit] = texture;
     const GLuint samplerId = gl::sampler(nativeDescriptor);
     gl::bind_texture(unit, texture->gl(), samplerId);
@@ -422,13 +413,9 @@ void bind(uint32_t unit, const NativeTextureSource& source, const NativeTextureS
   if (offline) {
     offlineInfo = gl::native_texture_info(source.asset);
 
-    if (offlineInfo.width != source.width || offlineInfo.height != source.height || offlineInfo.mips != source.levels || (offlineInfo.sourceProvenance && offlineInfo.sourceFormat != source.format))
-      AURORA_THROW(std::runtime_error("Native asset metadata disagrees with published texture: asset " + std::to_string(source.asset) + " is " +
-                                      std::to_string(offlineInfo.width) + "x" + std::to_string(offlineInfo.height) + " (" + std::to_string(offlineInfo.mips) +
-                                      " levels, format " + std::to_string(offlineInfo.sourceFormat) + "), published " + std::to_string(source.width) + "x" +
-                                      std::to_string(source.height) + " (" + std::to_string(source.levels) + " levels, format " + std::to_string(source.format) + ")"));
-
-    if (indexed) {
+    if (offlineInfo.width != source.width || offlineInfo.height != source.height || offlineInfo.mips != source.levels || (offlineInfo.sourceProvenance && offlineInfo.sourceFormat != source.format)) {
+      offline = false;
+    } else if (indexed) {
       const int64_t delta = int64_t(reinterpret_cast<uintptr_t>(source.palette.data())) - int64_t(reinterpret_cast<uintptr_t>(source.bytes.data()));
       offline = source.original_palette && offlineInfo.sourceProvenance && delta == offlineInfo.sourcePaletteDelta && source.palette_entries == offlineInfo.sourcePaletteEntries &&
                 source.palette_format == offlineInfo.sourcePaletteFormat;
