@@ -84,7 +84,7 @@ Este proyecto fue concebido, diseñado e integrado por **[Kris´ZtS](https://git
 
 1. **Suministrar los datos del juego:** Extrae o selecciona tu copia legalmente adquirida de *Monster Hunter Tri* (`RMHP08`, formato `.iso` o `.rvz`) siguiendo el asistente o estructura de datos del directorio de ejecución.
 2. **Ubicación de la carpeta:** Coloca la carpeta del juego en una ruta con **permisos de lectura y escritura de usuario** (por ejemplo, `C:\Games\OceanTriRecomp` o en tu directorio personal). Evita rutas protegidas como `C:\Program Files`, ya que el ejecutable guarda las preferencias gráficas y de interfaz localmente en el archivo `MH3UI.graphics`.
-3. **Ejecución:** Inicia `MH3.exe` y configura la resolución, el límite de FPS, el backend gráfico (Vulkan u OpenGL ES) y tus controles desde el menú integrado `MH3UI`.
+3. **Ejecución:** Inicia `OceanTriRecomp.exe` y configura la resolución, el límite de FPS, el backend gráfico (Vulkan u OpenGL ES) y tus controles desde el menú integrado `MH3UI`.
 
 ## Control de Versiones y Política de Lanzamientos (Releases)
 
