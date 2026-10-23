@@ -91,7 +91,7 @@ Este proyecto fue concebido, diseñado e integrado por **[Kris´ZtS](https://git
 Este proyecto sigue **[Semantic Versioning (SemVer)](https://semver.org/lang/es/)** (`MAJOR.MINOR.PATCH`) y registra todos los cambios técnicos en `CHANGELOG.md`:
 
 * **Rama `main`:** Recibe mejoras continuas de documentación, refactorizaciones, correcciones de errores y preparación de código bajo la sección `[Unreleased]` del registro de cambios.
-* **Publicación de Releases:** Las etiquetas de versión y paquetes compilados en la sección de **[Releases](https://github.com/krisztsa/OceanTriRecomp/releases)** se publican **exclusivamente de forma manual por el autor principal (`krisztsa`)** tras validar la estabilidad de cada versión en hardware real.
+* **Publicación de Releases:** Las etiquetas de versión y paquetes compilados en la sección de **[Releases](https://github.com/krisztsa/OceanTriRecomp/releases)** se publican **exclusivamente de forma manual por el autor principal (`Kris´ZtS`)** tras validar la estabilidad de cada versión en hardware real.
 
 ## Proyectos Relacionados de la Comunidad
 
