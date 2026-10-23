@@ -4,7 +4,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11%20x64-2ea44f.svg)](https://github.com/krisztsa/OceanTriRecomp)
 
-**OceanTriRecomp** es un port nativo para PC (Windows x64) de *Monster Hunter Tri* desarrollado por **[krisztsa](https://github.com/krisztsa)** mediante **recompilación estática AOT (*Ahead-Of-Time*)**.
+**OceanTriRecomp** es un port nativo para PC (Windows x64) de *Monster Hunter Tri* desarrollado por **[Kris´ZtS](https://github.com/krisztsa)** mediante **recompilación estática AOT (*Ahead-Of-Time*)**.
 
 A diferencia de la emulación tradicional mediante traducción dinámica o intérpretes JIT (*Just-In-Time*), este proyecto traduce de forma estática los bloques ejecutables de la arquitectura original PowerPC (Wii, `main.dol` y módulos relocables) directamente a código fuente C++ optimizado. El resultado es un binario nativo de 64 bits (`MH3.exe`) con ejecución directa en CPU, menor latencia de entrada, soporte para altas tasas de refresco y un pipeline gráfico moderno basado en **[Aurora](https://github.com/encounter/aurora)**, **[SDL3](https://github.com/libsdl-org/SDL)** y **[ANGLE](https://github.com/google/angle)**.
 
