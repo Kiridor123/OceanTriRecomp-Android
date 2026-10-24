@@ -1,6 +1,6 @@
 # OceanTriRecomp
 
-[![Version](https://img.shields.io/badge/Version-v1.7.0%20(Alpha%201.4)-0A66C2.svg)](https://github.com/krisztsa/OceanTriRecomp/releases)
+[![Version](https://img.shields.io/badge/Version-v1.9.0%20-0A66C2.svg)](https://github.com/krisztsa/OceanTriRecomp/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11%20x64-2ea44f.svg)](https://github.com/krisztsa/OceanTriRecomp)
 
