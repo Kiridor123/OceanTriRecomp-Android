@@ -7,6 +7,7 @@
 #include "memory.h"
 #include "net/local_server.h"
 #include "net/lan_beacon.h"
+#include "recomp_mod_loader.h"
 
 #include <SDL3/SDL.h>
 #include <GLES3/gl3.h>
@@ -598,8 +599,19 @@ public:
     }
 
     bool IsOnlineCity() const {
-        if (!Memory::Contains(0x8065AA84, 1)) return false;
-        return (Memory::Read8(0x8065AA84) == 2);
+        // If in Moga village (map_village.rso), definitely offline -> allow full 60+ FPS
+        if (RecompMod::RsoLinked("map_village.rso")) return false;
+
+        // If in Loc Lac City map (map_town.rso) or online network screen (net_data.rso), definitely city online -> lock to 30 FPS
+        if (RecompMod::RsoLinked("map_town.rso") || RecompMod::RsoLinked("net_data.rso")) return true;
+
+        // Check PlayMode at 0x8065AA85: 4 is Online City (kPlayModeCity), 5 is Village (kPlayModeVillage)
+        if (Memory::Contains(0x8065AA85, 1)) {
+            uint8_t playMode = Memory::Read8(0x8065AA85);
+            if (playMode == 4) return true;  // City online
+            if (playMode == 5) return false; // Village offline
+        }
+        return false;
     }
 
     // -------------------------------------------------------------
@@ -662,16 +674,11 @@ public:
         // Auto-lock to 30 FPS in Loc Lac City (Online mode)
         bool inCity = IsOnlineCity();
         static bool s_wasInCity = false;
-        if (inCity) {
-            if (!s_wasInCity) {
-                s_wasInCity = true;
-                MH3FrameRateControl::SetTargetFPS(30);
-            }
-        } else {
-            if (s_wasInCity) {
-                s_wasInCity = false;
-                MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
-            }
+        static bool s_firstFpsApplied = false;
+        if (!s_firstFpsApplied || inCity != s_wasInCity) {
+            s_firstFpsApplied = true;
+            s_wasInCity = inCity;
+            MH3FrameRateControl::SetTargetFPS(inCity ? 30 : m_fpsLimit);
         }
 
         // Save OpenGL State
@@ -1256,41 +1263,24 @@ private:
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
-        // Card 2: Pantalla Completa (Fix de aspecto) & Relación de aspecto
+        // Card 2: Relación de aspecto
         float c2Y = y + c1H + 12.0f;
-        float c2H = 114.0f;
+        float c2H = 108.0f;
         DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
-        float colW = (w - 36.0f - 16.0f) * 0.5f;
+        DrawText(x + 18.0f, c2Y + 14.0f, "Relación de aspecto", 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, c2Y + 36.0f, "Ajuste de presentación geométrica (Panorámica 16:9 recomendada)", 13.0f, COL_MUTED);
 
-        // Left side: Fullscreen & 16:9 Fix
-        DrawText(x + 18.0f, c2Y + 14.0f, "Pantalla completa (Fix de aspecto)", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, c2Y + 36.0f, "Fix 16:9 activo: evita que la imagen se estire o deforme en tu pantalla", 12.5f, COL_MUTED);
-
-        float fsBtnY = c2Y + 54.0f;
-        float fsBtnW = colW;
-        bool fsActive = m_fullscreen;
-        DrawRoundedRect(x + 18.0f, fsBtnY, fsBtnW, chipH, 8.0f,
-                        fsActive ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
-                        fsActive ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(x + 18.0f + fsBtnW * 0.5f, fsBtnY + 12.0f,
-                 fsActive ? "Pantalla completa: ACTIVADA (Fix 16:9)" : "Activar pantalla completa", 14.5f,
-                 fsActive ? COL_ACTIVE_TEXT : COL_WHITE, true);
-
-        // Right side: Relación de aspecto
-        float rightColX = x + 18.0f + colW + 16.0f;
-        DrawText(rightColX, c2Y + 14.0f, "Relación de aspecto", 19.0f, COL_WHITE);
-        DrawText(rightColX, c2Y + 36.0f, "Ajuste de presentación geométrica", 12.5f, COL_MUTED);
-
-        const char* aspectLabels[] = { "16:9 Panorámica", "4:3 Clásica", "Estirar Pantalla" };
-        float aChipW = (colW - 10.0f) / 3.0f;
+        const char* aspectLabels[] = { "16:9 Panorámica (Recomendado)", "4:3 Clásica", "Estirar Pantalla" };
+        float aChipW = (w - 36.0f - 20.0f) / 3.0f;
+        float aChipY = c2Y + 54.0f;
         for (int i = 0; i < 3; ++i) {
-            float ax = rightColX + float(i) * (aChipW + 5.0f);
+            float ax = x + 18.0f + float(i) * (aChipW + 10.0f);
             bool active = (m_aspectIndex == i);
-            DrawRoundedRect(ax, fsBtnY, aChipW, chipH, 8.0f,
+            DrawRoundedRect(ax, aChipY, aChipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
-            DrawText(ax + aChipW * 0.5f, fsBtnY + 12.0f, aspectLabels[i], 13.5f,
+            DrawText(ax + aChipW * 0.5f, aChipY + 12.0f, aspectLabels[i], 14.0f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
@@ -1770,21 +1760,13 @@ private:
                 }
             }
 
-            // Card 2: Pantalla Completa & Relación de aspecto
+            // Card 2: Relación de aspecto
             float c2Y = contentY + 108.0f + 12.0f;
-            float colW = (contentW - 36.0f - 16.0f) * 0.5f;
-            float fsBtnY = c2Y + 54.0f;
-            if (py >= fsBtnY && py <= fsBtnY + chipH) {
-                // Click on "Activar pantalla completa"
-                if (px >= x + 18.0f && px <= x + 18.0f + colW) {
-                    ToggleFullscreen();
-                    return;
-                }
-                // Click on Aspect ratio chips
-                float rightColX = x + 18.0f + colW + 16.0f;
-                float aChipW = (colW - 10.0f) / 3.0f;
+            float aChipW = (contentW - 36.0f - 20.0f) / 3.0f;
+            float aChipY = c2Y + 54.0f;
+            if (py >= aChipY && py <= aChipY + chipH) {
                 for (int i = 0; i < 3; ++i) {
-                    float ax = rightColX + float(i) * (aChipW + 5.0f);
+                    float ax = x + 18.0f + float(i) * (aChipW + 10.0f);
                     if (px >= ax && px <= ax + aChipW) {
                         m_aspectIndex = i;
                         ApplyAspectRatio(m_aspectIndex);
@@ -1795,7 +1777,7 @@ private:
             }
 
             // Card 3: FPS Limit (30, 60, 90, 120) & V-Sync / HUD
-            float c3Y = c2Y + 114.0f + 12.0f;
+            float c3Y = c2Y + 108.0f + 12.0f;
             float fpsColW = (contentW - 36.0f - 16.0f) * 0.52f;
             float fChipY = c3Y + 54.0f;
             if (py >= fChipY && py <= fChipY + chipH) {
