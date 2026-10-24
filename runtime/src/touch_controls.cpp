@@ -7,6 +7,7 @@
 #include "memory.h"
 #include "net/local_server.h"
 #include "net/lan_beacon.h"
+#include "recomp_mod_loader.h"
 
 #include <SDL3/SDL.h>
 #include <GLES3/gl3.h>
@@ -126,6 +127,24 @@ public:
 
         LoadSettings();
         LoadLayoutConfig();
+        NoteTouchActivity();
+    }
+
+    static int64_t NowMs() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    void NoteTouchActivity() { m_lastTouchMs.store(NowMs(), std::memory_order_relaxed); }
+
+    // Gear button opacity factor: fades out over 0.4 s once the screen has not
+    // been touched for m_gearAutoHideSec seconds.
+    float GearAlpha() const {
+        if (m_gearAutoHideSec <= 0) return 1.0f;
+        float idle = float(NowMs() - m_lastTouchMs.load(std::memory_order_relaxed)) / 1000.0f;
+        float over = idle - float(m_gearAutoHideSec);
+        if (over <= 0.0f) return 1.0f;
+        return std::clamp(1.0f - over / 0.4f, 0.0f, 1.0f);
     }
 
     void SetEnabled(bool enabled) { m_enabled = enabled; }
@@ -135,6 +154,7 @@ public:
     void ToggleMenu() { SetMenuOpen(!m_menuOpen); }
     void SetMenuOpen(bool open) {
         m_menuOpen = open;
+        NoteTouchActivity();
         if (m_menuOpen) {
             SDL_ShowCursor();
             if (SDL_Window* win = aurora_get_window()) {
@@ -305,6 +325,10 @@ public:
         LOGI("TouchDown id=%lld norm=(%.3f, %.3f) px=(%.1f, %.1f) m_width=%d m_height=%d",
              (long long)id, normX, normY, px, py, m_width, m_height);
 
+        // A hidden gear is only revealed by this touch, not pressed.
+        const bool gearHidden = GearAlpha() <= 0.0f;
+        NoteTouchActivity();
+
         if (m_editMode) {
             HandleEditModeTouchDown(id, px, py);
             return;
@@ -319,6 +343,7 @@ public:
         float gdx = px - m_gearPos.x;
         float gdy = py - m_gearPos.y;
         if (gdx * gdx + gdy * gdy <= (m_gearRadius * 1.8f) * (m_gearRadius * 1.8f)) {
+            if (gearHidden) return;
             m_menuOpen = true;
             m_menuTab = 0; // Gráficos
             return;
@@ -372,6 +397,7 @@ public:
 
     void HandleTouchMove(SDL_FingerID id, float normX, float normY) {
         if (!m_enabled) return;
+        NoteTouchActivity();
         float px = normX * float(m_width);
         float py = normY * float(m_height);
 
@@ -458,6 +484,8 @@ public:
 
     void HandleMouseDown(float px, float py) {
         if (!m_enabled) return;
+        const bool gearHidden = GearAlpha() <= 0.0f;
+        NoteTouchActivity();
         if (m_editMode) {
             HandleEditModeTouchDown(1, px, py);
             return;
@@ -469,6 +497,7 @@ public:
         float gdx = px - m_gearPos.x;
         float gdy = py - m_gearPos.y;
         if (gdx * gdx + gdy * gdy <= (m_gearRadius * 2.0f) * (m_gearRadius * 2.0f)) {
+            if (gearHidden) return;
             ToggleMenu();
             return;
         }
@@ -597,10 +626,15 @@ public:
         return s_cachedTemp;
     }
 
+    // Online play (Loc Lac City and its hunts). GetOnlineMode (0x8065AA84) reads 2
+    // in Moga Village too, so check PlayMode (0x8065AA85: 5 village, 4 City) and
+    // whether the network module is linked instead.
     bool IsOnlineCity() const {
-        if (!Memory::Contains(0x8065AA84, 1)) return false;
-        return (Memory::Read8(0x8065AA84) == 2);
+        if (!Memory::Contains(0x8065AA85, 1)) return false;
+        return Memory::Read8(0x8065AA85) == 4 || RecompMod::RsoLinked("net_data.rso");
     }
+
+    bool IsCityFpsLockActive() const { return m_cityFpsLock && IsOnlineCity(); }
 
     // -------------------------------------------------------------
     // OpenGL ES Rendering
@@ -659,17 +693,17 @@ public:
             lastStamp = now;
         }
 
-        // Auto-lock to 30 FPS in Loc Lac City (Online mode)
-        bool inCity = IsOnlineCity();
-        static bool s_wasInCity = false;
-        if (inCity) {
-            if (!s_wasInCity) {
-                s_wasInCity = true;
+        // Auto-lock to 30 FPS in Loc Lac City (Online mode), unless disabled in settings
+        bool cityLock = IsCityFpsLockActive();
+        static bool s_wasLocked = false;
+        if (cityLock) {
+            if (!s_wasLocked) {
+                s_wasLocked = true;
                 MH3FrameRateControl::SetTargetFPS(30);
             }
         } else {
-            if (s_wasInCity) {
-                s_wasInCity = false;
+            if (s_wasLocked) {
+                s_wasLocked = false;
                 MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
             }
         }
@@ -713,9 +747,12 @@ public:
                 RenderGameplayOverlay();
             } else {
                 // Controls hidden: render subtle floating gear icon to allow reopening settings
-                DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
-                           { 0.08f, 0.40f, 0.48f, 0.35f }, { 0.25f, 0.90f, 0.95f, 0.55f }, 0.10f);
-                DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, { 1.0f, 1.0f, 1.0f, 0.65f });
+                float ga = GearAlpha();
+                if (ga > 0.0f) {
+                    DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
+                               { 0.08f, 0.40f, 0.48f, 0.35f * ga }, { 0.25f, 0.90f, 0.95f, 0.55f * ga }, 0.10f);
+                    DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, { 1.0f, 1.0f, 1.0f, 0.65f * ga });
+                }
 
                 RenderFpsHud();
             }
@@ -1145,12 +1182,15 @@ private:
             DrawButtonLabel(btn.pos.x, btn.pos.y, btn.label, textSize, textCol);
         }
 
-        // 4. Gear / Menu Button
-        DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
-                   { 0.08f, 0.40f, 0.48f, 0.75f * op }, { 0.25f, 0.90f, 0.95f, 0.95f * op }, 0.10f);
-        Color gearText = COL_WHITE;
-        gearText.a *= op;
-        DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, gearText);
+        // 4. Gear / Menu Button (auto-hides after inactivity if enabled)
+        float gearOp = op * GearAlpha();
+        if (gearOp > 0.0f) {
+            DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
+                       { 0.08f, 0.40f, 0.48f, 0.75f * gearOp }, { 0.25f, 0.90f, 0.95f, 0.95f * gearOp }, 0.10f);
+            Color gearText = COL_WHITE;
+            gearText.a *= gearOp;
+            DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, gearText);
+        }
 
         // 5. FPS HUD Pill (if enabled)
         RenderFpsHud();
@@ -1300,7 +1340,7 @@ private:
         DrawRoundedRect(x, c3Y, w, c3H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
         float fpsColW = (w - 36.0f - 16.0f) * 0.52f;
-        bool inCity = IsOnlineCity();
+        bool inCity = IsCityFpsLockActive();
         if (inCity) {
             DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas: 30 FPS [BLOQUEADO EN ONLINE]", 18.0f, COL_CYAN);
             DrawText(x + 18.0f, c3Y + 36.0f, "Auto-bloqueado a 30 FPS en la Ciudad para evitar mini-turbo y mantener sincronía.", 12.0f, { 1.0f, 0.85f, 0.35f, 1.0f });
@@ -1327,9 +1367,9 @@ private:
         float syncColX = x + 18.0f + fpsColW + 16.0f;
         float syncColW = (w - 36.0f - 16.0f) * 0.48f;
         DrawText(syncColX, c3Y + 14.0f, "Sincronización y Estadísticas", 19.0f, COL_WHITE);
-        DrawText(syncColX, c3Y + 36.0f, "V-Sync anti-tearing y contador HUD en pantalla", 12.5f, COL_MUTED);
+        DrawText(syncColX, c3Y + 36.0f, "V-Sync, contador HUD y bloqueo a 30 FPS en la Ciudad", 12.5f, COL_MUTED);
 
-        float sChipW = (syncColW - 10.0f) * 0.5f;
+        float sChipW = (syncColW - 20.0f) / 3.0f;
         // VSync chip
         DrawRoundedRect(syncColX, fChipY, sChipW, chipH, 8.0f,
                         m_vsync ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
@@ -1344,6 +1384,14 @@ private:
                         m_showFpsHud ? COL_CYAN : COL_CHIP_BORDER);
         DrawText(hudX + sChipW * 0.5f, fChipY + 12.0f, m_showFpsHud ? "HUD FPS: VISIBLE" : "HUD FPS: OCULTO", 13.0f,
                  m_showFpsHud ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // City 30 FPS lock chip
+        float lockX = hudX + sChipW + 10.0f;
+        DrawRoundedRect(lockX, fChipY, sChipW, chipH, 8.0f,
+                        m_cityFpsLock ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                        m_cityFpsLock ? COL_CYAN : COL_CHIP_BORDER);
+        DrawText(lockX + sChipW * 0.5f, fChipY + 12.0f, m_cityFpsLock ? "Ciudad 30 FPS: SÍ" : "Ciudad 30 FPS: NO", 13.0f,
+                 m_cityFpsLock ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Card 4: Reemplazo de Texturas HD (Dolphin Texture Pack)
         float c4Y = c3Y + c3H + 12.0f;
@@ -1477,11 +1525,12 @@ private:
         DrawText(tv2X + tvChipW * 0.5f, tvChipY + 10.0f, "Botones táctiles: OCULTOS (Solo Mando)", 14.5f,
                  !m_touchVisible ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
-        // Row 2: Opacity selector
+        // Row 2: Opacity selector (left) & gear auto-hide (right)
+        float opAreaW = (w - 36.0f) * 0.58f;
         DrawText(x + 18.0f, y + 102.0f, "Opacidad de botones virtuales:", 15.0f, COL_WHITE);
         const char* opLabels[] = { "25% (Suave)", "50% (Medio)", "75% (Claro)", "100% (Sólido)" };
         const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
-        float opChipW = (w - 36.0f - 30.0f) / 4.0f;
+        float opChipW = (opAreaW - 30.0f) / 4.0f;
         float opChipH = 36.0f;
         float opChipY = y + 124.0f;
         for (int i = 0; i < 4; ++i) {
@@ -1491,6 +1540,22 @@ private:
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
             DrawText(ox + opChipW * 0.5f, opChipY + 9.0f, opLabels[i], 13.5f,
+                     active ? COL_ACTIVE_TEXT : COL_WHITE, true);
+        }
+
+        float ahX = x + 18.0f + opAreaW + 20.0f;
+        float ahAreaW = (w - 36.0f) - opAreaW - 20.0f;
+        DrawText(ahX, y + 102.0f, "Auto-ocultar ⚙ sin tocar la pantalla:", 15.0f, COL_WHITE);
+        const char* ahLabels[] = { "Nunca", "3 s", "5 s", "10 s" };
+        const int ahValues[] = { 0, 3, 5, 10 };
+        float ahChipW = (ahAreaW - 24.0f) / 4.0f;
+        for (int i = 0; i < 4; ++i) {
+            float ax = ahX + float(i) * (ahChipW + 8.0f);
+            bool active = (m_gearAutoHideSec == ahValues[i]);
+            DrawRoundedRect(ax, opChipY, ahChipW, opChipH, 8.0f,
+                            active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                            active ? COL_CYAN : COL_CHIP_BORDER);
+            DrawText(ax + ahChipW * 0.5f, opChipY + 9.0f, ahLabels[i], 13.5f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
@@ -1803,7 +1868,7 @@ private:
                 for (int i = 0; i < 4; ++i) {
                     float fx = x + 18.0f + float(i) * (fChipW + 5.0f);
                     if (px >= fx && px <= fx + fChipW) {
-                        if (IsOnlineCity()) {
+                        if (IsCityFpsLockActive()) {
                             // Locked to 30 FPS in Online City
                             return;
                         }
@@ -1817,7 +1882,7 @@ private:
 
                 float syncColX = x + 18.0f + fpsColW + 16.0f;
                 float syncColW = (contentW - 36.0f - 16.0f) * 0.48f;
-                float sChipW = (syncColW - 10.0f) * 0.5f;
+                float sChipW = (syncColW - 20.0f) / 3.0f;
                 // VSync click
                 if (px >= syncColX && px <= syncColX + sChipW) {
                     m_vsync = !m_vsync;
@@ -1833,6 +1898,13 @@ private:
                 float hudX = syncColX + sChipW + 10.0f;
                 if (px >= hudX && px <= hudX + sChipW) {
                     m_showFpsHud = !m_showFpsHud;
+                    SaveSettings();
+                    return;
+                }
+                // City 30 FPS lock click (RenderGL applies or releases the lock)
+                float lockX = hudX + sChipW + 10.0f;
+                if (px >= lockX && px <= lockX + sChipW) {
+                    m_cityFpsLock = !m_cityFpsLock;
                     SaveSettings();
                     return;
                 }
@@ -1920,8 +1992,9 @@ private:
                 }
             }
 
-            // Opacity chips
-            float opChipW = (contentW - 36.0f - 30.0f) / 4.0f;
+            // Opacity chips (left) & gear auto-hide chips (right)
+            float opAreaW = (contentW - 36.0f) * 0.58f;
+            float opChipW = (opAreaW - 30.0f) / 4.0f;
             float opChipH = 36.0f;
             float opChipY = contentY + 124.0f;
             const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
@@ -1930,6 +2003,19 @@ private:
                     float ox = x + 18.0f + float(i) * (opChipW + 10.0f);
                     if (px >= ox && px <= ox + opChipW) {
                         m_buttonOpacity = opValues[i];
+                        SaveLayoutConfig();
+                        return;
+                    }
+                }
+
+                float ahX = x + 18.0f + opAreaW + 20.0f;
+                float ahAreaW = (contentW - 36.0f) - opAreaW - 20.0f;
+                float ahChipW = (ahAreaW - 24.0f) / 4.0f;
+                const int ahValues[] = { 0, 3, 5, 10 };
+                for (int i = 0; i < 4; ++i) {
+                    float ax = ahX + float(i) * (ahChipW + 8.0f);
+                    if (px >= ax && px <= ax + ahChipW) {
+                        m_gearAutoHideSec = ahValues[i];
                         SaveLayoutConfig();
                         return;
                     }
@@ -2168,10 +2254,11 @@ private:
         std::string gfxPath = dir + "/MH3UI.graphics";
 
         std::ifstream in(gfxPath);
-        int msaa = 1, vsync = 1, resIdx = 0, fpsLimit = 60, aspect = 0, showFps = 1, fullscreen = 0;
+        int msaa = 1, vsync = 1, resIdx = 0, fpsLimit = 60, aspect = 0, showFps = 1, fullscreen = 0, cityLock = 1;
         if (in >> msaa >> vsync >> resIdx >> fpsLimit >> aspect >> showFps) {
-            in >> fullscreen;
+            in >> fullscreen >> cityLock;
             m_fullscreen = (fullscreen != 0);
+            m_cityFpsLock = (cityLock != 0);
             m_vsync = (vsync != 0);
             m_resolutionIndex = std::clamp(resIdx, 0, 5);
             m_aspectIndex = std::clamp(aspect, 0, 2);
@@ -2230,7 +2317,7 @@ private:
         if (out) {
             out << "1 " << (m_vsync ? 1 : 0) << ' ' << m_resolutionIndex << ' '
                 << m_fpsLimit << ' ' << m_aspectIndex << ' ' << (m_showFpsHud ? 1 : 0) << ' '
-                << (m_fullscreen ? 1 : 0) << '\n';
+                << (m_fullscreen ? 1 : 0) << ' ' << (m_cityFpsLock ? 1 : 0) << '\n';
         }
     }
 
@@ -2257,6 +2344,7 @@ private:
         out << "VERSION 1\n";
         out << "TOUCH_VISIBLE " << (m_touchVisible ? 1 : 0) << '\n';
         out << "OPACITY " << m_buttonOpacity << '\n';
+        out << "GEAR_AUTOHIDE " << m_gearAutoHideSec << '\n';
         out << "MACRO1 " << (m_macro1Enabled ? 1 : 0) << '\n';
         out << "MACRO2 " << (m_macro2Enabled ? 1 : 0) << '\n';
         out << "MACRO3 " << (m_macro3Enabled ? 1 : 0) << '\n';
@@ -2289,6 +2377,7 @@ private:
             if (!(iss >> tag)) continue;
             if (tag == "TOUCH_VISIBLE") { int v; iss >> v; m_touchVisible = (v != 0); }
             else if (tag == "OPACITY") { iss >> m_buttonOpacity; m_buttonOpacity = std::clamp(m_buttonOpacity, 0.10f, 1.0f); }
+            else if (tag == "GEAR_AUTOHIDE") { int v = 0; iss >> v; m_gearAutoHideSec = std::clamp(v, 0, 60); }
             else if (tag == "MACRO1") { int v; iss >> v; m_macro1Enabled = (v != 0); }
             else if (tag == "MACRO2") { int v; iss >> v; m_macro2Enabled = (v != 0); }
             else if (tag == "MACRO3") { int v; iss >> v; m_macro3Enabled = (v != 0); }
@@ -2441,6 +2530,9 @@ private:
     bool m_showFpsHud = true;
     bool m_touchVisible = true;
     float m_buttonOpacity = 1.0f;
+    bool m_cityFpsLock = true;     // Auto-lock to 30 FPS in Loc Lac City
+    int m_gearAutoHideSec = 0;     // 0: gear always visible
+    std::atomic<int64_t> m_lastTouchMs{0};
     int m_langChoice = 0;      // 0: Español
     double m_liveFps = 60.0;
     std::string m_saveStatusMsg = "Listo para exportar o importar partidas guardadas.";
