@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%20ARM64-green.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android)
-[![Latest Release](https://img.shields.io/badge/Release-v1.4-orange.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
+[![Latest Release](https://img.shields.io/badge/Release-v1.4.5-orange.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
 
 Port nativo para **Android** de **Monster Hunter Tri** mediante recompilación estática de código (AOT - *Ahead-of-Time*), logrando rendimiento nativo en hardware ARM64 sin necesidad de emulación pesada.
 
@@ -46,7 +46,7 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 
 ---
 
-## ✨ Novedades y Características (v1.4)
+## ✨ Novedades y Características (v1.4.5)
 
 ### 🏰 1. Modo Online — Ciudad Loc Lac
 - Conexión directa al servidor comunitario oficial **mh3sp.com** para jugar en línea con otros cazadores.
@@ -98,7 +98,7 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 ## 📲 Instalación
 
 1. Dirígete a la sección de **[Releases](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)**.
-2. Descarga el archivo `OceanTriRecomp-Android-v1.4-arm64.apk`.
+2. Descarga el archivo `OceanTriRecomp-Android-v1.4.5-arm64.apk`.
 3. Instálalo en tu dispositivo Android (permite fuentes desconocidas si tu navegador lo solicita).
 4. Abre **Monster Hunter Tri**. En la pantalla de bienvenida, selecciona tu copia legal de Monster Hunter Tri (`.iso` o `.rvz`, versión europea recomendada `RMHP08`).
 5. ¡A cazar!
@@ -149,7 +149,7 @@ cmake --build build-android --target MH3 --parallel $(nproc)
 bash packaging/android/build_apk.sh
 ```
 
-El APK firmado se genera en `release/OceanTriRecomp-Android-v1.4-arm64.apk`.
+El APK firmado se genera en `release/OceanTriRecomp-Android-v1.4.5-arm64.apk`.
 
 ---
 
