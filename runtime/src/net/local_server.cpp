@@ -1,4 +1,4 @@
-﻿// Ciudad online / LAN / Comunidad:
+// Ciudad online / LAN / Comunidad:
 // - Offline: Loc Lac local offline (jugar solo en la ciudad)
 // - Host: servidor local en 0.0.0.0, amigos por LAN/ZeroTier
 // - Client: conectar a IP:puerto de otro host
@@ -6,6 +6,7 @@
 #include "local_server.h"
 
 #include "../mh3sp_native_server.h"
+#include "lan_beacon.h"
 #include "nas_server.h"
 #include "online.h"
 #include "net_host.h"
@@ -80,27 +81,34 @@ bool PortOpen(uint16_t port, const char* host = "127.0.0.1") {
 // Detecta conexión a Internet probando opn.mh3sp.com:8200
 bool HasInternetAccess() {
     WSADATA wsa{};
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return false;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return true;
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(8200);
 
     addrinfo hints{};
     hints.ai_family   = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     addrinfo* res = nullptr;
-    if (getaddrinfo("opn.mh3sp.com", "8200", &hints, &res) != 0 || !res)
-        return false;
+    if (getaddrinfo("opn.mh3sp.com", "8200", &hints, &res) == 0 && res) {
+        std::memcpy(&addr, res->ai_addr, sizeof(sockaddr_in));
+        freeaddrinfo(res);
+    } else {
+        inet_pton(AF_INET, "170.187.164.37", &addr.sin_addr);
+    }
 
-    const SOCKET sock = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock == INVALID_SOCKET) { freeaddrinfo(res); return true; }
+    const SOCKET sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) return true;
 
     u_long nb = 1;
     ioctlsocket(sock, FIONBIO, &nb);
-    ::connect(sock, res->ai_addr, static_cast<int>(res->ai_addrlen));
-    freeaddrinfo(res);
+    ::connect(sock, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));
 
     fd_set w, f;
     FD_ZERO(&w); FD_ZERO(&f);
     FD_SET(sock, &w); FD_SET(sock, &f);
-    timeval tv{1, 0};
+    timeval tv{2, 500000};
     const int ready = ::select(0, nullptr, &w, &f, &tv);
     const bool connected = ready > 0 && FD_ISSET(sock, &w) && !FD_ISSET(sock, &f);
     ::closesocket(sock);
@@ -114,6 +122,7 @@ void ApplyMode() {
     switch (mode) {
     case OnlineNetMode::Offline:
         // Ciudad Loc Lac offline (jugar solo sin conexion)
+        LanBeacon::StopBroadcaster();
         SetOnlineServerSetting("127.0.0.1:18080");
         SetSkipTlsSetting(true);
         g_statusText = "Modo Offline activo: Ciudad Loc Lac local (jugar solo).";
@@ -127,10 +136,12 @@ void ApplyMode() {
         SetSkipTlsSetting(true);
         g_statusText = "Servidor local listo en puerto 18080 (0.0.0.0).";
         std::fprintf(stderr, "MH3 red: modo HOST (0.0.0.0:18080)\n");
+        LanBeacon::StartBroadcaster("OceanTri-Host", 18080);
         break;
 
     case OnlineNetMode::Client: {
         // Conectar a IP del host amigo (LAN/ZeroTier)
+        LanBeacon::StopBroadcaster();
         const std::string target = g_clientIp + ":" + std::to_string(g_clientPort);
         SetOnlineServerSetting(target);
         SetSkipTlsSetting(true);
@@ -146,12 +157,15 @@ void ApplyMode() {
         // el override solo cambiaba el puerto, no la direccion, y el 18080
         // remoto esta cerrado (ECONNREFUSED -> error 20100). Para probar el
         // NAS local usar MH3_ONLINE_PORTS=80=18080.
+        LanBeacon::StopBroadcaster();
         SetOnlineServerSetting("mh3sp.com");
         SetSkipTlsSetting(false);
         g_statusText = "Comunidad MH3SP: conectado a mh3sp.com (TLS).";
         std::fprintf(stderr, "MH3 red: modo COMUNIDAD (mh3sp.com, NAS :80 real, TLS)\n");
         break;
     }
+
+    ApplyOnlinePatches();
 }
 
 void StartLocalServer() {
@@ -273,6 +287,8 @@ std::string GetStatusText() { return g_statusText; }
 
 void RestartServer() {
     g_serverStarted = false;
+    LanBeacon::StopBroadcaster();
+    LanBeacon::StopScanner();
     mh3sp_native::Stop();
     NasServer::Stop();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -325,19 +341,25 @@ void Ensure() {
 } // namespace LocalOnlineServer
 #else
 namespace LocalOnlineServer {
-OnlineNetMode GetMode() { return OnlineNetMode::Offline; }
+OnlineNetMode GetMode() { return OnlineNetMode::Community; }
 void SetMode(OnlineNetMode) {}
-std::string GetClientTarget() { return "127.0.0.1"; }
+std::string GetClientTarget() { return "mh3sp.com"; }
 int GetClientPort() { return 18080; }
 void SetClientTarget(const std::string&, int) {}
 void AdjustClientIpOctet(int, int) {}
 void AdjustClientPort(int) {}
 std::vector<std::string> GetLocalNetworkIPs() { return {}; }
-std::string GetStatusText() { return ""; }
+std::string GetStatusText() { return "Comunidad MH3SP"; }
 void RestartServer() {}
 void LoadSettings() {}
 void SaveSettings() {}
-void Configure() {}
+void Configure() {
+    if (!std::getenv("MH3_ONLINE_SERVER")) {
+        SetOnlineServerSetting("mh3sp.com");
+        SetSkipTlsSetting(false);
+    }
+    ApplyOnlinePatches();
+}
 void Ensure() {}
 } // namespace LocalOnlineServer
 #endif

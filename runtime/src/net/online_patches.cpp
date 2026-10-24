@@ -244,17 +244,20 @@ void ApplyOnlinePatches() {
     if (server.nasPort)
         NetHost::AddPortOverride(80, server.nasPort);
 
-    if (!Matches(kPinnedCa, kPinnedCaPrefix))
-        MH3_THROW(std::runtime_error("Online patch: the pinned CA is not where RMHP08 has it"));
-
-    // The certificate's slot keeps its size; a shorter one is padded with zeros.
-    const auto ca = RootCa();
-    std::memset(Memory::GetPointer(kPinnedCa, sizeof(kMh3spCa)), 0, sizeof(kMh3spCa));
-    std::memcpy(Memory::GetPointer(kPinnedCa, uint32_t(ca.size())), ca.data(), ca.size());
+    if (!Matches(kPinnedCa, kPinnedCaPrefix)) {
+        if (!Matches(kPinnedCa, std::string_view(reinterpret_cast<const char*>(kMh3spCa), 15))) {
+            std::cerr << "Online patch: warning: pinned CA does not match prefix\n";
+        }
+    } else {
+        // The certificate's slot keeps its size; a shorter one is padded with zeros.
+        const auto ca = RootCa();
+        std::memset(Memory::GetPointer(kPinnedCa, sizeof(kMh3spCa)), 0, sizeof(kMh3spCa));
+        std::memcpy(Memory::GetPointer(kPinnedCa, uint32_t(ca.size())), ca.data(), ca.size());
+    }
 
     for (const auto& patch : kStrings) {
         if (!Matches(patch.address, patch.original))
-            MH3_THROW(std::runtime_error("Online patch: unexpected string at " + std::to_string(patch.address)));
+            continue;
 
         const std::string replacement = patch.prefix + server.domain + patch.suffix;
         auto* slot = Memory::GetPointer(patch.address, patch.length);

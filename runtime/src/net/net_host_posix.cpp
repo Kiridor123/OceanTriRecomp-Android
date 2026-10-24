@@ -1,8 +1,9 @@
 // NetHost (net_host.h) on BSD sockets, getaddrinfo and OpenSSL: Linux, and
-// the host, whose newlib implements them on hostNet (its first socket starts
-// the network stack: _host_net_init loads hostNet and runs hostNetInit and
-// hostNetCtlInit).
+// the Vita, whose newlib implements them on sceNet (its first socket starts
+// the network stack: _vita_net_init loads SceNet and runs sceNetInit and
+// sceNetCtlInit).
 #include "net_host.h"
+#include "local_server.h"
 
 #include "guest_threads.h"
 
@@ -25,16 +26,38 @@
 #include <unistd.h>
 #include <vector>
 
+#ifdef __vita__
+#include <psp2/net/net.h>
+#include <psp2/net/netctl.h>
+#include <psp2/sysmodule.h>
+#else
 #include <ifaddrs.h>
 #include <resolv.h>
+#endif
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define LOG_NET(...) do { __android_log_print(ANDROID_LOG_INFO, "MH3_NET", __VA_ARGS__); std::fprintf(stderr, __VA_ARGS__); } while(0)
+#else
+#define LOG_NET(...) std::fprintf(stderr, __VA_ARGS__)
+#endif
 
 #ifdef MH3_HAS_OPENSSL
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/provider.h>
+#endif
 #endif
 
+#ifdef __vita__
+// sceNet has no SIGPIPE.
+#define MSG_NOSIGNAL 0
+
+extern "C" int _vita_net_init();
+#endif
 namespace NetHost {
 namespace {
 // A host errno as a negated Wii SO error (Dolphin's TranslateErrorCode).
@@ -118,7 +141,7 @@ uint16_t MapPort(uint16_t port) {
 
 // MH3_ONLINE_ADDRESSES (from=to[,from=to...]): IPv4 addresses to change, both
 // ways. A server that names itself by an address this machine cannot reach
-// (its ZeroTier address, to a Native on the LAN) is reached at another one, and
+// (its ZeroTier address, to a Vita on the LAN) is reached at another one, and
 // what comes from there reads as coming from the address it named.
 uint32_t MapAddress(uint32_t ip, bool outgoing) {
     const char* addresses = std::getenv("MH3_ONLINE_ADDRESSES");
@@ -244,25 +267,35 @@ bool Override(const std::string& name, uint32_t* ip) {
 
     const char* hosts = std::getenv("MH3_ONLINE_HOSTS");
 
-    if (!hosts)
-        return false;
+    if (hosts) {
+        std::string_view rest(hosts);
 
-    std::string_view rest(hosts);
+        while (!rest.empty()) {
+            const auto comma = rest.find(',');
+            const std::string_view entry = rest.substr(0, comma);
+            rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+            const auto equals = entry.find('=');
 
-    while (!rest.empty()) {
-        const auto comma = rest.find(',');
-        const std::string_view entry = rest.substr(0, comma);
-        rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
-        const auto equals = entry.find('=');
+            if (equals == std::string_view::npos)
+                continue;
 
-        if (equals == std::string_view::npos)
-            continue;
+            const std::string_view pattern = entry.substr(0, equals);
+            const std::string address(entry.substr(equals + 1));
 
-        const std::string_view pattern = entry.substr(0, equals);
-        const std::string address(entry.substr(equals + 1));
+            if (MatchesHost(pattern, name) && inet_pton(AF_INET, address.c_str(), ip) == 1)
+                return true;
+        }
+    }
 
-        if (MatchesHost(pattern, name) && inet_pton(AF_INET, address.c_str(), ip) == 1)
-            return true;
+    // Direct resolution for MH3SP community infrastructure:
+    // Prevents error 20100/23403 if Android ISP/mobile data DNS fails to resolve mh3sp.com subdomains.
+    if (MatchesHost("opn.mh3sp.com", name) || MatchesHost("nas.mh3sp.com", name) || MatchesHost("available.mh3sp.com", name)) {
+        inet_pton(AF_INET, "170.187.164.37", ip);
+        return true;
+    }
+    if (MatchesHost("natneg1.mh3sp.com", name) || MatchesHost("natneg2.mh3sp.com", name) || MatchesHost("natneg3.mh3sp.com", name)) {
+        inet_pton(AF_INET, "97.107.139.231", ip);
+        return true;
     }
 
     return false;
@@ -280,7 +313,17 @@ void AddPortOverride(uint16_t from, uint16_t to) {
 }
 
 bool Startup() {
-    return true;
+#ifdef __vita__
+    // The stack's pool: runtime/vita/newlib_net.c.
+    static const bool started = _vita_net_init() >= 0;
+    return started;
+#else
+    static const bool started = [] {
+        LocalOnlineServer::Ensure();
+        return true;
+    }();
+    return started;
+#endif
 }
 
 int32_t OpenSocket(bool stream) {
@@ -481,7 +524,7 @@ int32_t Poll(std::vector<PollEntry>& entries) {
                 revents |= event.wii;
 
         // Only the events asked for, and the conditions always reported (the
-        // host's poll.h makes POLLPRI and POLLRDBAND POLLIN).
+        // Vita's poll.h makes POLLPRI and POLLRDBAND POLLIN).
         entries[i].revents = revents & (entries[i].events | 0xE0);
         count += entries[i].revents != 0;
     }
@@ -499,6 +542,30 @@ bool Writable(int handle) {
     return ::poll(&entry, 1, 0) > 0;
 }
 
+#ifdef __vita__
+Interface DefaultInterface() {
+    Interface result{};
+    inet_pton(AF_INET, "10.0.1.30", &result.ip);
+    inet_pton(AF_INET, "255.255.255.0", &result.netmask);
+    inet_pton(AF_INET, "10.0.1.1", &result.gateway);
+    inet_pton(AF_INET, "8.8.8.8", &result.dns);
+    Startup();
+
+    const auto read = [](int code, uint32_t* address) {
+        SceNetCtlInfo info{};
+
+        if (sceNetCtlInetGetInfo(code, &info) == 0)
+            inet_pton(AF_INET, info.ip_address, address);
+    };
+
+    read(SCE_NETCTL_INFO_GET_IP_ADDRESS, &result.ip);
+    read(SCE_NETCTL_INFO_GET_NETMASK, &result.netmask);
+    read(SCE_NETCTL_INFO_GET_DEFAULT_ROUTE, &result.gateway);
+    read(SCE_NETCTL_INFO_GET_PRIMARY_DNS, &result.dns);
+    result.broadcast = (result.ip & result.netmask) | ~result.netmask;
+    return result;
+}
+#else
 Interface DefaultInterface() {
     Interface result{};
     inet_pton(AF_INET, "10.0.1.30", &result.ip);
@@ -507,12 +574,14 @@ Interface DefaultInterface() {
     inet_pton(AF_INET, "10.0.1.1", &result.gateway);
     inet_pton(AF_INET, "8.8.8.8", &result.dns);
 
+#if !defined(__ANDROID__)
     if (res_init() == 0)
         for (int i = 0; i < _res.nscount; ++i)
             if (_res.nsaddr_list[i].sin_family == AF_INET) {
                 result.dns = _res.nsaddr_list[i].sin_addr.s_addr;
                 break;
             }
+#endif
 
     // The address the host would use to reach the Internet; no packet is sent.
     const int probe = ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -557,6 +626,7 @@ Interface DefaultInterface() {
     freeifaddrs(interfaces);
     return result;
 }
+#endif
 
 bool ParseIpv4(const std::string& text, uint32_t* ip) {
     return inet_pton(AF_INET, text.c_str(), ip) == 1;
@@ -564,7 +634,7 @@ bool ParseIpv4(const std::string& text, uint32_t* ip) {
 
 namespace {
 // One DNS A query over UDP to SERVER (network order), for when the system's
-// resolver fails: the host devkit's answered every name with ECONNREFUSED
+// resolver fails: the Vita devkit's answered every name with ECONNREFUSED
 // (getaddrinfo -5) while its network worked.
 bool QueryDns(const std::string& name, uint32_t server, std::vector<uint32_t>& addresses) {
     uint8_t packet[512] = {0x4d, 0x33, 0x01, 0x00, 0x00, 0x01}; // id, recursion desired, one question
@@ -665,7 +735,7 @@ Lookup::Lookup(std::string name) : state_(std::make_shared<State>()) {
 
     // getaddrinfo blocks; the guest thread waits in the scheduler meanwhile.
     // A detached pthread, not std::thread: without exceptions libc++ aborts
-    // the process when a thread call fails, which on the host stopped the
+    // the process when a thread call fails, which on the Vita stopped the
     // lookup thread (and its TTY) for good.
     const auto resolve = [](const std::shared_ptr<State>& state) {
         addrinfo hints{};
@@ -798,7 +868,7 @@ class OpenSslTls final : public Tls {
   public:
     OpenSslTls(const std::string& hostname, bool verify) : hostname_(hostname), verify_(verify) {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-        // 1.1 initializes itself (the host has 1.0.2).
+        // 1.1 initializes itself (the Vita has 1.0.2).
         static std::once_flag initialized;
         std::call_once(initialized, [] {
             SSL_library_init();
@@ -806,10 +876,19 @@ class OpenSslTls final : public Tls {
         });
         context_ = SSL_CTX_new(SSLv23_client_method());
 #else
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+        static std::once_flag providersLoaded;
+        std::call_once(providersLoaded, [] {
+            setenv("OPENSSL_ENABLE_SHA1_SIGNATURES", "1", 1);
+            OSSL_PROVIDER_load(nullptr, "default");
+            OSSL_PROVIDER_load(nullptr, "legacy");
+        });
+#endif
         context_ = SSL_CTX_new(TLS_client_method());
 
         // The Wii's servers use SHA-1 and 1024-bit RSA certificates.
         SSL_CTX_set_security_level(context_, 0);
+        SSL_CTX_set_cipher_list(context_, "DEFAULT:@SECLEVEL=0:ALL");
 #endif
         SSL_CTX_set_verify(context_, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, verify ? LogRefusedCertificate : nullptr);
         session_ = SSL_new(context_);
@@ -832,7 +911,11 @@ class OpenSslTls final : public Tls {
         if (!certificate)
             return false;
 
-        const bool added = X509_STORE_add_cert(SSL_CTX_get_cert_store(context_), certificate) == 1;
+        int ret = X509_STORE_add_cert(SSL_CTX_get_cert_store(context_), certificate);
+        unsigned long err = ERR_peek_last_error();
+        const bool added = (ret == 1) || (ERR_GET_REASON(err) == X509_R_CERT_ALREADY_IN_HASH_TABLE);
+        if (ret != 1)
+            ERR_clear_error();
         X509_free(certificate);
         return added;
     }

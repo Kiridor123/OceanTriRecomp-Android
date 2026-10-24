@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.25)
 project(MH3Recompiled LANGUAGES C CXX ASM)
 option(MH3_ENABLE_GUEST_CALL_TRACE "Enable temporary guest call graph instrumentation" OFF)
 
@@ -618,9 +618,9 @@ set_property(
 )
 
 # Ciudad offline: red de Windows (Winsock) y arranque del servidor local
-target_sources(MH3 PRIVATE src/net/local_server.cpp src/net/nas_server.cpp)
+target_sources(MH3 PRIVATE src/net/local_server.cpp src/net/nas_server.cpp src/net/lan_beacon.cpp)
 if(WIN32)
-  target_link_libraries(MH3 PRIVATE ws2_32)
+  target_link_libraries(MH3 PRIVATE ws2_32 iphlpapi)
 endif()
 
 # Sin ventana de consola en Windows (la salida va a MH3.log)

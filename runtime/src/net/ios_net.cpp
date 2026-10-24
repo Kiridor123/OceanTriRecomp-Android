@@ -1,4 +1,4 @@
-﻿// Wii network IOS devices (ios_net.h). Request layouts follow Dolphin's
+// Wii network IOS devices (ios_net.h). Request layouts follow Dolphin's
 // Core/IOS/Network (IP/Top.cpp, Socket.cpp, SSL.cpp, NCD/Manage.cpp).
 #include "ios_net.h"
 
@@ -142,6 +142,8 @@ enum : uint32_t {
     kKdCleanupSocket = 0x07,
     kKdLockSocket = 0x08,
     kKdUnlockSocket = 0x09,
+    kKdRequestGenerateUserId = 0x0F,
+    kKdRequestRegisterUserId = 0x10,
     kKdGetSchedulerStat = 0x1E,
     kKdSetScriptMode = 0x22,
     kKdRequestShutdown = 0x28,
@@ -1078,6 +1080,34 @@ std::optional<Attempt> KdIoctl(uint32_t command, uint32_t out, uint32_t outSize)
             return Done(kIpcEInval);
 
         std::memset(Memory::GetPointer(out, std::min<uint32_t>(outSize, 256)), 0, std::min<uint32_t>(outSize, 256));
+        return Done(0);
+    case kKdRequestGenerateUserId:
+        if (outSize > 0)
+            std::memset(Memory::GetPointer(out, std::min<uint32_t>(outSize, 32)), 0, std::min<uint32_t>(outSize, 32));
+        reply(0);
+        if (outSize >= 12) {
+            Memory::Write32(out + 4, 0x00010001);
+            Memory::Write32(out + 8, 0x00010001);
+        }
+        if (outSize >= 16)
+            Memory::Write32(out + 12, 0);
+        return Done(0);
+    case kKdRequestRegisterUserId:
+        reply(0);
+        if (outSize >= 8)
+            Memory::Write32(out + 4, 0);
+        return Done(0);
+    case 0x0A: // NWC24iCheckMailNow
+    case 0x0B: // NWC24iSendMailNow
+    case 0x0C: // NWC24iReceiveMailNow
+    case 0x0D: // NWC24iSaveMailNow
+    case 0x0E: // NWC24iDownloadNowEx
+    case 0x1F: // NWC24iSetFilterMode
+    case 0x20: // NWC24iSetDebugMode
+    case 0x21: // KD_SetNextWakeup
+        if (outSize > 0)
+            std::memset(Memory::GetPointer(out, std::min<uint32_t>(outSize, 32)), 0, std::min<uint32_t>(outSize, 32));
+        reply(0);
         return Done(0);
     case kKdTrySuspendScheduler:
     case kKdCleanupSocket:

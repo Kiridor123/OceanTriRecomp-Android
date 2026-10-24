@@ -1,22 +1,14 @@
-﻿// NAS local de la Ciudad offline (nas_server.h): responde lo que el juego pregunta
+// NAS local de la Ciudad offline (nas_server.h): responde lo que el juego pregunta
 // antes de llegar al servidor de Capcom, como hacia online-local-nas.py:
 //   POST /ac  acctcreate, login y svcloc (el NAS de Nintendo, DWC)
 //   POST /pr  filtro de palabras: ninguna es mala
 //   UDP 27900 chequeo de disponibilidad de GameSpy: disponible
 #include "nas_server.h"
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,12 +19,55 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+   using nas_socket = SOCKET;
+   static constexpr nas_socket NAS_INVALID_SOCKET = INVALID_SOCKET;
+   static void nas_close_socket(nas_socket s) { if (s != NAS_INVALID_SOCKET) closesocket(s); }
+   static inline void FormatNow(char* buf, size_t sz) {
+       const time_t t = time(nullptr);
+       tm local{};
+       localtime_s(&local, &t);
+       std::strftime(buf, sz, "%Y%m%d%H%M%S", &local);
+   }
+#else
+#  include <arpa/inet.h>
+#  include <netinet/in.h>
+#  include <sys/socket.h>
+#  include <sys/time.h>
+#  include <unistd.h>
+   using nas_socket = int;
+   static constexpr nas_socket NAS_INVALID_SOCKET = -1;
+   static void nas_close_socket(nas_socket s) { if (s >= 0) close(s); }
+   static inline void FormatNow(char* buf, size_t sz) {
+       const time_t t = time(nullptr);
+       tm local{};
+       localtime_r(&t, &local);
+       std::strftime(buf, sz, "%Y%m%d%H%M%S", &local);
+   }
+#endif
+
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
 namespace {
 using Fields = std::vector<std::pair<std::string, std::string>>;
 
 constexpr char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const std::string kAlnum = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const std::string kUpper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+std::atomic<bool> g_nasRunning{false};
+nas_socket g_tcpListener = NAS_INVALID_SOCKET;
+nas_socket g_udpListener = NAS_INVALID_SOCKET;
 
 uint32_t RandomInt(uint32_t low, uint32_t high) {
     static thread_local std::mt19937 rng{std::random_device{}()};
@@ -41,10 +76,8 @@ uint32_t RandomInt(uint32_t low, uint32_t high) {
 
 std::string RandomText(const std::string& alphabet, size_t length) {
     std::string out;
-
     for (size_t i = 0; i < length; ++i)
         out += alphabet[RandomInt(0, uint32_t(alphabet.size() - 1))];
-
     return out;
 }
 
@@ -81,7 +114,6 @@ int B64Value(char c) {
     return p ? int(p - kAlphabet) : -1;
 }
 
-// Como b64decode de Python: lo que no es del alfabeto se descarta; falla si el relleno no cuadra.
 bool B64Decode(const std::string& in, std::string& out) {
     out.clear();
     uint32_t acc = 0;
@@ -95,7 +127,6 @@ bool B64Decode(const std::string& in, std::string& out) {
         }
 
         const int v = B64Value(c);
-
         if (v < 0)
             continue;
 
@@ -116,19 +147,15 @@ bool B64Decode(const std::string& in, std::string& out) {
 int Hex(char c) {
     if (c >= '0' && c <= '9')
         return c - '0';
-
     if (c >= 'a' && c <= 'f')
         return c - 'a' + 10;
-
     if (c >= 'A' && c <= 'F')
         return c - 'A' + 10;
-
     return -1;
 }
 
 std::string UrlDecode(const std::string& in) {
     std::string out;
-
     for (size_t i = 0; i < in.size(); ++i) {
         if (in[i] == '+') {
             out += ' ';
@@ -139,7 +166,6 @@ std::string UrlDecode(const std::string& in) {
             out += in[i];
         }
     }
-
     return out;
 }
 
@@ -149,7 +175,6 @@ void Set(Fields& fields, const std::string& key, const std::string& value) {
             field.second = value;
             return;
         }
-
     fields.emplace_back(key, value);
 }
 
@@ -157,18 +182,15 @@ std::string Get(const Fields& fields, const std::string& key) {
     for (const auto& field : fields)
         if (field.first == key)
             return field.second;
-
     return {};
 }
 
-// Campos del NAS: base64 con '*' por '=' (y variantes de '+' y '/').
 Fields Decode(const std::string& query) {
     Fields fields;
     size_t start = 0;
 
     while (start <= query.size()) {
         size_t end = query.find('&', start);
-
         if (end == std::string::npos)
             end = query.size();
 
@@ -201,29 +223,22 @@ Fields Decode(const std::string& query) {
 
 std::string Encode(const Fields& fields) {
     std::string out;
-
     for (size_t i = 0; i < fields.size(); ++i) {
         std::string value = B64Encode(fields[i].second);
-
         for (char& c : value)
             if (c == '=')
                 c = '*';
 
         if (i)
             out += '&';
-
         out += fields[i].first + "=" + value;
     }
-
     return out + "\r\n";
 }
 
 std::string Now() {
-    const time_t t = time(nullptr);
-    tm local{};
-    localtime_s(&local, &t);
     char text[32];
-    std::strftime(text, sizeof(text), "%Y%m%d%H%M%S", &local);
+    FormatNow(text, sizeof(text));
     return text;
 }
 
@@ -276,35 +291,42 @@ bool BuildReply(const std::string& path, const Fields& fields, Fields& reply) {
     return false;
 }
 
-void Send(SOCKET s, const std::string& status, const std::string& headers, const std::string& body) {
+void Send(nas_socket s, const std::string& status, const std::string& headers, const std::string& body) {
     const std::string out = "HTTP/1.0 " + status + "\r\n" + headers + "Content-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
     size_t sent = 0;
 
     while (sent < out.size()) {
+#if defined(_WIN32)
         const int n = ::send(s, out.data() + sent, int(out.size() - sent), 0);
-
+#else
+        const int n = ::send(s, out.data() + sent, out.size() - sent, MSG_NOSIGNAL);
+#endif
         if (n <= 0)
             break;
-
         sent += size_t(n);
     }
 }
 
-void Serve(SOCKET s) {
+void Serve(nas_socket s) {
+#if defined(_WIN32)
     DWORD timeout = 5000;
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+#else
+    struct timeval timeout{};
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#endif
     std::string data;
     char buffer[4096];
     size_t headerEnd = std::string::npos;
 
     while (headerEnd == std::string::npos) {
         const int n = ::recv(s, buffer, sizeof(buffer), 0);
-
         if (n <= 0 || data.size() > 65536) {
-            ::closesocket(s);
+            nas_close_socket(s);
             return;
         }
-
         data.append(buffer, size_t(n));
         headerEnd = data.find("\r\n\r\n");
     }
@@ -317,7 +339,7 @@ void Serve(SOCKET s) {
     const size_t b = a == std::string::npos ? a : line.find(' ', a + 1);
 
     if (a == std::string::npos || b == std::string::npos) {
-        ::closesocket(s);
+        nas_close_socket(s);
         return;
     }
 
@@ -330,10 +352,8 @@ void Serve(SOCKET s) {
 
     while (body.size() < length) {
         const int n = ::recv(s, buffer, sizeof(buffer), 0);
-
         if (n <= 0)
             break;
-
         body.append(buffer, size_t(n));
     }
 
@@ -341,7 +361,6 @@ void Serve(SOCKET s) {
         Send(s, "200 OK", "Content-Type: text/html\r\nX-Organization: Nintendo\r\n", "ok");
     } else if (method == "POST") {
         Fields reply;
-
         if (BuildReply(path, Decode(body.substr(0, length)), reply))
             Send(s, "200 OK", "Content-Type: text/plain\r\nNODE: wifiappe1\r\n", Encode(reply));
         else
@@ -350,30 +369,39 @@ void Serve(SOCKET s) {
         Send(s, "501 Not Implemented", "", "");
     }
 
-    ::closesocket(s);
+    nas_close_socket(s);
 }
 
-void AcceptLoop(SOCKET listener) {
-    for (;;) {
-        const SOCKET client = ::accept(listener, nullptr, nullptr);
-
-        if (client == INVALID_SOCKET)
-            break;
-
+void AcceptLoop(nas_socket listener) {
+    while (g_nasRunning.load()) {
+        const nas_socket client = ::accept(listener, nullptr, nullptr);
+        if (client == NAS_INVALID_SOCKET) {
+            if (!g_nasRunning.load())
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
         std::thread(Serve, client).detach();
     }
 }
 
-void AvailableLoop(SOCKET udp) {
+void AvailableLoop(nas_socket udp) {
     char buffer[512];
 
-    for (;;) {
+    while (g_nasRunning.load()) {
         sockaddr_in from{};
+#if defined(_WIN32)
         int fromLength = sizeof(from);
+#else
+        socklen_t fromLength = sizeof(from);
+#endif
         const int n = ::recvfrom(udp, buffer, sizeof(buffer), 0, reinterpret_cast<sockaddr*>(&from), &fromLength);
-
-        if (n < 0)
-            break;
+        if (n < 0) {
+            if (!g_nasRunning.load())
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
 
         // 0x09, cuatro ceros y el nombre del juego: el backend esta disponible.
         if (n >= 1 && buffer[0] == 0x09) {
@@ -383,25 +411,30 @@ void AvailableLoop(SOCKET udp) {
     }
 }
 
-static const char* g_nasBindIp = "127.0.0.1";
-static SOCKET g_nasTcpSocket = INVALID_SOCKET;
+nas_socket Bind(int type, uint16_t port, const char* bindIp = "0.0.0.0") {
+    const nas_socket s = ::socket(AF_INET, type, 0);
+    if (s == NAS_INVALID_SOCKET)
+        return s;
 
-SOCKET Bind(int type, uint16_t port) {
-    const SOCKET s = ::socket(AF_INET, type, 0);
-    if (s == INVALID_SOCKET) return s;
-
-    const BOOL yes = TRUE;
-    ::setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes));
+    int yes = 1;
+#if defined(_WIN32)
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes));
+#else
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+#endif
 
     sockaddr_in address{};
     address.sin_family = AF_INET;
-    address.sin_port   = htons(port);
-    inet_pton(AF_INET, g_nasBindIp, &address.sin_addr);
+    address.sin_port = htons(port);
+    if (!bindIp || !*bindIp || std::strcmp(bindIp, "0.0.0.0") == 0) {
+        address.sin_addr.s_addr = htonl(INADDR_ANY);
+    } else {
+        inet_pton(AF_INET, bindIp, &address.sin_addr);
+    }
 
-    if (::bind(s, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0 ||
-        (type == SOCK_STREAM && ::listen(s, 16) != 0)) {
-        ::closesocket(s);
-        return INVALID_SOCKET;
+    if (::bind(s, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0 || (type == SOCK_STREAM && ::listen(s, 16) != 0)) {
+        nas_close_socket(s);
+        return NAS_INVALID_SOCKET;
     }
 
     return s;
@@ -410,37 +443,45 @@ SOCKET Bind(int type, uint16_t port) {
 
 namespace NasServer {
 bool Start(uint16_t httpPort, const char* bindIp) {
-    static bool started = false;
-    if (started) return true;
+    if (g_nasRunning.load())
+        return true;
 
-    g_nasBindIp = bindIp ? bindIp : "127.0.0.1";
+    g_nasRunning.store(true);
+    const char* ip = (bindIp && *bindIp) ? bindIp : "0.0.0.0";
+    g_tcpListener = Bind(SOCK_STREAM, httpPort, ip);
+    if (g_tcpListener == NAS_INVALID_SOCKET) {
+        g_nasRunning.store(false);
+        return false;
+    }
 
-    const SOCKET tcp = Bind(SOCK_STREAM, httpPort);
-    if (tcp == INVALID_SOCKET) return false;
+    std::thread(AcceptLoop, g_tcpListener).detach();
+    g_udpListener = Bind(SOCK_DGRAM, 27900, ip);
 
-    g_nasTcpSocket = tcp;
-    std::thread(AcceptLoop, tcp).detach();
-
-    const SOCKET udp = Bind(SOCK_DGRAM, 27900);
-    if (udp != INVALID_SOCKET)
-        std::thread(AvailableLoop, udp).detach();
+    if (g_udpListener != NAS_INVALID_SOCKET)
+        std::thread(AvailableLoop, g_udpListener).detach();
     else
-        std::fprintf(stderr, "MH3 NAS: no pude abrir UDP 27900\n");
+        std::fprintf(stderr, "MH3 NAS: no pude abrir UDP 27900 (otro programa lo usa)\n");
 
-    started = true;
-    std::fprintf(stderr, "MH3 NAS: escuchando en %s:%u\n", g_nasBindIp, unsigned(httpPort));
+    std::fprintf(stderr, "MH3 NAS: escuchando en %s:%u (HTTP) y %s:27900 (UDP)\n", ip, unsigned(httpPort), ip);
     return true;
 }
+
 void Stop() {
-    if (g_nasTcpSocket != INVALID_SOCKET) {
-        ::closesocket(g_nasTcpSocket);
-        g_nasTcpSocket = INVALID_SOCKET;
+    if (!g_nasRunning.exchange(false))
+        return;
+
+    if (g_tcpListener != NAS_INVALID_SOCKET) {
+        nas_close_socket(g_tcpListener);
+        g_tcpListener = NAS_INVALID_SOCKET;
     }
+    if (g_udpListener != NAS_INVALID_SOCKET) {
+        nas_close_socket(g_udpListener);
+        g_udpListener = NAS_INVALID_SOCKET;
+    }
+    std::fprintf(stderr, "MH3 NAS detenido.\n");
+}
+
+bool IsRunning() {
+    return g_nasRunning.load();
 }
 } // namespace NasServer
-#else
-namespace NasServer {
-bool Start(uint16_t, const char*) { return false; }
-void Stop() {}
-} // namespace NasServer
-#endif

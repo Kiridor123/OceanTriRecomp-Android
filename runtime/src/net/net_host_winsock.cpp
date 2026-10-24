@@ -1,4 +1,4 @@
-﻿// NetHost (net_host.h) sobre Winsock: Windows. Sin TLS (el servidor local de la
+// NetHost (net_host.h) sobre Winsock: Windows. Sin TLS (el servidor local de la
 // ciudad offline usa OPN sin TLS: MH3_ONLINE_SKIP_TLS). Mismo contrato que
 // net_host_posix.cpp: sockets no bloqueantes, errores como SO_E* negados.
 #include "net_host.h"
@@ -266,6 +266,17 @@ bool Override(const std::string& name, uint32_t* ip) {
 
         if (MatchesHost(pattern, name) && inet_pton(AF_INET, address.c_str(), ip) == 1)
             return true;
+    }
+
+    // Direct resolution for MH3SP community infrastructure:
+    // Prevents error 20100/23403 if ISP/network DNS fails to resolve mh3sp.com subdomains.
+    if (MatchesHost("opn.mh3sp.com", name) || MatchesHost("nas.mh3sp.com", name) || MatchesHost("available.mh3sp.com", name)) {
+        inet_pton(AF_INET, "170.187.164.37", ip);
+        return true;
+    }
+    if (MatchesHost("natneg1.mh3sp.com", name) || MatchesHost("natneg2.mh3sp.com", name) || MatchesHost("natneg3.mh3sp.com", name)) {
+        inet_pton(AF_INET, "97.107.139.231", ip);
+        return true;
     }
 
     return false;
