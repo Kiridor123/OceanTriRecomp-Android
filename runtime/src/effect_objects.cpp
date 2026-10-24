@@ -2517,12 +2517,18 @@ MH3_EFFECT_PORT(800F9AD4, EffectSimpleLightCallback, {
 REGISTER_NATIVE_FUNCTION_AS(0x800F9AD4, MH3_EffectSimpleLightCallback, "EffectSimpleLightCallback");
 
 MH3_EFFECT_PORT(800F9A38, EffectSetSimpleLight, {
+    EffectStep::CalcCollected(cpu, frame.Arg(3));
     EffectSetSimpleLight(frame.Arg(3), ReadSimpleLight(frame.Arg(4) & 0xFF, frame.Arg(5), frame.Arg(6), float(cpu->fpr[1].d), frame.Arg(7)), frame.Arg(8) != 0);
     return cpu->gpr[3];
 });
 REGISTER_NATIVE_FUNCTION_AS(0x800F9A38, MH3_EffectSetSimpleLight, "EffectSetSimpleLight");
 
 MH3_EFFECT_PORT(800F99EC, EffectChangeColor, {
+    // The light goes on the effect's particle managers. The original calls it
+    // after the effect's Effect::Calc; with that call collected (deferred) it
+    // came first and hit and footstep effects drew unlit (a white flash), so
+    // the collected calls run first.
+    EffectStep::CalcCollected(cpu, frame.Arg(3));
     EffectChangeColor(game, frame.Arg(3), frame.Arg(4), frame.Arg(5));
     return cpu->gpr[3];
 });

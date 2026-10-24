@@ -986,6 +986,36 @@ void Touch() {
     FinishPrevious();
 }
 
+void CalcCollected(CpuContext* cpu, uint32_t effect) {
+    Touch();
+
+    if (!deferral.collecting || PpcThread::CurrentThread() != PpcThread::Game)
+        return;
+
+    auto& calls = deferral.calls;
+    const auto first = std::find_if(calls.begin(), calls.end(), [effect](const auto& call) { return call.first == effect; });
+
+    if (first == calls.end())
+        return;
+
+    // Run with the task pass's clock (the current one, as at the call site).
+    std::vector<std::pair<uint32_t, uint32_t>> own;
+    std::copy_if(first, calls.end(), std::back_inserter(own), [effect](const auto& call) { return call.first == effect; });
+    calls.erase(std::remove_if(first, calls.end(), [effect](const auto& call) { return call.first == effect; }), calls.end());
+
+    const CpuContext saved = *cpu;
+    {
+        GuestFrame frame(cpu, 0x10);
+
+        for (const auto& [owner, onlyBillboard] : own) {
+            cpu->gpr[3] = owner;
+            cpu->gpr[4] = onlyBillboard;
+            CalcEffect(cpu);
+        }
+    }
+    *cpu = saved;
+}
+
 void Collected() {
     deferral.collecting = false;
 #if defined(MH3_DEVELOPMENT) && !defined(__vita__)

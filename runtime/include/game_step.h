@@ -85,6 +85,11 @@ void ReleaseView();
 // effect creation, the world split's worker job): joins the previous step's
 // calculation if it still runs. Other threads return at once.
 void Touch();
+
+// Game thread, before a call that changes `effect`'s particle managers (its
+// colour and light): runs the Effect::Calc calls collected for it this task
+// pass now, so the change follows the calculation as in the original order.
+void CalcCollected(CpuContext* cpu, uint32_t effect);
 #ifdef MH3_DEVELOPMENT
 // MH3_TRACE=particles: child emissions an Effect::Calc found queued.
 void NoteQueuedChildren(uint32_t count);

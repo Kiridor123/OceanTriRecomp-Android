@@ -127,6 +127,24 @@ public:
 
         LoadSettings();
         LoadLayoutConfig();
+        NoteTouchActivity();
+    }
+
+    static int64_t NowMs() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    void NoteTouchActivity() { m_lastTouchMs.store(NowMs(), std::memory_order_relaxed); }
+
+    // Factor de opacidad del botón de rueda ⚙: se desvanece suavemente en 0.4s
+    // tras transcurrir m_gearAutoHideSec segundos sin actividad táctil en pantalla.
+    float GearAlpha() const {
+        if (m_gearAutoHideSec <= 0) return 1.0f;
+        float idle = float(NowMs() - m_lastTouchMs.load(std::memory_order_relaxed)) / 1000.0f;
+        float over = idle - float(m_gearAutoHideSec);
+        if (over <= 0.0f) return 1.0f;
+        return std::clamp(1.0f - over / 0.4f, 0.0f, 1.0f);
     }
 
     void SetEnabled(bool enabled) { m_enabled = enabled; }
@@ -136,6 +154,7 @@ public:
     void ToggleMenu() { SetMenuOpen(!m_menuOpen); }
     void SetMenuOpen(bool open) {
         m_menuOpen = open;
+        NoteTouchActivity();
         if (m_menuOpen) {
             SDL_ShowCursor();
             if (SDL_Window* win = aurora_get_window()) {
@@ -306,6 +325,10 @@ public:
         LOGI("TouchDown id=%lld norm=(%.3f, %.3f) px=(%.1f, %.1f) m_width=%d m_height=%d",
              (long long)id, normX, normY, px, py, m_width, m_height);
 
+        // Si la rueda ⚙ está oculta por inactividad, este toque la revela sin pulsarla
+        const bool gearHidden = GearAlpha() <= 0.0f;
+        NoteTouchActivity();
+
         if (m_editMode) {
             HandleEditModeTouchDown(id, px, py);
             return;
@@ -320,6 +343,7 @@ public:
         float gdx = px - m_gearPos.x;
         float gdy = py - m_gearPos.y;
         if (gdx * gdx + gdy * gdy <= (m_gearRadius * 1.8f) * (m_gearRadius * 1.8f)) {
+            if (gearHidden) return;
             m_menuOpen = true;
             m_menuTab = 0; // Gráficos
             return;
@@ -373,6 +397,7 @@ public:
 
     void HandleTouchMove(SDL_FingerID id, float normX, float normY) {
         if (!m_enabled) return;
+        NoteTouchActivity();
         float px = normX * float(m_width);
         float py = normY * float(m_height);
 
@@ -459,6 +484,8 @@ public:
 
     void HandleMouseDown(float px, float py) {
         if (!m_enabled) return;
+        const bool gearHidden = GearAlpha() <= 0.0f;
+        NoteTouchActivity();
         if (m_editMode) {
             HandleEditModeTouchDown(1, px, py);
             return;
@@ -470,6 +497,7 @@ public:
         float gdx = px - m_gearPos.x;
         float gdy = py - m_gearPos.y;
         if (gdx * gdx + gdy * gdy <= (m_gearRadius * 2.0f) * (m_gearRadius * 2.0f)) {
+            if (gearHidden) return;
             ToggleMenu();
             return;
         }
@@ -598,22 +626,6 @@ public:
         return s_cachedTemp;
     }
 
-    bool IsOnlineCity() const {
-        // If in Moga village (map_village.rso), definitely offline -> allow full 60+ FPS
-        if (RecompMod::RsoLinked("map_village.rso")) return false;
-
-        // If in Loc Lac City map (map_town.rso) or online network screen (net_data.rso), definitely city online -> lock to 30 FPS
-        if (RecompMod::RsoLinked("map_town.rso") || RecompMod::RsoLinked("net_data.rso")) return true;
-
-        // Check PlayMode at 0x8065AA85: 4 is Online City (kPlayModeCity), 5 is Village (kPlayModeVillage)
-        if (Memory::Contains(0x8065AA85, 1)) {
-            uint8_t playMode = Memory::Read8(0x8065AA85);
-            if (playMode == 4) return true;  // City online
-            if (playMode == 5) return false; // Village offline
-        }
-        return false;
-    }
-
     // -------------------------------------------------------------
     // OpenGL ES Rendering
     // -------------------------------------------------------------
@@ -671,14 +683,10 @@ public:
             lastStamp = now;
         }
 
-        // Auto-lock to 30 FPS in Loc Lac City (Online mode)
-        bool inCity = IsOnlineCity();
-        static bool s_wasInCity = false;
         static bool s_firstFpsApplied = false;
-        if (!s_firstFpsApplied || inCity != s_wasInCity) {
+        if (!s_firstFpsApplied) {
             s_firstFpsApplied = true;
-            s_wasInCity = inCity;
-            MH3FrameRateControl::SetTargetFPS(inCity ? 30 : m_fpsLimit);
+            MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
         }
 
         // Save OpenGL State
@@ -720,9 +728,12 @@ public:
                 RenderGameplayOverlay();
             } else {
                 // Controls hidden: render subtle floating gear icon to allow reopening settings
-                DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
-                           { 0.08f, 0.40f, 0.48f, 0.35f }, { 0.25f, 0.90f, 0.95f, 0.55f }, 0.10f);
-                DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, { 1.0f, 1.0f, 1.0f, 0.65f });
+                float gAlpha = GearAlpha();
+                if (gAlpha > 0.001f) {
+                    DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
+                               { 0.08f, 0.40f, 0.48f, 0.35f * gAlpha }, { 0.25f, 0.90f, 0.95f, 0.55f * gAlpha }, 0.10f);
+                    DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, { 1.0f, 1.0f, 1.0f, 0.65f * gAlpha });
+                }
 
                 RenderFpsHud();
             }
@@ -1153,11 +1164,14 @@ private:
         }
 
         // 4. Gear / Menu Button
-        DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
-                   { 0.08f, 0.40f, 0.48f, 0.75f * op }, { 0.25f, 0.90f, 0.95f, 0.95f * op }, 0.10f);
-        Color gearText = COL_WHITE;
-        gearText.a *= op;
-        DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, gearText);
+        float gAlpha = GearAlpha();
+        if (gAlpha > 0.001f) {
+            DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
+                       { 0.08f, 0.40f, 0.48f, 0.75f * op * gAlpha }, { 0.25f, 0.90f, 0.95f, 0.95f * op * gAlpha }, 0.10f);
+            Color gearText = COL_WHITE;
+            gearText.a *= op * gAlpha;
+            DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, gearText);
+        }
 
         // 5. FPS HUD Pill (if enabled)
         RenderFpsHud();
@@ -1290,14 +1304,8 @@ private:
         DrawRoundedRect(x, c3Y, w, c3H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
         float fpsColW = (w - 36.0f - 16.0f) * 0.52f;
-        bool inCity = IsOnlineCity();
-        if (inCity) {
-            DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas: 30 FPS [BLOQUEADO EN ONLINE]", 18.0f, COL_CYAN);
-            DrawText(x + 18.0f, c3Y + 36.0f, "Auto-bloqueado a 30 FPS en la Ciudad para evitar mini-turbo y mantener sincronía.", 12.0f, { 1.0f, 0.85f, 0.35f, 1.0f });
-        } else {
-            DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas (FPS)", 19.0f, COL_WHITE);
-            DrawText(x + 18.0f, c3Y + 36.0f, "30, 60, 90 o 120 FPS (En Aldea puedes jugar a 60+ FPS)", 12.5f, COL_MUTED);
-        }
+        DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas (FPS)", 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, c3Y + 36.0f, "30, 60, 90 o 120 FPS (Ajusta la tasa a tu gusto)", 12.5f, COL_MUTED);
 
         const char* fpsLabels[] = { "30 FPS", "60 FPS", "90 FPS", "120 FPS" };
         const int fpsValues[] = { 30, 60, 90, 120 };
@@ -1305,7 +1313,7 @@ private:
         float fChipY = c3Y + 54.0f;
         for (int i = 0; i < 4; ++i) {
             float fx = x + 18.0f + float(i) * (fChipW + 5.0f);
-            bool active = inCity ? (fpsValues[i] == 30) : (m_fpsLimit == fpsValues[i]);
+            bool active = (m_fpsLimit == fpsValues[i]);
             DrawRoundedRect(fx, fChipY, fChipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
@@ -1313,7 +1321,7 @@ private:
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
-        // Right side: Sincronización y Contador
+        // Right side: Sincronización y Estadísticas
         float syncColX = x + 18.0f + fpsColW + 16.0f;
         float syncColW = (w - 36.0f - 16.0f) * 0.48f;
         DrawText(syncColX, c3Y + 14.0f, "Sincronización y Estadísticas", 19.0f, COL_WHITE);
@@ -1467,11 +1475,12 @@ private:
         DrawText(tv2X + tvChipW * 0.5f, tvChipY + 10.0f, "Botones táctiles: OCULTOS (Solo Mando)", 14.5f,
                  !m_touchVisible ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
-        // Row 2: Opacity selector
-        DrawText(x + 18.0f, y + 102.0f, "Opacidad de botones virtuales:", 15.0f, COL_WHITE);
-        const char* opLabels[] = { "25% (Suave)", "50% (Medio)", "75% (Claro)", "100% (Sólido)" };
+        // Row 2: Opacity selector (left) & Gear auto-hide (right)
+        float opAreaW = (w - 36.0f) * 0.54f;
+        DrawText(x + 18.0f, y + 102.0f, "Opacidad de botones:", 14.5f, COL_WHITE);
+        const char* opLabels[] = { "25%", "50%", "75%", "100%" };
         const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
-        float opChipW = (w - 36.0f - 30.0f) / 4.0f;
+        float opChipW = (opAreaW - 30.0f) / 4.0f;
         float opChipH = 36.0f;
         float opChipY = y + 124.0f;
         for (int i = 0; i < 4; ++i) {
@@ -1481,6 +1490,23 @@ private:
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
             DrawText(ox + opChipW * 0.5f, opChipY + 9.0f, opLabels[i], 13.5f,
+                     active ? COL_ACTIVE_TEXT : COL_WHITE, true);
+        }
+
+        // Right side: Auto-ocultar rueda ⚙
+        float ahX = x + 18.0f + opAreaW + 16.0f;
+        float ahAreaW = (w - 36.0f) - opAreaW - 16.0f;
+        DrawText(ahX, y + 102.0f, "Auto-ocultar rueda ⚙:", 14.5f, COL_WHITE);
+        const char* ahLabels[] = { "Siempre", "3 s", "5 s", "10 s" };
+        const int ahValues[] = { 0, 3, 5, 10 };
+        float ahChipW = (ahAreaW - 24.0f) / 4.0f;
+        for (int i = 0; i < 4; ++i) {
+            float ax = ahX + float(i) * (ahChipW + 8.0f);
+            bool active = (m_gearAutoHideSec == ahValues[i]);
+            DrawRoundedRect(ax, opChipY, ahChipW, opChipH, 8.0f,
+                            active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                            active ? COL_CYAN : COL_CHIP_BORDER);
+            DrawText(ax + ahChipW * 0.5f, opChipY + 9.0f, ahLabels[i], 13.0f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
@@ -1785,10 +1811,6 @@ private:
                 for (int i = 0; i < 4; ++i) {
                     float fx = x + 18.0f + float(i) * (fChipW + 5.0f);
                     if (px >= fx && px <= fx + fChipW) {
-                        if (IsOnlineCity()) {
-                            // Locked to 30 FPS in Online City
-                            return;
-                        }
                         const int fpsValues[] = { 30, 60, 90, 120 };
                         m_fpsLimit = fpsValues[i];
                         MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
@@ -1902,8 +1924,9 @@ private:
                 }
             }
 
-            // Opacity chips
-            float opChipW = (contentW - 36.0f - 30.0f) / 4.0f;
+            // Opacity chips (left) & Auto-hide gear (right)
+            float opAreaW = (contentW - 36.0f) * 0.54f;
+            float opChipW = (opAreaW - 30.0f) / 4.0f;
             float opChipH = 36.0f;
             float opChipY = contentY + 124.0f;
             const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
@@ -1912,6 +1935,19 @@ private:
                     float ox = x + 18.0f + float(i) * (opChipW + 10.0f);
                     if (px >= ox && px <= ox + opChipW) {
                         m_buttonOpacity = opValues[i];
+                        SaveLayoutConfig();
+                        return;
+                    }
+                }
+
+                float ahX = x + 18.0f + opAreaW + 16.0f;
+                float ahAreaW = (contentW - 36.0f) - opAreaW - 16.0f;
+                float ahChipW = (ahAreaW - 24.0f) / 4.0f;
+                const int ahValues[] = { 0, 3, 5, 10 };
+                for (int i = 0; i < 4; ++i) {
+                    float ax = ahX + float(i) * (ahChipW + 8.0f);
+                    if (px >= ax && px <= ax + ahChipW) {
+                        m_gearAutoHideSec = ahValues[i];
                         SaveLayoutConfig();
                         return;
                     }
@@ -2239,6 +2275,7 @@ private:
         out << "VERSION 1\n";
         out << "TOUCH_VISIBLE " << (m_touchVisible ? 1 : 0) << '\n';
         out << "OPACITY " << m_buttonOpacity << '\n';
+        out << "GEAR_AUTOHIDE " << m_gearAutoHideSec << '\n';
         out << "MACRO1 " << (m_macro1Enabled ? 1 : 0) << '\n';
         out << "MACRO2 " << (m_macro2Enabled ? 1 : 0) << '\n';
         out << "MACRO3 " << (m_macro3Enabled ? 1 : 0) << '\n';
@@ -2271,6 +2308,7 @@ private:
             if (!(iss >> tag)) continue;
             if (tag == "TOUCH_VISIBLE") { int v; iss >> v; m_touchVisible = (v != 0); }
             else if (tag == "OPACITY") { iss >> m_buttonOpacity; m_buttonOpacity = std::clamp(m_buttonOpacity, 0.10f, 1.0f); }
+            else if (tag == "GEAR_AUTOHIDE") { int v = 0; iss >> v; m_gearAutoHideSec = std::clamp(v, 0, 60); }
             else if (tag == "MACRO1") { int v; iss >> v; m_macro1Enabled = (v != 0); }
             else if (tag == "MACRO2") { int v; iss >> v; m_macro2Enabled = (v != 0); }
             else if (tag == "MACRO3") { int v; iss >> v; m_macro3Enabled = (v != 0); }
@@ -2423,6 +2461,8 @@ private:
     bool m_showFpsHud = true;
     bool m_touchVisible = true;
     float m_buttonOpacity = 1.0f;
+    int m_gearAutoHideSec = 0;
+    std::atomic<int64_t> m_lastTouchMs{0};
     int m_langChoice = 0;      // 0: Español
     double m_liveFps = 60.0;
     std::string m_saveStatusMsg = "Listo para exportar o importar partidas guardadas.";

@@ -32,6 +32,13 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 > El traductor estático PowerPC → C++ y el ABI bridge provienen de **WiiCompiled** (commit `85f250155f`).
 > Consultar [`toolchain/ORIGIN.md`](toolchain/ORIGIN.md) y [`toolchain/THIRD-PARTY-NOTICES.md`](toolchain/THIRD-PARTY-NOTICES.md) para detalles y licencias (GPLv3).
 
+### 👥 Colaboradores y Contribuciones de la Comunidad
+
+- **[Álvaro Barchín (@abarchin)](https://github.com/abarchin)**:
+  - **Audio:** Recuperación y reconexión automática del stream de audio en Android tras suspender la app o cambiar a otra aplicación (`AAudio` lifecycle fix).
+  - **Gráficos / Efectos:** Corrección del orden de iluminación en efectos de partículas (`CalcCollected`), solucionando el destello blanco/textura sin iluminar al golpear monstruos o levantar polvo al correr.
+  - **Controles:** Opción para auto-ocultar la rueda de ajustes (⚙) tras inactividad táctil (3 s, 5 s, 10 s).
+
 ### Otros Proyectos Utilizados
 
 | Proyecto | Uso | Licencia |
@@ -54,40 +61,45 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 - Beacon LAN para descubrimiento automático de partidas en red local o redes virtuales privadas (**ZeroTier**).
 - Implementación nativa de NAS (Nintendo Authentication Server).
 
-### ⏱️ 2. Bloqueo Inteligente a 30 FPS en Modo Online
-- En la **Aldea de Moga** (modo offline), puedes disfrutar del juego a **60, 90 o 120 FPS**.
-- Al viajar a la **Ciudad de Loc Lac** (modo online), el juego se **bloquea automáticamente a 30 FPS** para garantizar sincronización perfecta, prevenir el efecto "mini-turbo" y mantener la máxima estabilidad con otros cazadores.
-- Al regresar al menú de selección o a la aldea, la tasa de fotogramas configurada por el usuario se restaura automáticamente.
+### ⏱️ 2. Selector Libre de FPS (30 / 60 / 90 / 120 FPS)
+- Selector de FPS totalmente configurable y a elección del usuario en `Ajustes` → `Gráficos`:
+  - **30 FPS**: Velocidad de físicas idéntica a la consola Wii original (recomendado para estabilidad en el modo online).
+  - **60, 90 o 120 FPS**: Máxima fluidez y respuesta visual en pantallas con alta tasa de refresco.
+- Control total a discreción del jugador sin bloqueos forzados.
 
-### 📊 3. HUD de FPS y Temperatura del Dispositivo
+### 🔇 3. Corrección de Audio en Segundo Plano (AAudio)
+- Se solucionó la pérdida permanente de sonido al cambiar de aplicación o al apagar la pantalla (`AAudio stream disconnect`). Ahora el audio se reanuda suavemente al regresar al juego.
+
+### 💥 4. Corrección de Destellos y Partículas en Combate
+- Corregido el problema donde aparecía un destello blanco (estrella/rayos) al golpear monstruos o correr sobre tierra. La iluminación se aplica ahora en el orden correcto antes de procesar los emisores de partículas.
+
+### 📊 5. HUD de FPS y Temperatura del Dispositivo
 - Contador en tiempo real ubicado discretamente en la **esquina inferior izquierda** de la pantalla (`m_unit * 0.025f`).
 - Muestra los FPS actuales y la **temperatura real del dispositivo** (batería/SoC en °C), permitiendo monitorizar el rendimiento térmico durante cacerías intensas.
 
-### 🎚️ 4. Selector de Opacidad de Botones Virtuales
-- En `Ajustes` → `Controles` puedes elegir la opacidad de los controles táctiles:
-  - **25% (Suave)**: Casi transparente, ideal para no tapar la vista panorámica del juego.
-  - **50% (Medio)**: Nivel equilibrado de visibilidad.
-  - **75% (Claro)**: Marcado para sesiones rápidas.
-  - **100% (Sólido)**: Resaltado máximo.
-- La preferencia se guarda automáticamente en `touch_layout.cfg`.
+### 🎚️ 6. Selector de Opacidad y Auto-ocultado de Botones Virtuales
+- En `Ajustes` → `Controles`:
+  - **Opacidad Táctil**: Elige entre 25% (Suave), 50% (Medio), 75% (Claro) o 100% (Sólido).
+  - **Auto-ocultar Ajustes (⚙)**: Opción para desvanecer la rueda de ajustes tras 3, 5 o 10 segundos sin tocar la pantalla para una experiencia inmersiva limpia.
+- Todas las preferencias se guardan automáticamente en `touch_layout.cfg`.
 
-### 🖼️ 5. Reemplazo de Texturas en Alta Definición (Pack Dolphin HD)
+### 🖼️ 7. Reemplazo de Texturas en Alta Definición (Pack Dolphin HD)
 - Soporte nativo para paquetes de texturas HD diseñados originalmente para Dolphin (`tex1_...`).
 - Acceso directo en la memoria del teléfono: coloca tus carpetas de texturas (como `RMHE08` o `RMHP08`) en:
   `/storage/emulated/0/MH3/textures/`
 - En el menú `Ajustes` → `Gráficos` encontrarás un interruptor para activar/desactivar texturas HD, un contador de texturas cargadas y un botón para **recargar texturas en caliente** sin reiniciar el juego.
 
-### 🔐 6. Firma Triple de APK (v1 + v2 + v3) y Compatibilidad Total
+### 🔐 8. Firma Triple de APK (v1 + v2 + v3) y Compatibilidad Total
 - Se corrigió el problema de instalación `"App no instalada: digest did not verify"`.
 - Los paquetes APK ahora se firman simultáneamente con esquemas **v1 (JAR signing)**, **v2 (APK Signature)** y **v3 (Android 9+)**, además de estar alineados a páginas de 16 KB (`zipalign -P 16`). Compatible con MIUI, HyperOS, ColorOS, One UI, OxygenOS y Android AOSP (Android 10 hasta Android 15+).
 
-### 🎮 7. Controles Táctiles y Mandos Físicos
+### 🎮 9. Controles Táctiles y Mandos Físicos
 - **Gamepad Virtual Completo**: Sticks analógicos, A/B/X/Y, L/R/ZL/ZR, D-Pad, +/-.
 - **Botones Macro**: M1 (A+X), M2 (B+Y), M3 (L+R), M4 (A+B) — M4 viene desactivado por defecto y con prioridad de colisión.
 - **Modo Edición en Pantalla**: Arrastra y reposiciona cualquier botón táctil con escala independiente.
 - **Keymapper para Mandos Bluetooth/USB**: Disposiciones Nintendo y Xbox / Genérica con intercambio de gatillos.
 
-### 📝 8. Sistema de Registro (Logs)
+### 📝 10. Sistema de Registro (Logs)
 - Los logs se guardan de forma accesible en `/storage/emulated/0/MH3/logs/`:
   - `game_log.txt`: Salida y actividad del juego.
   - `oceantri_log.txt`: Eventos y conectividad de red.
