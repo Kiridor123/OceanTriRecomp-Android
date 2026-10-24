@@ -339,6 +339,33 @@ Status DiscImage::Load(const std::filesystem::path& root, bool applyNativeTextur
         if (!std::getline(list, path) || !(list >> bytes))
             return Status::Error("Invalid rom.txt in " + root.string());
 
+        // Handle paths formatted on Windows (e.g. Z:\... or backslashes) or moved files.
+#ifndef _WIN32
+        auto tryNormalize = [](std::string p) {
+            if (p.size() >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/')) {
+                p = p.substr(2);
+            }
+            for (char& c : p) {
+                if (c == '\\') c = '/';
+            }
+            return p;
+        };
+        std::error_code nec;
+        if (!std::filesystem::exists(path, nec)) {
+            std::string norm = tryNormalize(path);
+            if (std::filesystem::exists(norm, nec)) {
+                path = norm;
+            } else {
+                std::filesystem::path filename = std::filesystem::path(norm).filename();
+                if (std::filesystem::exists(root.parent_path() / filename, nec)) {
+                    path = (root.parent_path() / filename).string();
+                } else if (std::filesystem::exists(root / filename, nec)) {
+                    path = (root / filename).string();
+                }
+            }
+        }
+#endif
+
         MH3_RETURN_IF_ERROR(RomImage::Open(path, rom));
 
         if (rom->FileBytes() != bytes)

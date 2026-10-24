@@ -177,6 +177,10 @@ typedef enum {
 
 void aurora_set_native_target_aspect(AuroraNativeTargetAspect aspect);
 
+void aurora_set_fullscreen(bool fullscreen);
+bool aurora_get_fullscreen(void);
+struct SDL_Window* aurora_get_window(void);
+
 // Size the native target for a display surface of width x height (the aspect
 // rules above apply to it) whatever the window size; presentation scales the
 // target into the window, keeping its aspect. 0 x 0 follows the window again.

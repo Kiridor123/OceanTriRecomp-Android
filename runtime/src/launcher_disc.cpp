@@ -46,6 +46,14 @@ std::string RecordedRom(const std::filesystem::path& output) {
     std::ifstream list((output / "rom.txt").string());
     std::string path;
     std::getline(list, path);
+#ifndef _WIN32
+    if (path.size() >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/')) {
+        path = path.substr(2);
+    }
+    for (char& c : path) {
+        if (c == '\\') c = '/';
+    }
+#endif
     return path;
 }
 } // namespace
@@ -72,7 +80,11 @@ Status ImagePath(const std::filesystem::path& iso, std::filesystem::path& image)
 
 bool DiscPreparedFrom(const std::filesystem::path& output, const std::filesystem::path& iso) {
     std::filesystem::path image;
-    return ImagePath(iso, image).ok() && RecordedRom(output) == image.string();
+    if (!ImagePath(iso, image).ok()) return false;
+    const std::string rec = RecordedRom(output);
+    if (rec == image.string()) return true;
+    const std::filesystem::path p1(rec), p2(image);
+    return !p1.filename().empty() && p1.filename() == p2.filename();
 }
 
 Status ProcessDisc(const std::filesystem::path& iso, const std::filesystem::path& output, const Progress& progress) {
@@ -83,7 +95,7 @@ Status ProcessDisc(const std::filesystem::path& iso, const std::filesystem::path
         bool recorded = false;
         MH3_RETURN_IF_ERROR(FsStatus::Exists(output / "rom.txt", recorded));
 
-        if (!recorded || RecordedRom(output) == image.string())
+        if (!recorded || DiscPreparedFrom(output, iso))
             return {};
     }
 

@@ -261,6 +261,9 @@ void ApplyOnlinePatches() {
         std::memset(slot, 0, patch.length);
         std::memcpy(slot, replacement.data(), replacement.size());
     }
+
+    std::fprintf(stderr, "Online patch: MH3SP CA (RAM 0x%08X) and string redirects applied for %s\n",
+                 kPinnedCa, server.domain.c_str());
 }
 
 namespace {

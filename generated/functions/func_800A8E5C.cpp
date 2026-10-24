@@ -154,6 +154,9 @@ loc_800A8EB8:
         r4 = ctx->gpr[4];
     }
     r31 = r3;
+    if (!r31) {
+        goto loc_800A8F40;
+    }
     r3 = (r1 + 56);
     // inline leaf 0x80050570 (1 guest instruction(s))
     // end of inlined leaf 0x80050570

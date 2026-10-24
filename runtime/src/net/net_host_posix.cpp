@@ -47,6 +47,9 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/provider.h>
+#endif
 #endif
 
 #ifdef __vita__
@@ -873,10 +876,19 @@ class OpenSslTls final : public Tls {
         });
         context_ = SSL_CTX_new(SSLv23_client_method());
 #else
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+        static std::once_flag providersLoaded;
+        std::call_once(providersLoaded, [] {
+            setenv("OPENSSL_ENABLE_SHA1_SIGNATURES", "1", 1);
+            OSSL_PROVIDER_load(nullptr, "default");
+            OSSL_PROVIDER_load(nullptr, "legacy");
+        });
+#endif
         context_ = SSL_CTX_new(TLS_client_method());
 
         // The Wii's servers use SHA-1 and 1024-bit RSA certificates.
         SSL_CTX_set_security_level(context_, 0);
+        SSL_CTX_set_cipher_list(context_, "DEFAULT:@SECLEVEL=0:ALL");
 #endif
         SSL_CTX_set_verify(context_, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, verify ? LogRefusedCertificate : nullptr);
         session_ = SSL_new(context_);
@@ -899,7 +911,11 @@ class OpenSslTls final : public Tls {
         if (!certificate)
             return false;
 
-        const bool added = X509_STORE_add_cert(SSL_CTX_get_cert_store(context_), certificate) == 1;
+        int ret = X509_STORE_add_cert(SSL_CTX_get_cert_store(context_), certificate);
+        unsigned long err = ERR_peek_last_error();
+        const bool added = (ret == 1) || (ERR_GET_REASON(err) == X509_R_CERT_ALREADY_IN_HASH_TABLE);
+        if (ret != 1)
+            ERR_clear_error();
         X509_free(certificate);
         return added;
     }

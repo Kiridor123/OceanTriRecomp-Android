@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# AppImage entry point for Ocean Tri Recomp (Linux x86_64).
+#
+# User data lives in $OCEANTRI_HOME (default: ~/.local/share/OceanTriRecomp):
+#   disc/    game data prepared from the ROM on the first launch
+#   saves/   saves, NAND, graphics cache, crash.txt
+#   MH3.log  output of the last run
+#
+# On the first launch the ROM (European Monster Hunter Tri, .rvz/.iso/.wia) is
+# looked up in that folder, beside the AppImage, in ~/Downloads (~/Descargas),
+# ~/Games, ~/ROMs and known drives; if none is found a graphical file picker is shown.
+# A ROM can also be given explicitly: ./OceanTri.AppImage --rom /path/to/game.rvz
+set -o pipefail
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="${HERE}/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export OPENSSL_ENABLE_SHA1_SIGNATURES=1
+
+DATA="${OCEANTRI_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/OceanTriRecomp}"
+mkdir -p "${DATA}/saves" "${DATA}/logs"
+export MH3_DATA_ROOT="${DATA}"
+export MH3_USER_DIR="${DATA}/saves"
+cd "${DATA}" || exit 1
+
+show_error() {
+  if command -v kdialog >/dev/null 2>&1; then kdialog --title "Ocean Tri Recomp" --error "$1"
+  elif command -v zenity >/dev/null 2>&1; then zenity --error --title="Ocean Tri Recomp" --text="$1"
+  else echo -e "\n[Ocean Tri Error] $1\n" >&2; fi
+}
+
+args=("$@")
+has_rom=0
+is_test=0
+for a in "$@"; do
+  [[ $a == --rom ]] && has_rom=1
+  [[ $a == --self-test || $a == --audio-self-test || $a == --help || $a == -h ]] && is_test=1
+done
+
+if [[ $is_test == 0 && $has_rom == 0 && ! -f "${DATA}/disc/disc-layout.txt" ]]; then
+  appimage_dir="$(dirname "${APPIMAGE:-$HERE}")"
+  rom=""
+  search_dirs=(
+    "${DATA}"
+    "${appimage_dir}"
+    "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.2"
+    "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3"
+    "/var/mnt/juegos_sdb2"
+    "$HOME/Downloads"
+    "$HOME/Descargas"
+    "$HOME/Games"
+    "$HOME/ROMs"
+    "$HOME"
+  )
+  for dir in "${search_dirs[@]}"; do
+    [[ -d "$dir" ]] || continue
+    rom="$(find "$dir" -maxdepth 2 -type f \( -iname '*.rvz' -o -iname '*.iso' -o -iname '*.wia' \) 2>/dev/null \
+            | grep -i -E 'monster|mh3|tri|rmhp' | head -n1)"
+    [[ -n "$rom" ]] && break
+  done
+
+  if [[ -z "$rom" ]]; then
+    if command -v kdialog >/dev/null 2>&1; then
+      rom="$(kdialog --title "Selecciona la ROM de Monster Hunter Tri (PAL)" --getopenfilename "$HOME" "*.rvz *.iso *.wia|ROM de Wii")"
+    elif command -v zenity >/dev/null 2>&1; then
+      rom="$(zenity --file-selection --title="Selecciona la ROM de Monster Hunter Tri (PAL)" --file-filter="ROM de Wii | *.rvz *.iso *.wia")"
+    fi
+  fi
+
+  if [[ -n "$rom" && -f "$rom" ]]; then
+    echo "Ocean Tri: usando ROM en $rom" >&2
+    args=(--rom "$rom" "${args[@]}")
+  fi
+fi
+
+"${HERE}/usr/bin/MH3" "${args[@]}" 2>&1 | tee "${DATA}/MH3.log"
+status=${PIPESTATUS[0]}
+
+if [[ $status -ne 0 && $status -ne 130 ]]; then
+  show_error "El juego se cerró con un error (código ${status}).\n\nRevisa el registro en:\n${DATA}/MH3.log\ny ${DATA}/saves/crash.txt"
+fi
+exit $status

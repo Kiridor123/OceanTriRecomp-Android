@@ -4,6 +4,8 @@
 #if defined(ANDROID) || defined(__ANDROID__)
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_system.h>
+#elif !defined(__vita__)
+#include <SDL3/SDL.h>
 #endif
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -652,7 +654,11 @@ bool PrepareGameData(const char* rom) {
     std::filesystem::create_directories(root, rootEc);
     const auto data = root / "disc";
 #else
-    const auto root = mh3_self_exe().parent_path();
+    // MH3_DATA_ROOT replaces the executable's directory as the place for disc/
+    // (the Linux AppImage runs from a read-only mount).
+    const char* dataRootOverride = std::getenv("MH3_DATA_ROOT");
+    const auto root = (dataRootOverride && *dataRootOverride) ? std::filesystem::path(dataRootOverride)
+                                                              : mh3_self_exe().parent_path();
     const auto data = root / "disc";
 #endif
     std::optional<std::filesystem::path> image;
@@ -673,9 +679,10 @@ bool PrepareGameData(const char* rom) {
             return false;
         image = StoreDiscImagePortable(*image, root);
 #else
-#if defined(__ANDROID__)
         if (!dataReady) {
-            std::vector<std::string> searchPaths = {
+            std::vector<std::string> searchPaths;
+#if defined(__ANDROID__)
+            searchPaths = {
                 "/storage/emulated/0/Download",
                 "/storage/emulated/0/MH3",
                 "/storage/emulated/0/OceanTri",
@@ -691,6 +698,24 @@ bool PrepareGameData(const char* rom) {
             };
             if (extFiles && extFiles[0]) searchPaths.push_back(extFiles);
             if (intFiles && intFiles[0]) searchPaths.push_back(intFiles);
+#else
+            searchPaths.push_back(root.string());
+            searchPaths.push_back(root.parent_path().string());
+            if (const char* appdir = std::getenv("APPIMAGE")) {
+                std::error_code ec;
+                searchPaths.push_back(std::filesystem::path(appdir).parent_path().string());
+            }
+            if (const char* home = std::getenv("HOME")) {
+                searchPaths.push_back(std::string(home) + "/Downloads");
+                searchPaths.push_back(std::string(home) + "/Descargas");
+                searchPaths.push_back(std::string(home) + "/Games");
+                searchPaths.push_back(std::string(home) + "/ROMs");
+                searchPaths.push_back(std::string(home));
+            }
+            searchPaths.push_back("/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.2");
+            searchPaths.push_back("/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3");
+            searchPaths.push_back("/var/mnt/juegos_sdb2");
+#endif
 
             auto isRomExtension = [](const std::string& ext) {
                 std::string lower = ext;
@@ -708,17 +733,24 @@ bool PrepareGameData(const char* rom) {
                     if (entry.is_regular_file(ec)) {
                         if (isRomExtension(entry.path().extension().string())) {
                             image = entry.path();
+#if defined(__ANDROID__)
                             __android_log_print(ANDROID_LOG_INFO, "MH3", "MH3: Auto-detected ROM at %s", image->string().c_str());
+#else
+                            std::cout << "MH3: Auto-detected ROM at " << image->string() << std::endl;
+#endif
                             break;
                         }
                     } else if (entry.is_directory(ec)) {
-                        // Check one level of subdirectories (e.g. Download/Monster Hunter Tri/game.rvz)
                         std::error_code subEc;
                         for (const auto& subEntry : std::filesystem::directory_iterator(entry.path(), subEc)) {
                             if (subEc) break;
                             if (subEntry.is_regular_file(subEc) && isRomExtension(subEntry.path().extension().string())) {
                                 image = subEntry.path();
+#if defined(__ANDROID__)
                                 __android_log_print(ANDROID_LOG_INFO, "MH3", "MH3: Auto-detected ROM at %s", image->string().c_str());
+#else
+                                std::cout << "MH3: Auto-detected ROM at " << image->string() << std::endl;
+#endif
                                 break;
                             }
                         }
@@ -728,7 +760,7 @@ bool PrepareGameData(const char* rom) {
                 if (image) break;
             }
         }
-#endif
+
         if (!dataReady && !image) {
 #if defined(__ANDROID__)
             __android_log_print(ANDROID_LOG_ERROR, "MH3", "No se encontro la ROM de Monster Hunter Tri");
@@ -742,7 +774,16 @@ bool PrepareGameData(const char* rom) {
             );
             return false;
 #else
-            MH3_THROW(std::runtime_error("Game data in " + data.string() + " is missing. Place European Monster Hunter Tri (RVZ/ISO) in /sdcard/Download or /sdcard/MH3."));
+            std::cerr << "MH3: No se encontro la ROM de Monster Hunter Tri (PAL)\n";
+            SDL_ShowSimpleMessageBox(
+                SDL_MESSAGEBOX_ERROR,
+                "Monster Hunter Tri",
+                "No se encontró el archivo del juego (ROM).\n\n"
+                "Por favor copia tu juego Monster Hunter Tri Europeo (.rvz, .iso o .wia)\n"
+                "en tu carpeta de Descargas o junto a la AppImage, o ejecuta con --rom <ruta>.",
+                nullptr
+            );
+            return false;
 #endif
         }
 #endif
@@ -952,6 +993,9 @@ void PrepareVitaGameData() {
 void MountWebFiles();
 #endif
 int main(int argc, char** argv) {
+#if !defined(_WIN32)
+    setenv("OPENSSL_ENABLE_SHA1_SIGNATURES", "1", 1);
+#endif
 #if defined(ANDROID) || defined(__ANDROID__)
     // Redirect stdout and stderr to Android logcat
     {
@@ -966,6 +1010,19 @@ int main(int argc, char** argv) {
             ssize_t r;
             std::error_code ec;
             std::filesystem::create_directories("/storage/emulated/0/MH3/logs", ec);
+            std::filesystem::create_directories("/storage/emulated/0/MH3/textures", ec);
+            {
+                std::string readmePath = "/storage/emulated/0/MH3/textures/INSTRUCCIONES.txt";
+                if (!std::filesystem::exists(readmePath)) {
+                    if (FILE* rf = fopen(readmePath.c_str(), "w")) {
+                        fputs("=== MONSTER HUNTER TRI - TEXTURAS HD ===\n"
+                              "Coloca aqui tu carpeta de texturas HD de Dolphin (ejemplo: RMHE08 o RMHP08)\n"
+                              "o directamente los archivos de textura .png / .dds con formato tex1_*.\n"
+                              "El juego las cargara automaticamente al iniciar.\n", rf);
+                        fclose(rf);
+                    }
+                }
+            }
             FILE* logFile = fopen("/storage/emulated/0/MH3/logs/game_log.txt", "a");
             while ((r = read(fd, buf, sizeof(buf) - 1)) > 0) {
                 if (r > 0 && buf[r - 1] == '\n') --r;
@@ -987,7 +1044,27 @@ int main(int argc, char** argv) {
             __android_log_print(ANDROID_LOG_INFO, "MH3", "  argv[%d] = %s", a, argv[a]);
         }
 
-        const char* userDir = "/storage/emulated/0/MH3";
+    }
+#endif
+
+    {
+        std::string userDirStr;
+#if defined(ANDROID) || defined(__ANDROID__)
+        userDirStr = "/storage/emulated/0/MH3";
+#else
+        const char* envUser = std::getenv("MH3_USER_DIR");
+        if (envUser && *envUser) {
+            userDirStr = envUser;
+        } else {
+            const char* dataRoot = std::getenv("MH3_DATA_ROOT");
+            if (dataRoot && *dataRoot) {
+                userDirStr = std::string(dataRoot) + "/saves";
+            } else {
+                userDirStr = (mh3_self_exe().parent_path() / "saves").string();
+            }
+        }
+#endif
+        const char* userDir = userDirStr.c_str();
         std::error_code uec;
         std::filesystem::create_directories(userDir, uec);
         std::filesystem::create_directories(std::string(userDir) + "/saves", uec);
@@ -995,7 +1072,11 @@ int main(int argc, char** argv) {
         std::filesystem::create_directories(std::string(userDir) + "/graphics", uec);
         std::filesystem::create_directories(std::string(userDir) + "/logs", uec);
         setenv("MH3_USER_DIR", userDir, 1);
+#if defined(ANDROID) || defined(__ANDROID__)
         __android_log_print(ANDROID_LOG_INFO, "MH3", "MH3_USER_DIR set to: %s", userDir);
+#else
+        std::cout << "MH3: MH3_USER_DIR set to: " << userDir << "\n";
+#endif
 
         // Language setting: Default to Spanish ('es')
         std::string langPath = std::string(userDir) + "/MH3UI.language";
@@ -1018,28 +1099,41 @@ int main(int argc, char** argv) {
         else if (langCode == "es") sysLang = 4;
         else if (langCode == "it") sysLang = 5;
         SetLanguageSetting(sysLang);
+#if defined(ANDROID) || defined(__ANDROID__)
         __android_log_print(ANDROID_LOG_INFO, "MH3", "Language set to %s (sys=%u)", langCode.c_str(), sysLang);
+#else
+        std::cout << "MH3: Language set to " << langCode << " (sys=" << unsigned(sysLang) << ")\n";
+#endif
 
         // Graphics setting: Default to Wii Original (scale 1.0x, resIdx=0, VSync=1)
         std::string gfxPath = std::string(userDir) + "/MH3UI.graphics";
-        int msaa = 1, vsync = 1, resIdx = 0, fpsLimit = 60, aspect = 1, showFps = 1;
+        int msaa = 1, vsync = 1, resIdx = 0, fpsLimit = 60, aspect = 0, showFps = 1, fullscreen = 0;
         {
             std::ifstream in(gfxPath);
             if (in >> msaa >> vsync >> resIdx >> fpsLimit >> aspect >> showFps) {
+                in >> fullscreen;
                 resIdx = std::clamp(resIdx, 0, 5);
                 MH3FrameRateControl::SetTargetFPS(fpsLimit);
             } else {
                 std::ofstream out(gfxPath);
-                if (out) out << "1 1 0 60 1 1\n";
+                if (out) out << "1 1 0 60 0 1 0\n";
                 resIdx = 0;
                 MH3FrameRateControl::SetTargetFPS(60);
             }
         }
         constexpr const char* scales[] = { "1.0", "1.6071429", "2.4107143", "3.2142857", "4.8214286", "0.0" };
         setenv("MH3_RENDER_SCALE", scales[resIdx], 1);
-        __android_log_print(ANDROID_LOG_INFO, "MH3", "Graphics init: resIdx=%d scale=%s vsync=%d", resIdx, scales[resIdx], vsync);
-    }
+        if (fullscreen != 0) {
+            setenv("MH3_START_FULLSCREEN", "1", 1);
+        }
+#if defined(ANDROID) || defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "MH3", "Graphics init: resIdx=%d scale=%s vsync=%d fpsLimit=%d fullscreen=%d",
+                            resIdx, scales[resIdx], vsync, fpsLimit, fullscreen);
+#else
+        std::cout << "MH3: Graphics init: resIdx=" << resIdx << " scale=" << scales[resIdx]
+                  << " vsync=" << vsync << " fpsLimit=" << fpsLimit << " fullscreen=" << fullscreen << "\n";
 #endif
+    }
 #ifdef _WIN32
     {
         // Sin consola: la salida estandar se guarda en MH3.log junto al exe.

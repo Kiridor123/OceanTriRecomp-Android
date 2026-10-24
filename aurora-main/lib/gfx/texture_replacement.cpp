@@ -537,54 +537,74 @@ void build_index() noexcept {
     return;
   }
 
+  s_replacementIndex.clear();
+
   auto userPath = fs_path_from_string(g_config.userPath);
   auto cachePath = fs_path_from_string(g_config.cachePath);
 
   s_replacementRoot = userPath / "texture_replacements";
   s_dumpRoot = cachePath / "texture_dumps";
 
-  if (!ensure_directory(s_replacementRoot)) {
-    return;
+  ensure_directory(s_replacementRoot);
+
+  if (g_config.allowTextureDumps) {
+    ensure_directory(s_dumpRoot);
   }
 
-  if (g_config.allowTextureDumps && !ensure_directory(s_dumpRoot)) {
-    return;
+  std::vector<std::filesystem::path> scanDirs;
+  scanDirs.push_back(s_replacementRoot);
+
+  if (const char* envDir = std::getenv("MH3_TEXTURE_DIR")) {
+    scanDirs.push_back(envDir);
   }
+
+#if defined(__ANDROID__) || defined(ANDROID)
+  scanDirs.push_back("/storage/emulated/0/MH3/textures");
+  scanDirs.push_back("/storage/emulated/0/MH3/Load/Textures");
+#endif
+  scanDirs.push_back("textures");
+  scanDirs.push_back("MH3/textures");
 
   std::error_code ec;
 
-  for (std::filesystem::recursive_directory_iterator it(s_replacementRoot, std::filesystem::directory_options::skip_permission_denied | std::filesystem::directory_options::follow_directory_symlink,
-                                                        ec);
-       it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
-    if (ec) {
-      break;
-    }
-
-    if (!it->is_regular_file()) {
+  for (const auto& rootDir : scanDirs) {
+    if (!std::filesystem::exists(rootDir, ec) || !std::filesystem::is_directory(rootDir, ec)) {
       continue;
     }
 
-    const auto& path = it->path();
+    for (std::filesystem::recursive_directory_iterator it(rootDir,
+          std::filesystem::directory_options::skip_permission_denied | std::filesystem::directory_options::follow_directory_symlink, ec);
+         it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+      if (ec) {
+        break;
+      }
 
-    if (is_relative_to(path, s_dumpRoot)) {
-      continue;
+      if (!it->is_regular_file()) {
+        continue;
+      }
+
+      const auto& path = it->path();
+
+      if (!s_dumpRoot.empty() && is_relative_to(path, s_dumpRoot)) {
+        continue;
+      }
+
+      if (!iequals_ascii(fs_path_to_string(path.extension()), ".dds") && !iequals_ascii(fs_path_to_string(path.extension()), ".png")) {
+        continue;
+      }
+
+      if (is_sidecar_mip(fs_path_to_string(path.stem()))) {
+        continue;
+      }
+
+      const auto parsed = parse_replacement_filename(fs_path_to_string(path.filename()));
+
+      if (!parsed.has_value()) {
+        continue;
+      }
+
+      s_replacementIndex.try_emplace(*parsed, path);
     }
-
-    if (!iequals_ascii(fs_path_to_string(path.extension()), ".dds") && !iequals_ascii(fs_path_to_string(path.extension()), ".png")) {
-      continue;
-    }
-
-    if (is_sidecar_mip(fs_path_to_string(path.stem()))) {
-      continue;
-    }
-
-    const auto parsed = parse_replacement_filename(fs_path_to_string(path.filename()));
-
-    if (!parsed.has_value()) {
-      continue;
-    }
-
-    s_replacementIndex.try_emplace(*parsed, path);
   }
 
   Log.info("Indexed {} texture replacements", s_replacementIndex.size());
@@ -817,6 +837,79 @@ std::optional<TextureHandle> find_replacement(const GXTexObj_& obj) noexcept {
 std::string build_texture_replacement_name(const GXTexObj_& obj) noexcept {
   const RuntimeTextureKey key = build_runtime_key(obj);
   return format_replacement_filename(key);
+}
+
+static RuntimeTextureKey build_native_runtime_key(const NativeTextureSource& source) noexcept {
+  RuntimeTextureKey key{
+      .width = source.width,
+      .height = source.height,
+      .hasTlut = (source.palette_entries > 0 && !source.palette.empty()),
+      .format = source.format,
+  };
+
+  const size_t textureSize = aurora::native_texture_source_size(source.format, source.width, source.height, 1);
+  if (source.bytes.data() != nullptr && textureSize != 0 && source.bytes.size() >= textureSize) {
+    key.textureHash = XXH64(source.bytes.data(), textureSize, 0);
+  }
+
+  if (key.hasTlut && source.palette.data() != nullptr) {
+    key.tlutHash = XXH64(source.palette.data(), source.palette.size(), 0);
+  }
+
+  return key;
+}
+
+std::optional<ConvertedTexture> load_native_replacement(const NativeTextureSource& source) noexcept {
+  if (!g_config.allowTextureReplacements) {
+    return std::nullopt;
+  }
+
+  const RuntimeTextureKey key = build_native_runtime_key(source);
+  if (key.textureHash == 0) {
+    return std::nullopt;
+  }
+
+  const auto* path = find_replacement_path(key);
+  if (path == nullptr) {
+    return std::nullopt;
+  }
+
+  if (s_failedKeys.contains(key)) {
+    return std::nullopt;
+  }
+
+  auto rep = load_replacement(*path);
+  if (!rep.has_value()) {
+    s_failedKeys.insert(key);
+    return std::nullopt;
+  }
+
+  return rep;
+}
+
+size_t get_replacement_count() noexcept {
+  return s_replacementIndex.size();
+}
+
+void set_enabled(bool enabled) noexcept {
+  g_config.allowTextureReplacements = enabled;
+  if (enabled && s_replacementIndex.empty()) {
+    build_index();
+  }
+}
+
+bool is_enabled() noexcept {
+  return g_config.allowTextureReplacements;
+}
+
+void reload() noexcept {
+  s_replacementIndex.clear();
+  s_replacementCache.clear();
+  s_failedKeys.clear();
+  s_reportedMisses.clear();
+  s_replacementLru.clear();
+  s_replacementCacheBytes = 0;
+  build_index();
 }
 
 } // namespace aurora::gfx::texture_replacement

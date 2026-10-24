@@ -30,6 +30,11 @@ void TouchControls_UpdateSample(uint16_t* buttons, int16_t* leftX, int16_t* left
 // Called right before SDL_GL_SwapWindow.
 void TouchControls_RenderGL(int windowWidth, int windowHeight);
 
+// In-game Settings Menu control (F1 key on PC)
+bool TouchControls_IsMenuOpen(void);
+void TouchControls_ToggleMenu(void);
+void TouchControls_SetMenuOpen(bool open);
+
 #ifdef __cplusplus
 }
 #endif

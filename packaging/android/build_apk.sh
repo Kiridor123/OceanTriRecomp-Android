@@ -78,6 +78,10 @@ rm -f "${OUTPUT_APK}"
     --ks "${KEYSTORE}" \
     --ks-pass pass:oceantrikey \
     --key-pass pass:oceantrikey \
+    --min-sdk-version 19 \
+    --v1-signing-enabled true \
+    --v2-signing-enabled true \
+    --v3-signing-enabled true \
     --out "${OUTPUT_APK}" \
     aligned.apk
 

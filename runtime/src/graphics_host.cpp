@@ -339,6 +339,7 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
 #endif
     config.msaa = samples;
     config.maxTextureAnisotropy = 1;
+    config.allowTextureReplacements = true;
     // MH3_PERGAMINO_GRAPHICS_SETTINGS_BEGIN
     bool mh3UiVsyncAtStartup = true;
     int mh3UiRenderer = 0; // 0 = Vulkan (ANGLE), 1 = OpenGL ES
@@ -378,6 +379,11 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
 #if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
     config.desiredBackend = (mh3UiRenderer == 1) ? BACKEND_OPENGLES : BACKEND_VULKAN;
 #endif
+    if (const char* fs = std::getenv("MH3_START_FULLSCREEN")) {
+        if (fs && fs[0] == '1') {
+            config.startFullscreen = true;
+        }
+    }
     const auto info = aurora_initialize(argc, argv, &config);
     aurora_enable_vsync(mh3UiVsyncAtStartup);
 

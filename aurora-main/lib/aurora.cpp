@@ -709,6 +709,18 @@ void aurora_set_native_target_aspect(AuroraNativeTargetAspect aspect) {
   aurora::window::set_present_surface_fill(aspect == AURORA_NATIVE_TARGET_FILL);
 }
 
+void aurora_set_fullscreen(bool fullscreen) {
+  aurora::window::set_fullscreen(fullscreen);
+}
+
+bool aurora_get_fullscreen() {
+  return aurora::window::get_fullscreen();
+}
+
+SDL_Window* aurora_get_window() {
+  return aurora::window::get_sdl_window();
+}
+
 void aurora_set_native_surface_size(uint32_t width, uint32_t height) {
   aurora::window::set_native_surface_size(width, height);
 }

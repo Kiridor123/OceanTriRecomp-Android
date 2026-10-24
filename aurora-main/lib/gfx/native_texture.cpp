@@ -4,6 +4,8 @@
 #include <aurora/generated_texture.hpp>
 #include <aurora/native_scene_feedback.hpp>
 #include "texture_convert.hpp"
+#include "texture_replacement.hpp"
+#include "../internal.hpp"
 #include "native_texture_layout.hpp"
 #include "native_texture_set.hpp"
 #include "../gl/gl.hpp"
@@ -502,30 +504,50 @@ void bind(uint32_t unit, const NativeTextureSource& source, const NativeTextureS
       return;
     }
 
-    gfx::ConvertedTexture converted;
+    bool usedReplacement = false;
+    if (g_config.allowTextureReplacements) {
+      auto rep = gfx::texture_replacement::load_native_replacement(source);
+      if (rep.has_value() && !rep->data.empty()) {
+        make_room(rep->data.size());
+        texture = gl::create_texture(rep->width, rep->height, rep->mips, rep->format, "Native replacement texture");
+        size_t offset = 0;
+        for (unsigned mip = 0; mip < rep->mips; ++mip) {
+          const unsigned w = std::max(rep->width >> mip, 1u);
+          const unsigned h = std::max(rep->height >> mip, 1u);
+          gl::upload_texture(*texture, mip, 0, 0, w, h, rep->data.data() + offset, w * 4);
+          offset += size_t(w) * h * 4;
+        }
+        allocated = rep->data.size();
+        usedReplacement = true;
+      }
+    }
 
-    if (indexed) {
-      if (source.palette_format > 2 || !source.palette_entries || source.palette_entries > 16384 || source.palette.size() < size_t(source.palette_entries) * 2)
-        AURORA_THROW(std::runtime_error("Native indexed texture has no valid palette"));
+    if (!usedReplacement) {
+      gfx::ConvertedTexture converted;
 
-      converted = gfx::convert_texture_palette(source.format, source.width, source.height, source.levels, {source.bytes.data(), sourceBytes}, static_cast<GXTlutFmt>(source.palette_format),
-                                               source.palette_entries, {source.palette.data(), size_t(source.palette_entries) * 2});
-    } else
-      converted = gfx::convert_texture(source.format, source.width, source.height, source.levels, {source.bytes.data(), sourceBytes});
+      if (indexed) {
+        if (source.palette_format > 2 || !source.palette_entries || source.palette_entries > 16384 || source.palette.size() < size_t(source.palette_entries) * 2)
+          AURORA_THROW(std::runtime_error("Native indexed texture has no valid palette"));
 
-    if (converted.data.empty() || converted.format != gl::Format::RGBA8)
-      AURORA_THROW(std::runtime_error("Native texture conversion produced no RGBA image"));
+        converted = gfx::convert_texture_palette(source.format, source.width, source.height, source.levels, {source.bytes.data(), sourceBytes}, static_cast<GXTlutFmt>(source.palette_format),
+                                                 source.palette_entries, {source.palette.data(), size_t(source.palette_entries) * 2});
+      } else
+        converted = gfx::convert_texture(source.format, source.width, source.height, source.levels, {source.bytes.data(), sourceBytes});
 
-    if (s_patch)
-      s_patch(source, converted.data.data());
+      if (converted.data.empty() || converted.format != gl::Format::RGBA8)
+        AURORA_THROW(std::runtime_error("Native texture conversion produced no RGBA image"));
 
-    texture = gl::create_texture(source.width, source.height, source.levels, converted.format, "Native producer texture");
-    size_t offset = 0;
+      if (s_patch)
+        s_patch(source, converted.data.data());
 
-    for (unsigned mip = 0; mip < source.levels; ++mip) {
-      const unsigned w = std::max(source.width >> mip, 1u), h = std::max(source.height >> mip, 1u);
-      gl::upload_texture(*texture, mip, 0, 0, w, h, converted.data.data() + offset, w * 4);
-      offset += size_t(w) * h * 4;
+      texture = gl::create_texture(source.width, source.height, source.levels, converted.format, "Native producer texture");
+      size_t offset = 0;
+
+      for (unsigned mip = 0; mip < source.levels; ++mip) {
+        const unsigned w = std::max(source.width >> mip, 1u), h = std::max(source.height >> mip, 1u);
+        gl::upload_texture(*texture, mip, 0, 0, w, h, converted.data.data() + offset, w * 4);
+        offset += size_t(w) * h * 4;
+      }
     }
   }
 

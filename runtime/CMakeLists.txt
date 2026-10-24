@@ -111,14 +111,19 @@ if(NOT MH3_DEVELOPMENT AND NOT ANDROID)
   # runtime/include/fatal.h, AURORA_THROW in Aurora). Aurora's libraries and the
   # fetched dependencies get these too; the host tools and tests keep
   # exceptions (the end of this file). MH3_PROFILE_FRAME_POINTERS, when turned
-  # on, keeps its unwind tables.
-  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>)
+  # on, keeps its unwind tables. MH3_RELEASE_EXCEPTIONS keeps them on instead
+  # (the Linux AppImage build, like Android, has runtime code using try/catch).
+  option(MH3_RELEASE_EXCEPTIONS "Keep C++ exceptions in ThinLTO release builds" OFF)
 
-  if(NOT MH3_PROFILE_FRAME_POINTERS)
-    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fno-unwind-tables;-fno-asynchronous-unwind-tables>")
+  if(NOT MH3_RELEASE_EXCEPTIONS)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>)
 
-    # Fatal reports leave out the host backtrace: there is nothing to walk.
-    add_compile_definitions(MH3_NO_UNWIND_TABLES=1)
+    if(NOT MH3_PROFILE_FRAME_POINTERS)
+      add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fno-unwind-tables;-fno-asynchronous-unwind-tables>")
+
+      # Fatal reports leave out the host backtrace: there is nothing to walk.
+      add_compile_definitions(MH3_NO_UNWIND_TABLES=1)
+    endif()
   endif()
 endif()
 
@@ -350,6 +355,14 @@ if(ANDROID)
   target_compile_definitions(MH3 PRIVATE MH3_HAS_OPENSSL)
 endif()
 
+# Host check executables under ../tests (absent from trimmed source trees).
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../tests/native")
+  set(mh3_host_tests_default ON)
+else()
+  set(mh3_host_tests_default OFF)
+endif()
+option(MH3_BUILD_HOST_TESTS "Build the host check executables in ../tests" ${mh3_host_tests_default})
+
 # glibc's backtrace_symbols only names functions in the dynamic symbol table,
 # so export ours for symbolized backtraces of fatal errors (and dladdr).
 if(NOT VITA AND NOT EMSCRIPTEN AND NOT ANDROID)
@@ -366,10 +379,12 @@ if(NOT VITA AND NOT EMSCRIPTEN AND NOT ANDROID)
   endif()
 
   # Vita pad / host stick mapping to the Classic Controller report.
-  add_executable(mh3_classic_map_check ../tests/native/test_mh3_classic_map.c native/mh3_classic_map.c)
-  target_include_directories(mh3_classic_map_check PRIVATE ..)
-  target_link_libraries(mh3_classic_map_check PRIVATE m)
-  add_test(NAME mh3_classic_map_check COMMAND mh3_classic_map_check)
+  if(MH3_BUILD_HOST_TESTS)
+    add_executable(mh3_classic_map_check ../tests/native/test_mh3_classic_map.c native/mh3_classic_map.c)
+    target_include_directories(mh3_classic_map_check PRIVATE ..)
+    target_link_libraries(mh3_classic_map_check PRIVATE m)
+    add_test(NAME mh3_classic_map_check COMMAND mh3_classic_map_check)
+  endif()
 endif()
 
 target_compile_options(MH3 PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:-O2;-gline-tables-only;-ffp-contract=off>)
@@ -437,7 +452,7 @@ if(TARGET aurora::core)
   target_compile_definitions(MH3 PRIVATE MH3_HAS_AURORA=1)
   target_link_libraries(MH3 PRIVATE aurora::core aurora::gx aurora::vi)
 
-  if(NOT VITA AND NOT EMSCRIPTEN AND NOT ANDROID)
+  if(NOT VITA AND NOT EMSCRIPTEN AND NOT ANDROID AND MH3_BUILD_HOST_TESTS)
     add_executable(mh3_native_frame_statistics_check
       ../tests/native/test_native_frame_statistics.cpp src/native_frame_statistics.cpp)
     target_include_directories(mh3_native_frame_statistics_check PRIVATE include)

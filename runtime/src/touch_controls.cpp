@@ -38,12 +38,22 @@ extern void QueueTouchCameraDelta(float dx, float dy);
 extern "C" void VISetFrameBufferScale(float scale);
 extern void aurora_enable_vsync(bool enabled);
 extern "C" void aurora_set_native_target_aspect(int aspect);
+extern "C" void aurora_set_fullscreen(bool fullscreen);
+extern "C" bool aurora_get_fullscreen(void);
+extern "C" struct SDL_Window* aurora_get_window(void);
 
 extern "C" {
 int Gamepad_GetLayout();
 void Gamepad_SetLayout(int layout);
 bool Gamepad_GetSwapTriggers();
 void Gamepad_SetSwapTriggers(bool swap);
+}
+
+namespace aurora::gfx::texture_replacement {
+size_t get_replacement_count() noexcept;
+void set_enabled(bool enabled) noexcept;
+bool is_enabled() noexcept;
+void reload() noexcept;
 }
 
 namespace {
@@ -99,10 +109,11 @@ struct UIVertex {
 class TouchSettingsEngine {
 public:
     TouchSettingsEngine() {
-#if defined(__ANDROID__)
         m_enabled = true;
+#if defined(__ANDROID__)
+        m_touchVisible = true;
 #else
-        m_enabled = false;
+        m_touchVisible = false;
 #endif
     }
 
@@ -119,6 +130,55 @@ public:
 
     void SetEnabled(bool enabled) { m_enabled = enabled; }
     bool IsEnabled() const { return m_enabled; }
+
+    bool IsMenuOpen() const { return m_menuOpen; }
+    void ToggleMenu() { SetMenuOpen(!m_menuOpen); }
+    void SetMenuOpen(bool open) {
+        m_menuOpen = open;
+        if (m_menuOpen) {
+            SDL_ShowCursor();
+            if (SDL_Window* win = aurora_get_window()) {
+                SDL_SetWindowRelativeMouseMode(win, false);
+            }
+        } else {
+            if (SDL_Window* win = aurora_get_window()) {
+#if !defined(__ANDROID__)
+                SDL_HideCursor();
+#endif
+            }
+        }
+    }
+
+    void ApplyFullscreen(bool enabled) {
+        m_fullscreen = enabled;
+        aurora_set_fullscreen(enabled);
+        if (enabled) {
+            // Fix de resolución a pantalla completa: relación 16:9 estricta en Aurora y en la memoria del juego
+            aurora_set_native_target_aspect(2); // AURORA_NATIVE_TARGET_ASPECT_16_9
+            m_aspectIndex = 0; // 16:9 Panorámica
+            SetWidescreenSetting(true);
+#if defined(__cpp_exceptions)
+            try {
+#endif
+                if (Memory::Contains(0x80797F68, 4) && Memory::Contains(0x8065B4C8, 4)) {
+                    uint32_t aspectVal = Memory::Read32(0x80797F68);
+                    if (aspectVal != 0) {
+                        Memory::Write32(0x8065B4C8, aspectVal);
+                        Memory::Write8(0x8065B4D5, 1);
+                    }
+                }
+#if defined(__cpp_exceptions)
+            } catch (...) {}
+#endif
+        } else {
+            ApplyAspectRatio(m_aspectIndex);
+        }
+        SaveSettings();
+    }
+
+    void ToggleFullscreen() {
+        ApplyFullscreen(!m_fullscreen);
+    }
 
     void UpdateLayout(int width, int height) {
         if (width <= 0 || height <= 0) return;
@@ -396,6 +456,45 @@ public:
         }
     }
 
+    void HandleMouseDown(float px, float py) {
+        if (!m_enabled) return;
+        if (m_editMode) {
+            HandleEditModeTouchDown(1, px, py);
+            return;
+        }
+        if (m_menuOpen) {
+            HandleMenuTouchDown(px, py);
+            return;
+        }
+        float gdx = px - m_gearPos.x;
+        float gdy = py - m_gearPos.y;
+        if (gdx * gdx + gdy * gdy <= (m_gearRadius * 2.0f) * (m_gearRadius * 2.0f)) {
+            ToggleMenu();
+            return;
+        }
+    }
+
+    void HandleMouseUp(float px, float py) {
+        (void)px; (void)py;
+        if (m_editMode) {
+            m_editDragging = false;
+            m_editFingerId = -1;
+        }
+    }
+
+    void HandleMouseMove(float px, float py) {
+        if (m_editMode && m_editDragging) {
+            if (m_selectedButtonIndex >= 0 && m_selectedButtonIndex < int(m_buttons.size())) {
+                m_buttons[m_selectedButtonIndex].pos = { px, py };
+                m_buttons[m_selectedButtonIndex].normPos = { px / float(m_width), py / float(m_height) };
+            } else if (m_selectedButtonIndex == -2) {
+                m_leftStickCenter = { px, py };
+                m_normLeftStickPos = { px / float(m_width), py / float(m_height) };
+                m_leftStickPos = m_leftStickCenter;
+            }
+        }
+    }
+
     void UpdateLeftStickPosition(float px, float py) {
         float dx = px - m_leftStickCenter.x;
         float dy = py - m_leftStickCenter.y;
@@ -463,12 +562,87 @@ public:
         }
     }
 
+    static float GetDeviceTemperature() {
+        static float s_cachedTemp = 0.0f;
+        static auto s_lastRead = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        if (s_cachedTemp > 0.0f && std::chrono::duration_cast<std::chrono::milliseconds>(now - s_lastRead).count() < 1500) {
+            return s_cachedTemp;
+        }
+        s_lastRead = now;
+
+        std::ifstream battFile("/sys/class/power_supply/battery/temp");
+        if (battFile.is_open()) {
+            int val = 0;
+            if (battFile >> val && val > 0) {
+                if (val > 1000) s_cachedTemp = float(val) / 1000.0f;
+                else if (val > 100) s_cachedTemp = float(val) / 10.0f;
+                else s_cachedTemp = float(val);
+                return s_cachedTemp;
+            }
+        }
+
+        for (int i = 0; i < 16; ++i) {
+            char path[64];
+            std::snprintf(path, sizeof(path), "/sys/class/thermal/thermal_zone%d/temp", i);
+            std::ifstream tzFile(path);
+            if (tzFile.is_open()) {
+                int val = 0;
+                if (tzFile >> val && val > 15000 && val < 110000) {
+                    s_cachedTemp = float(val) / 1000.0f;
+                    return s_cachedTemp;
+                }
+            }
+        }
+        return s_cachedTemp;
+    }
+
+    bool IsOnlineCity() const {
+        if (!Memory::Contains(0x8065AA84, 1)) return false;
+        return (Memory::Read8(0x8065AA84) == 2);
+    }
+
     // -------------------------------------------------------------
     // OpenGL ES Rendering
     // -------------------------------------------------------------
     void RenderGL(int windowWidth, int windowHeight) {
         if (!m_enabled) return;
         UpdateLayout(windowWidth, windowHeight);
+
+        static bool s_firstFrameApplied = false;
+        if (!s_firstFrameApplied) {
+            s_firstFrameApplied = true;
+            ApplyResolutionScale(m_resolutionIndex);
+            if (m_fullscreen) {
+                ApplyFullscreen(true);
+            } else {
+                ApplyAspectRatio(m_aspectIndex);
+            }
+        }
+
+        static bool s_aspectMemoryPatched = false;
+        if (!s_aspectMemoryPatched) {
+#if defined(__cpp_exceptions)
+            try {
+#endif
+                if (Memory::Contains(0x80797F68, 4) && Memory::Contains(0x8065B4C8, 4)) {
+                    uint32_t wideVal = Memory::Read32(0x80797F68);
+                    if (wideVal != 0) {
+                        if (m_fullscreen || m_aspectIndex == 0) {
+                            Memory::Write32(0x8065B4C8, wideVal);
+                            Memory::Write8(0x8065B4D5, 1);
+                        } else if (m_aspectIndex == 1) {
+                            uint32_t stdVal = Memory::Read32(0x80797F70);
+                            if (stdVal != 0) Memory::Write32(0x8065B4C8, stdVal);
+                            Memory::Write8(0x8065B4D5, 0);
+                        }
+                        s_aspectMemoryPatched = true;
+                    }
+                }
+#if defined(__cpp_exceptions)
+            } catch (...) {}
+#endif
+        }
 
         InitGL();
         if (!m_shaderProgram) return;
@@ -483,6 +657,21 @@ public:
             m_liveFps = double(count - lastCount) / elapsed;
             lastCount = count;
             lastStamp = now;
+        }
+
+        // Auto-lock to 30 FPS in Loc Lac City (Online mode)
+        bool inCity = IsOnlineCity();
+        static bool s_wasInCity = false;
+        if (inCity) {
+            if (!s_wasInCity) {
+                s_wasInCity = true;
+                MH3FrameRateControl::SetTargetFPS(30);
+            }
+        } else {
+            if (s_wasInCity) {
+                s_wasInCity = false;
+                MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
+            }
         }
 
         // Save OpenGL State
@@ -528,17 +717,7 @@ public:
                            { 0.08f, 0.40f, 0.48f, 0.35f }, { 0.25f, 0.90f, 0.95f, 0.55f }, 0.10f);
                 DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, { 1.0f, 1.0f, 1.0f, 0.65f });
 
-                if (m_showFpsHud) {
-                    char fpsStr[32];
-                    std::snprintf(fpsStr, sizeof(fpsStr), "FPS  %u", unsigned(m_liveFps + 0.5));
-                    float pillW = m_unit * 0.17f;
-                    float pillH = m_unit * 0.055f;
-                    float pillX = float(m_width) - pillW - m_unit * 0.03f;
-                    float pillY = m_unit * 0.02f;
-                    DrawRoundedRect(pillX, pillY, pillW, pillH, pillH * 0.5f,
-                                    { 0.02f, 0.09f, 0.13f, 0.70f }, { 0.15f, 0.65f, 0.85f, 0.85f });
-                    DrawText(pillX + pillW * 0.5f, pillY + pillH * 0.22f, fpsStr, 13.5f, COL_CYAN, true);
-                }
+                RenderFpsHud();
             }
         }
 
@@ -901,13 +1080,36 @@ private:
     // -------------------------------------------------------------
     // Screen Rendering Modes
     // -------------------------------------------------------------
+    void RenderFpsHud() {
+        if (!m_showFpsHud) return;
+
+        float temp = GetDeviceTemperature();
+        char hudStr[48];
+        if (temp > 0.0f) {
+            std::snprintf(hudStr, sizeof(hudStr), "%u FPS | %.1f°C", unsigned(m_liveFps + 0.5), temp);
+        } else {
+            std::snprintf(hudStr, sizeof(hudStr), "%u FPS", unsigned(m_liveFps + 0.5));
+        }
+
+        float pillW = (temp > 0.0f) ? (m_unit * 0.22f) : (m_unit * 0.16f);
+        float pillH = m_unit * 0.052f;
+        float pillX = m_unit * 0.025f;
+        float pillY = float(m_height) - pillH - m_unit * 0.025f;
+
+        DrawRoundedRect(pillX, pillY, pillW, pillH, pillH * 0.5f,
+                        { 0.035f, 0.125f, 0.176f, 0.88f }, COL_CYAN);
+        DrawText(pillX + pillW * 0.5f, pillY + pillH * 0.20f, hudStr, pillH * 0.52f, COL_CYAN, true);
+    }
+
     void RenderGameplayOverlay() {
+        float op = std::clamp(m_buttonOpacity, 0.10f, 1.0f);
+
         // 1. Fixed Left Stick
-        DrawAARing(m_leftStickCenter.x, m_leftStickCenter.y, m_leftStickRadius, 3.5f, { 0.30f, 0.70f, 0.88f, 0.55f });
-        DrawAARing(m_leftStickCenter.x, m_leftStickCenter.y, m_leftStickRadius * 0.50f, 1.5f, { 0.20f, 0.50f, 0.70f, 0.25f });
+        DrawAARing(m_leftStickCenter.x, m_leftStickCenter.y, m_leftStickRadius, 3.5f, { 0.30f, 0.70f, 0.88f, 0.55f * op });
+        DrawAARing(m_leftStickCenter.x, m_leftStickCenter.y, m_leftStickRadius * 0.50f, 1.5f, { 0.20f, 0.50f, 0.70f, 0.25f * op });
 
         float dotR = 3.0f;
-        Color dotCol = { 0.45f, 0.85f, 1.00f, 0.70f };
+        Color dotCol = { 0.45f, 0.85f, 1.00f, 0.70f * op };
         DrawAADisc(m_leftStickCenter.x, m_leftStickCenter.y - m_leftStickRadius, dotR, dotCol, dotCol);
         DrawAADisc(m_leftStickCenter.x, m_leftStickCenter.y + m_leftStickRadius, dotR, dotCol, dotCol);
         DrawAADisc(m_leftStickCenter.x - m_leftStickRadius, m_leftStickCenter.y, dotR, dotCol, dotCol);
@@ -915,16 +1117,16 @@ private:
 
         bool leftHeld = (m_leftFingerId >= 0);
         DrawAADisc(m_leftStickPos.x, m_leftStickPos.y, m_leftStickKnobRadius,
-                   leftHeld ? Color{ 0.15f, 0.50f, 0.70f, 0.90f } : Color{ 0.10f, 0.32f, 0.45f, 0.80f },
-                   leftHeld ? Color{ 1.0f, 1.0f, 1.0f, 0.98f } : Color{ 0.50f, 0.88f, 1.00f, 0.95f }, 0.12f);
+                   leftHeld ? Color{ 0.15f, 0.50f, 0.70f, 0.90f * op } : Color{ 0.10f, 0.32f, 0.45f, 0.80f * op },
+                   leftHeld ? Color{ 1.0f, 1.0f, 1.0f, 0.98f * op } : Color{ 0.50f, 0.88f, 1.00f, 0.95f * op }, 0.12f);
         DrawAADisc(m_leftStickPos.x, m_leftStickPos.y, m_leftStickKnobRadius * 0.35f,
-                   { 0.05f, 0.18f, 0.28f, 0.90f }, { 0.35f, 0.75f, 0.95f, 0.85f }, 0.20f);
+                   { 0.05f, 0.18f, 0.28f, 0.90f * op }, { 0.35f, 0.75f, 0.95f, 0.85f * op }, 0.20f);
 
         // 2. Free Right Stick (Camera Look)
         if (m_rightStickActive) {
-            DrawAARing(m_rightFloatingOrigin.x, m_rightFloatingOrigin.y, m_rightStickRadius, 2.5f, { 0.25f, 0.65f, 0.85f, 0.35f });
+            DrawAARing(m_rightFloatingOrigin.x, m_rightFloatingOrigin.y, m_rightStickRadius, 2.5f, { 0.25f, 0.65f, 0.85f, 0.35f * op });
             DrawAADisc(m_rightStickPos.x, m_rightStickPos.y, m_rightStickKnobRadius * 0.75f,
-                       { 0.15f, 0.45f, 0.60f, 0.45f }, { 0.40f, 0.80f, 1.00f, 0.70f }, 0.10f);
+                       { 0.15f, 0.45f, 0.60f, 0.45f * op }, { 0.40f, 0.80f, 1.00f, 0.70f * op }, 0.10f);
         }
 
         // 3. Gameplay Buttons (ABXY, Shoulders, D-pad, Menu, Macros)
@@ -932,30 +1134,26 @@ private:
             if (!IsButtonActive(btn)) continue;
             Color base = btn.isPressed ? Color{ std::min(1.0f, btn.baseColor.r * 1.4f), std::min(1.0f, btn.baseColor.g * 1.4f), std::min(1.0f, btn.baseColor.b * 1.4f), 0.90f } : btn.baseColor;
             Color border = btn.isPressed ? Color{ 1.0f, 1.0f, 1.0f, 1.0f } : btn.borderColor;
+            base.a *= op;
+            border.a *= op;
 
             DrawAADisc(btn.pos.x, btn.pos.y, btn.radius, base, border, 0.09f);
 
             float textSize = btn.radius * 0.95f;
-            DrawButtonLabel(btn.pos.x, btn.pos.y, btn.label, textSize, COL_WHITE);
+            Color textCol = COL_WHITE;
+            textCol.a *= op;
+            DrawButtonLabel(btn.pos.x, btn.pos.y, btn.label, textSize, textCol);
         }
 
         // 4. Gear / Menu Button
         DrawAADisc(m_gearPos.x, m_gearPos.y, m_gearRadius,
-                   { 0.08f, 0.40f, 0.48f, 0.75f }, { 0.25f, 0.90f, 0.95f, 0.95f }, 0.10f);
-        DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, COL_WHITE);
+                   { 0.08f, 0.40f, 0.48f, 0.75f * op }, { 0.25f, 0.90f, 0.95f, 0.95f * op }, 0.10f);
+        Color gearText = COL_WHITE;
+        gearText.a *= op;
+        DrawButtonLabel(m_gearPos.x, m_gearPos.y, "⚙", m_gearRadius * 1.05f, gearText);
 
         // 5. FPS HUD Pill (if enabled)
-        if (m_showFpsHud) {
-            char fpsStr[32];
-            std::snprintf(fpsStr, sizeof(fpsStr), "FPS  %u", unsigned(m_liveFps + 0.5));
-            float pillW = m_unit * 0.17f;
-            float pillH = m_unit * 0.055f;
-            float pillX = float(m_width) - pillW - m_unit * 0.03f;
-            float pillY = m_unit * 0.02f;
-            DrawRoundedRect(pillX, pillY, pillW, pillH, pillH * 0.5f,
-                            { 0.035f, 0.125f, 0.176f, 0.90f }, COL_CYAN);
-            DrawText(pillX + pillW * 0.5f, pillY + pillH * 0.22f, fpsStr, pillH * 0.55f, COL_CYAN, true);
-        }
+        RenderFpsHud();
     }
 
     void RenderSettingsMenu() {
@@ -1058,50 +1256,66 @@ private:
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
-        // Card 2: Aspect Ratio & VSync
+        // Card 2: Pantalla Completa (Fix de aspecto) & Relación de aspecto
         float c2Y = y + c1H + 12.0f;
-        float c2H = 108.0f;
+        float c2H = 114.0f;
         DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
-        // Aspect Ratio (Left)
-        DrawText(x + 18.0f, c2Y + 14.0f, "Relación de aspecto", 19.0f, COL_WHITE);
+        float colW = (w - 36.0f - 16.0f) * 0.5f;
+
+        // Left side: Fullscreen & 16:9 Fix
+        DrawText(x + 18.0f, c2Y + 14.0f, "Pantalla completa (Fix de aspecto)", 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, c2Y + 36.0f, "Fix 16:9 activo: evita que la imagen se estire o deforme en tu pantalla", 12.5f, COL_MUTED);
+
+        float fsBtnY = c2Y + 54.0f;
+        float fsBtnW = colW;
+        bool fsActive = m_fullscreen;
+        DrawRoundedRect(x + 18.0f, fsBtnY, fsBtnW, chipH, 8.0f,
+                        fsActive ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                        fsActive ? COL_CYAN : COL_CHIP_BORDER);
+        DrawText(x + 18.0f + fsBtnW * 0.5f, fsBtnY + 12.0f,
+                 fsActive ? "Pantalla completa: ACTIVADA (Fix 16:9)" : "Activar pantalla completa", 14.5f,
+                 fsActive ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // Right side: Relación de aspecto
+        float rightColX = x + 18.0f + colW + 16.0f;
+        DrawText(rightColX, c2Y + 14.0f, "Relación de aspecto", 19.0f, COL_WHITE);
+        DrawText(rightColX, c2Y + 36.0f, "Ajuste de presentación geométrica", 12.5f, COL_MUTED);
+
         const char* aspectLabels[] = { "16:9 Panorámica", "4:3 Clásica", "Estirar Pantalla" };
-        float aChipW = (w * 0.55f - 36.0f - 10.0f) / 3.0f;
-        float aChipY = c2Y + 50.0f;
+        float aChipW = (colW - 10.0f) / 3.0f;
         for (int i = 0; i < 3; ++i) {
-            float ax = x + 18.0f + float(i) * (aChipW + 5.0f);
+            float ax = rightColX + float(i) * (aChipW + 5.0f);
             bool active = (m_aspectIndex == i);
-            DrawRoundedRect(ax, aChipY, aChipW, chipH, 8.0f,
+            DrawRoundedRect(ax, fsBtnY, aChipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
-            DrawText(ax + aChipW * 0.5f, aChipY + 12.0f, aspectLabels[i], 14.0f,
+            DrawText(ax + aChipW * 0.5f, fsBtnY + 12.0f, aspectLabels[i], 13.5f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
-        // VSync Toggle (Right)
-        float vsyncX = x + w * 0.58f;
-        DrawText(vsyncX, c2Y + 14.0f, "Sincronización vertical (V-Sync)", 19.0f, COL_WHITE);
-        float vChipW = (w * 0.42f - 36.0f);
-        DrawRoundedRect(vsyncX, aChipY, vChipW, chipH, 8.0f,
-                        m_vsync ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
-                        m_vsync ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(vsyncX + vChipW * 0.5f, aChipY + 12.0f, m_vsync ? "V-Sync: ACTIVADO" : "V-Sync: DESACTIVADO", 15.0f,
-                 m_vsync ? COL_ACTIVE_TEXT : COL_WHITE, true);
-
-        // Card 3: FPS Limit & FPS Counter
+        // Card 3: Límite de fotogramas (FPS: 30, 60, 90, 120) & V-Sync / HUD
         float c3Y = c2Y + c2H + 12.0f;
-        float c3H = 108.0f;
+        float c3H = 114.0f;
         DrawRoundedRect(x, c3Y, w, c3H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
-        // FPS Limit chips (Left side)
-        DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas (FPS)", 19.0f, COL_WHITE);
+        float fpsColW = (w - 36.0f - 16.0f) * 0.52f;
+        bool inCity = IsOnlineCity();
+        if (inCity) {
+            DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas: 30 FPS [BLOQUEADO EN ONLINE]", 18.0f, COL_CYAN);
+            DrawText(x + 18.0f, c3Y + 36.0f, "Auto-bloqueado a 30 FPS en la Ciudad para evitar mini-turbo y mantener sincronía.", 12.0f, { 1.0f, 0.85f, 0.35f, 1.0f });
+        } else {
+            DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas (FPS)", 19.0f, COL_WHITE);
+            DrawText(x + 18.0f, c3Y + 36.0f, "30, 60, 90 o 120 FPS (En Aldea puedes jugar a 60+ FPS)", 12.5f, COL_MUTED);
+        }
+
         const char* fpsLabels[] = { "30 FPS", "60 FPS", "90 FPS", "120 FPS" };
         const int fpsValues[] = { 30, 60, 90, 120 };
-        float fChipW = (w * 0.55f - 36.0f - 15.0f) / 4.0f;
-        float fChipY = c3Y + 50.0f;
+        float fChipW = (fpsColW - 15.0f) / 4.0f;
+        float fChipY = c3Y + 54.0f;
         for (int i = 0; i < 4; ++i) {
             float fx = x + 18.0f + float(i) * (fChipW + 5.0f);
-            bool active = (m_fpsLimit == fpsValues[i]);
+            bool active = inCity ? (fpsValues[i] == 30) : (m_fpsLimit == fpsValues[i]);
             DrawRoundedRect(fx, fChipY, fChipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
@@ -1109,15 +1323,57 @@ private:
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
-        // FPS Counter Toggle (Right side)
-        float hudX = x + w * 0.58f;
-        DrawText(hudX, c3Y + 14.0f, "Contador FPS en pantalla", 19.0f, COL_WHITE);
-        float hudChipW = (w * 0.42f - 36.0f);
-        DrawRoundedRect(hudX, fChipY, hudChipW, chipH, 8.0f,
+        // Right side: Sincronización y Contador
+        float syncColX = x + 18.0f + fpsColW + 16.0f;
+        float syncColW = (w - 36.0f - 16.0f) * 0.48f;
+        DrawText(syncColX, c3Y + 14.0f, "Sincronización y Estadísticas", 19.0f, COL_WHITE);
+        DrawText(syncColX, c3Y + 36.0f, "V-Sync anti-tearing y contador HUD en pantalla", 12.5f, COL_MUTED);
+
+        float sChipW = (syncColW - 10.0f) * 0.5f;
+        // VSync chip
+        DrawRoundedRect(syncColX, fChipY, sChipW, chipH, 8.0f,
+                        m_vsync ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                        m_vsync ? COL_CYAN : COL_CHIP_BORDER);
+        DrawText(syncColX + sChipW * 0.5f, fChipY + 12.0f, m_vsync ? "V-Sync: ACTIVADO" : "V-Sync: DESACTIVADO", 13.0f,
+                 m_vsync ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // HUD FPS chip
+        float hudX = syncColX + sChipW + 10.0f;
+        DrawRoundedRect(hudX, fChipY, sChipW, chipH, 8.0f,
                         m_showFpsHud ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_showFpsHud ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(hudX + hudChipW * 0.5f, fChipY + 12.0f, m_showFpsHud ? "HUD FPS: VISIBLE" : "HUD FPS: OCULTO", 15.0f,
+        DrawText(hudX + sChipW * 0.5f, fChipY + 12.0f, m_showFpsHud ? "HUD FPS: VISIBLE" : "HUD FPS: OCULTO", 13.0f,
                  m_showFpsHud ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // Card 4: Reemplazo de Texturas HD (Dolphin Texture Pack)
+        float c4Y = c3Y + c3H + 12.0f;
+        float c4H = 108.0f;
+        DrawRoundedRect(x, c4Y, w, c4H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
+
+        bool texEnabled = aurora::gfx::texture_replacement::is_enabled();
+        size_t texCount = aurora::gfx::texture_replacement::get_replacement_count();
+        char texSub[140];
+        std::snprintf(texSub, sizeof(texSub), "Texturas cargadas: %zu | Carpeta: /storage/emulated/0/MH3/textures/ (RMHE08 o RMHP08)", texCount);
+
+        DrawText(x + 18.0f, c4Y + 14.0f, "Texturas HD personalizadas (Pack Dolphin)", 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, c4Y + 36.0f, texSub, 13.0f, (texCount > 0) ? COL_CYAN : COL_MUTED);
+
+        float tBtnW = (w - 36.0f - 15.0f) * 0.50f;
+        float tBtnY = c4Y + 54.0f;
+
+        // Toggle button
+        DrawRoundedRect(x + 18.0f, tBtnY, tBtnW, chipH, 8.0f,
+                        texEnabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                        texEnabled ? COL_CYAN : COL_CHIP_BORDER);
+        DrawText(x + 18.0f + tBtnW * 0.5f, tBtnY + 12.0f,
+                 texEnabled ? "Texturas HD: ACTIVADAS" : "Texturas HD: DESACTIVADAS", 14.5f,
+                 texEnabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // Reload button
+        float reloadX = x + 18.0f + tBtnW + 15.0f;
+        DrawRoundedRect(reloadX, tBtnY, tBtnW, chipH, 8.0f,
+                        { 0.12f, 0.35f, 0.45f, 0.90f }, { 0.25f, 0.75f, 0.95f, 1.0f });
+        DrawText(reloadX + tBtnW * 0.5f, tBtnY + 12.0f, "🔄 Recargar texturas", 14.5f, COL_WHITE, true);
     }
 
     void RenderTabSystem(float x, float y, float w) {
@@ -1195,22 +1451,22 @@ private:
     }
 
     void RenderTabControls(float x, float y, float w) {
-        // Card 1: Visibilidad de controles táctiles en pantalla
-        float c1H = 116.0f;
+        // Card 1: Visibilidad y Opacidad de controles táctiles en pantalla
+        float c1H = 176.0f;
         DrawRoundedRect(x, y, w, c1H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
         DrawText(x + 18.0f, y + 14.0f, "Controles táctiles en pantalla", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, y + 36.0f, "Oculta los botones virtuales si juegas con mando físico o deseas la pantalla limpia.", 13.5f, COL_MUTED);
+        DrawText(x + 18.0f, y + 34.0f, "Oculta los botones virtuales si juegas con mando o ajusta su transparencia.", 13.0f, COL_MUTED);
 
         float tvChipW = (w - 36.0f - 15.0f) / 2.0f;
-        float tvChipH = 42.0f;
-        float tvChipY = y + 58.0f;
+        float tvChipH = 38.0f;
+        float tvChipY = y + 54.0f;
 
         // Visible chip
         float tv1X = x + 18.0f;
         DrawRoundedRect(tv1X, tvChipY, tvChipW, tvChipH, 8.0f,
                         m_touchVisible ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_touchVisible ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(tv1X + tvChipW * 0.5f, tvChipY + 12.0f, "Botones táctiles: VISIBLES", 15.0f,
+        DrawText(tv1X + tvChipW * 0.5f, tvChipY + 10.0f, "Botones táctiles: VISIBLES", 14.5f,
                  m_touchVisible ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Hidden chip
@@ -1218,8 +1474,25 @@ private:
         DrawRoundedRect(tv2X, tvChipY, tvChipW, tvChipH, 8.0f,
                         !m_touchVisible ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         !m_touchVisible ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(tv2X + tvChipW * 0.5f, tvChipY + 12.0f, "Botones táctiles: OCULTOS (Solo Mando)", 15.0f,
+        DrawText(tv2X + tvChipW * 0.5f, tvChipY + 10.0f, "Botones táctiles: OCULTOS (Solo Mando)", 14.5f,
                  !m_touchVisible ? COL_ACTIVE_TEXT : COL_WHITE, true);
+
+        // Row 2: Opacity selector
+        DrawText(x + 18.0f, y + 102.0f, "Opacidad de botones virtuales:", 15.0f, COL_WHITE);
+        const char* opLabels[] = { "25% (Suave)", "50% (Medio)", "75% (Claro)", "100% (Sólido)" };
+        const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
+        float opChipW = (w - 36.0f - 30.0f) / 4.0f;
+        float opChipH = 36.0f;
+        float opChipY = y + 124.0f;
+        for (int i = 0; i < 4; ++i) {
+            float ox = x + 18.0f + float(i) * (opChipW + 10.0f);
+            bool active = (std::abs(m_buttonOpacity - opValues[i]) < 0.10f);
+            DrawRoundedRect(ox, opChipY, opChipW, opChipH, 8.0f,
+                            active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                            active ? COL_CYAN : COL_CHIP_BORDER);
+            DrawText(ox + opChipW * 0.5f, opChipY + 9.0f, opLabels[i], 13.5f,
+                     active ? COL_ACTIVE_TEXT : COL_WHITE, true);
+        }
 
         // Card 2: Mando Gamepad (Distribución / Keymapper)
         float c2Y = y + c1H + 12.0f;
@@ -1497,13 +1770,21 @@ private:
                 }
             }
 
-            // Aspect ratio chips & VSync
+            // Card 2: Pantalla Completa & Relación de aspecto
             float c2Y = contentY + 108.0f + 12.0f;
-            float aChipW = (contentW * 0.55f - 36.0f - 10.0f) / 3.0f;
-            float aChipY = c2Y + 50.0f;
-            if (py >= aChipY && py <= aChipY + chipH) {
+            float colW = (contentW - 36.0f - 16.0f) * 0.5f;
+            float fsBtnY = c2Y + 54.0f;
+            if (py >= fsBtnY && py <= fsBtnY + chipH) {
+                // Click on "Activar pantalla completa"
+                if (px >= x + 18.0f && px <= x + 18.0f + colW) {
+                    ToggleFullscreen();
+                    return;
+                }
+                // Click on Aspect ratio chips
+                float rightColX = x + 18.0f + colW + 16.0f;
+                float aChipW = (colW - 10.0f) / 3.0f;
                 for (int i = 0; i < 3; ++i) {
-                    float ax = x + 18.0f + float(i) * (aChipW + 5.0f);
+                    float ax = rightColX + float(i) * (aChipW + 5.0f);
                     if (px >= ax && px <= ax + aChipW) {
                         m_aspectIndex = i;
                         ApplyAspectRatio(m_aspectIndex);
@@ -1511,11 +1792,34 @@ private:
                         return;
                     }
                 }
+            }
 
-                // VSync toggle
-                float vsyncX = x + contentW * 0.58f;
-                float vChipW = (contentW * 0.42f - 36.0f);
-                if (px >= vsyncX && px <= vsyncX + vChipW) {
+            // Card 3: FPS Limit (30, 60, 90, 120) & V-Sync / HUD
+            float c3Y = c2Y + 114.0f + 12.0f;
+            float fpsColW = (contentW - 36.0f - 16.0f) * 0.52f;
+            float fChipY = c3Y + 54.0f;
+            if (py >= fChipY && py <= fChipY + chipH) {
+                float fChipW = (fpsColW - 15.0f) / 4.0f;
+                for (int i = 0; i < 4; ++i) {
+                    float fx = x + 18.0f + float(i) * (fChipW + 5.0f);
+                    if (px >= fx && px <= fx + fChipW) {
+                        if (IsOnlineCity()) {
+                            // Locked to 30 FPS in Online City
+                            return;
+                        }
+                        const int fpsValues[] = { 30, 60, 90, 120 };
+                        m_fpsLimit = fpsValues[i];
+                        MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
+                        SaveSettings();
+                        return;
+                    }
+                }
+
+                float syncColX = x + 18.0f + fpsColW + 16.0f;
+                float syncColW = (contentW - 36.0f - 16.0f) * 0.48f;
+                float sChipW = (syncColW - 10.0f) * 0.5f;
+                // VSync click
+                if (px >= syncColX && px <= syncColX + sChipW) {
                     m_vsync = !m_vsync;
                     if (!m_vsync && m_fpsLimit == 60) {
                         m_fpsLimit = 120;
@@ -1525,30 +1829,26 @@ private:
                     SaveSettings();
                     return;
                 }
-            }
-
-            // Card 3: FPS Limit chips & FPS Counter
-            float c3Y = c2Y + 108.0f + 12.0f;
-            float fChipW = (contentW * 0.55f - 36.0f - 15.0f) / 4.0f;
-            float fChipY = c3Y + 50.0f;
-            if (py >= fChipY && py <= fChipY + chipH) {
-                for (int i = 0; i < 4; ++i) {
-                    float fx = x + 18.0f + float(i) * (fChipW + 5.0f);
-                    if (px >= fx && px <= fx + fChipW) {
-                        const int fpsValues[] = { 30, 60, 90, 120 };
-                        m_fpsLimit = fpsValues[i];
-                        MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
-                        SaveSettings();
-                        return;
-                    }
-                }
-
-                // FPS Counter toggle
-                float hudX = x + contentW * 0.58f;
-                float hudChipW = (contentW * 0.42f - 36.0f);
-                if (px >= hudX && px <= hudX + hudChipW) {
+                // HUD FPS click
+                float hudX = syncColX + sChipW + 10.0f;
+                if (px >= hudX && px <= hudX + sChipW) {
                     m_showFpsHud = !m_showFpsHud;
                     SaveSettings();
+                    return;
+                }
+            }
+
+            // Card 4: HD Textures click
+            float c4Y = c3Y + 114.0f + 12.0f;
+            float tBtnW = (contentW - 36.0f - 15.0f) * 0.50f;
+            float tBtnY = c4Y + 54.0f;
+            if (py >= tBtnY && py <= tBtnY + chipH) {
+                if (px >= x + 18.0f && px <= x + 18.0f + tBtnW) {
+                    bool cur = aurora::gfx::texture_replacement::is_enabled();
+                    aurora::gfx::texture_replacement::set_enabled(!cur);
+                    return;
+                } else if (px >= x + 18.0f + tBtnW + 15.0f && px <= x + 18.0f + tBtnW * 2.0f + 15.0f) {
+                    aurora::gfx::texture_replacement::reload();
                     return;
                 }
             }
@@ -1600,11 +1900,11 @@ private:
                 }
             }
         } else if (m_menuTab == 3) { // Controles
-            // Card 1: Touch Visibility
-            float c1H = 116.0f;
+            // Card 1: Touch Visibility & Opacity
+            float c1H = 176.0f;
             float tvChipW = (contentW - 36.0f - 15.0f) / 2.0f;
-            float tvChipH = 42.0f;
-            float tvChipY = contentY + 58.0f;
+            float tvChipH = 38.0f;
+            float tvChipY = contentY + 54.0f;
 
             float tv1X = x + 18.0f;
             float tv2X = tv1X + tvChipW + 15.0f;
@@ -1617,6 +1917,22 @@ private:
                     m_touchVisible = false;
                     SaveLayoutConfig();
                     return;
+                }
+            }
+
+            // Opacity chips
+            float opChipW = (contentW - 36.0f - 30.0f) / 4.0f;
+            float opChipH = 36.0f;
+            float opChipY = contentY + 124.0f;
+            const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
+            if (py >= opChipY && py <= opChipY + opChipH) {
+                for (int i = 0; i < 4; ++i) {
+                    float ox = x + 18.0f + float(i) * (opChipW + 10.0f);
+                    if (px >= ox && px <= ox + opChipW) {
+                        m_buttonOpacity = opValues[i];
+                        SaveLayoutConfig();
+                        return;
+                    }
                 }
             }
 
@@ -1831,7 +2147,9 @@ private:
         else if (idx == 2) aurora_set_native_target_aspect(1); // AURORA_NATIVE_TARGET_FILL (Estirar)
 
         SetWidescreenSetting(idx != 1);
+#if defined(__cpp_exceptions)
         try {
+#endif
             if (Memory::Contains(0x80797F68, 4) && Memory::Contains(0x8065B4C8, 4)) {
                 uint32_t aspectVal = Memory::Read32(idx != 1 ? 0x80797F68 : 0x80797F70);
                 if (aspectVal != 0) {
@@ -1839,7 +2157,9 @@ private:
                     Memory::Write8(0x8065B4D5, idx != 1 ? 1 : 0);
                 }
             }
+#if defined(__cpp_exceptions)
         } catch (...) {}
+#endif
     }
 
     void LoadSettings() {
@@ -1848,8 +2168,10 @@ private:
         std::string gfxPath = dir + "/MH3UI.graphics";
 
         std::ifstream in(gfxPath);
-        int msaa = 1, vsync = 1, resIdx = 0, fpsLimit = 60, aspect = 1, showFps = 1;
+        int msaa = 1, vsync = 1, resIdx = 0, fpsLimit = 60, aspect = 0, showFps = 1, fullscreen = 0;
         if (in >> msaa >> vsync >> resIdx >> fpsLimit >> aspect >> showFps) {
+            in >> fullscreen;
+            m_fullscreen = (fullscreen != 0);
             m_vsync = (vsync != 0);
             m_resolutionIndex = std::clamp(resIdx, 0, 5);
             m_aspectIndex = std::clamp(aspect, 0, 2);
@@ -1865,10 +2187,15 @@ private:
             m_aspectIndex = 0;      // 0: 16:9 Panorámica by default!
             m_fpsLimit = 60;
             m_showFpsHud = true;
+            m_fullscreen = false;
         }
 
         ApplyResolutionScale(m_resolutionIndex);
-        ApplyAspectRatio(m_aspectIndex);
+        if (m_fullscreen) {
+            ApplyFullscreen(true);
+        } else {
+            ApplyAspectRatio(m_aspectIndex);
+        }
         MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
         aurora_enable_vsync(m_vsync);
 
@@ -1902,7 +2229,8 @@ private:
         std::ofstream out(gfxPath, std::ios::trunc);
         if (out) {
             out << "1 " << (m_vsync ? 1 : 0) << ' ' << m_resolutionIndex << ' '
-                << m_fpsLimit << ' ' << m_aspectIndex << ' ' << (m_showFpsHud ? 1 : 0) << '\n';
+                << m_fpsLimit << ' ' << m_aspectIndex << ' ' << (m_showFpsHud ? 1 : 0) << ' '
+                << (m_fullscreen ? 1 : 0) << '\n';
         }
     }
 
@@ -1928,6 +2256,7 @@ private:
 
         out << "VERSION 1\n";
         out << "TOUCH_VISIBLE " << (m_touchVisible ? 1 : 0) << '\n';
+        out << "OPACITY " << m_buttonOpacity << '\n';
         out << "MACRO1 " << (m_macro1Enabled ? 1 : 0) << '\n';
         out << "MACRO2 " << (m_macro2Enabled ? 1 : 0) << '\n';
         out << "MACRO3 " << (m_macro3Enabled ? 1 : 0) << '\n';
@@ -1959,6 +2288,7 @@ private:
             std::string tag;
             if (!(iss >> tag)) continue;
             if (tag == "TOUCH_VISIBLE") { int v; iss >> v; m_touchVisible = (v != 0); }
+            else if (tag == "OPACITY") { iss >> m_buttonOpacity; m_buttonOpacity = std::clamp(m_buttonOpacity, 0.10f, 1.0f); }
             else if (tag == "MACRO1") { int v; iss >> v; m_macro1Enabled = (v != 0); }
             else if (tag == "MACRO2") { int v; iss >> v; m_macro2Enabled = (v != 0); }
             else if (tag == "MACRO3") { int v; iss >> v; m_macro3Enabled = (v != 0); }
@@ -2105,10 +2435,12 @@ private:
     int m_menuTab = 0;
     int m_resolutionIndex = 0; // 0: Wii Original (1x)
     int m_aspectIndex = 1;     // 16:9 Panorámica
+    bool m_fullscreen = false;
     bool m_vsync = true;
     int m_fpsLimit = 60;
     bool m_showFpsHud = true;
     bool m_touchVisible = true;
+    float m_buttonOpacity = 1.0f;
     int m_langChoice = 0;      // 0: Español
     double m_liveFps = 60.0;
     std::string m_saveStatusMsg = "Listo para exportar o importar partidas guardadas.";
@@ -2173,6 +2505,32 @@ void TouchControls_HandleSdlEvent(const void* sdlEvent) {
     const SDL_Event* event = reinterpret_cast<const SDL_Event*>(sdlEvent);
 
     switch (event->type) {
+    case SDL_EVENT_KEY_DOWN: {
+        if (event->key.key == SDLK_F1) {
+            g_touchSettingsEngine.ToggleMenu();
+        } else if (event->key.key == SDLK_ESCAPE) {
+            if (g_touchSettingsEngine.IsMenuOpen()) {
+                g_touchSettingsEngine.SetMenuOpen(false);
+            }
+        } else if (event->key.key == SDLK_F11 ||
+                   ((event->key.mod & SDL_KMOD_ALT) && (event->key.key == SDLK_RETURN || event->key.key == SDLK_KP_ENTER))) {
+            g_touchSettingsEngine.ToggleFullscreen();
+        }
+        break;
+    }
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        if (event->button.button == SDL_BUTTON_LEFT) {
+            g_touchSettingsEngine.HandleMouseDown(event->button.x, event->button.y);
+        }
+        break;
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+        if (event->button.button == SDL_BUTTON_LEFT) {
+            g_touchSettingsEngine.HandleMouseUp(event->button.x, event->button.y);
+        }
+        break;
+    case SDL_EVENT_MOUSE_MOTION:
+        g_touchSettingsEngine.HandleMouseMove(event->motion.x, event->motion.y);
+        break;
     case SDL_EVENT_FINGER_DOWN:
         g_touchSettingsEngine.HandleTouchDown(event->tfinger.fingerID, event->tfinger.x, event->tfinger.y);
         break;
@@ -2200,6 +2558,18 @@ void TouchControls_UpdateSample(uint16_t* buttons, int16_t* leftX, int16_t* left
 
 void TouchControls_RenderGL(int windowWidth, int windowHeight) {
     g_touchSettingsEngine.RenderGL(windowWidth, windowHeight);
+}
+
+bool TouchControls_IsMenuOpen(void) {
+    return g_touchSettingsEngine.IsMenuOpen();
+}
+
+void TouchControls_ToggleMenu(void) {
+    g_touchSettingsEngine.ToggleMenu();
+}
+
+void TouchControls_SetMenuOpen(bool open) {
+    g_touchSettingsEngine.SetMenuOpen(open);
 }
 
 } // extern "C"

@@ -301,6 +301,15 @@ ClassicControllerSample ReadLiveController() {
 
 #if !defined(__ANDROID__)
     if (focusedWindow) {
+        if (TouchControls_IsMenuOpen()) {
+            if (SDL_GetWindowRelativeMouseMode(focusedWindow)) {
+                SDL_SetWindowRelativeMouseMode(focusedWindow, false);
+            }
+            SDL_ShowCursor();
+            haveFallbackMousePosition = false;
+            return sample;
+        }
+
         if (relativeModeWindow != focusedWindow) {
             relativeModeWindow = focusedWindow;
             relativeModeUnavailable = false;
