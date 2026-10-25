@@ -124,8 +124,10 @@ void UpdateFrame(GuestCall& game, uint32_t self, uint32_t r2, uint32_t r13) {
 uint32_t GetResult(GuestCall& game, uint32_t self, uint32_t result, uint32_t index) {
     FoldPointer(self);
 
-    if (int32_t(index) > int32_t(Memory::Read32(self + kCount)) - 1) [[unlikely]]
-        Panic("Failed assertion idx < count", 1298, index);
+    if (int32_t(index) > int32_t(Memory::Read32(self + kCount)) - 1) [[unlikely]] {
+        MemoryInline::FlatWrite32(result, 0);
+        return result;
+    }
     FoldPointer(result);
     const uint32_t binding = MemoryInline::FlatRead16(Memory::Read32(self + kBindings) + 2 * index);
 
@@ -204,8 +206,10 @@ uint32_t AnmObjChrResResultAt(GuestCall& game, uint32_t anim, uint32_t result, u
         Panic("Floating Point Value Error frame", 1050, Bits(frame));
     FoldPointer(result);
 
-    if (int32_t(index) > int32_t(Memory::Read32(anim + kCount)) - 1) [[unlikely]]
-        Panic("Failed assertion idx < count", 1298, index);
+    if (int32_t(index) > int32_t(Memory::Read32(anim + kCount)) - 1) [[unlikely]] {
+        MemoryInline::FlatWrite32(result, 0);
+        return result;
+    }
     const uint32_t binding = MemoryInline::FlatRead16(Memory::Read32(anim + kBindings) + 2 * index);
 
     if (binding & 0xC000) {

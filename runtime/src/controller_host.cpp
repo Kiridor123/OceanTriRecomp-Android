@@ -1,5 +1,6 @@
 #include "controller_host.h"
 #include "touch_controls.h"
+#include "android_keyboard.h"
 #include "mh3_mouse_look_sensitivity.h"
 #include "fatal.h"
 #include "dev_options.h"
@@ -349,7 +350,7 @@ ClassicControllerSample ReadLiveController() {
 
     const bool* keys = SDL_GetKeyboardState(nullptr);
 
-    if (focusedWindow) {
+    if (focusedWindow && !AndroidKeyboard_IsActive()) {
         static const struct {
             SDL_Scancode key;
             uint16_t button;

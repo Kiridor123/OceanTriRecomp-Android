@@ -1,4 +1,5 @@
 #include "touch_controls.h"
+#include "android_keyboard.h"
 #include "droid_sans_atlas.h"
 #include "language.h"
 #include "save_manager.h"
@@ -8,6 +9,7 @@
 #include "net/local_server.h"
 #include "net/lan_beacon.h"
 #include "recomp_mod_loader.h"
+#include "efb_host.h"
 
 #include <SDL3/SDL.h>
 #include <GLES3/gl3.h>
@@ -26,6 +28,8 @@
 
 #if defined(__ANDROID__)
 #include <android/log.h>
+#include <SDL3/SDL_system.h>
+#include <jni.h>
 #define LOG_TAG "MH3_TOUCH"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -38,10 +42,14 @@
 extern void QueueTouchCameraDelta(float dx, float dy);
 extern "C" void VISetFrameBufferScale(float scale);
 extern void aurora_enable_vsync(bool enabled);
+extern "C" void aurora_set_skip_unready_pipelines(bool enabled);
+extern "C" bool aurora_get_skip_unready_pipelines();
 extern "C" void aurora_set_native_target_aspect(int aspect);
 extern "C" void aurora_set_fullscreen(bool fullscreen);
 extern "C" bool aurora_get_fullscreen(void);
 extern "C" struct SDL_Window* aurora_get_window(void);
+extern "C" void aurora_set_bloom_level(int level);
+extern "C" int aurora_get_bloom_level(void);
 
 extern "C" {
 int Gamepad_GetLayout();
@@ -172,27 +180,7 @@ public:
     void ApplyFullscreen(bool enabled) {
         m_fullscreen = enabled;
         aurora_set_fullscreen(enabled);
-        if (enabled) {
-            // Fix de resolución a pantalla completa: relación 16:9 estricta en Aurora y en la memoria del juego
-            aurora_set_native_target_aspect(2); // AURORA_NATIVE_TARGET_ASPECT_16_9
-            m_aspectIndex = 0; // 16:9 Panorámica
-            SetWidescreenSetting(true);
-#if defined(__cpp_exceptions)
-            try {
-#endif
-                if (Memory::Contains(0x80797F68, 4) && Memory::Contains(0x8065B4C8, 4)) {
-                    uint32_t aspectVal = Memory::Read32(0x80797F68);
-                    if (aspectVal != 0) {
-                        Memory::Write32(0x8065B4C8, aspectVal);
-                        Memory::Write8(0x8065B4D5, 1);
-                    }
-                }
-#if defined(__cpp_exceptions)
-            } catch (...) {}
-#endif
-        } else {
-            ApplyAspectRatio(m_aspectIndex);
-        }
+        ApplyAspectRatio(m_aspectIndex);
         SaveSettings();
     }
 
@@ -644,29 +632,20 @@ public:
             }
         }
 
-        static bool s_aspectMemoryPatched = false;
-        if (!s_aspectMemoryPatched) {
+        // Enforce guest camera aspect ratio matches user setting
 #if defined(__cpp_exceptions)
-            try {
+        try {
 #endif
-                if (Memory::Contains(0x80797F68, 4) && Memory::Contains(0x8065B4C8, 4)) {
-                    uint32_t wideVal = Memory::Read32(0x80797F68);
-                    if (wideVal != 0) {
-                        if (m_fullscreen || m_aspectIndex == 0) {
-                            Memory::Write32(0x8065B4C8, wideVal);
-                            Memory::Write8(0x8065B4D5, 1);
-                        } else if (m_aspectIndex == 1) {
-                            uint32_t stdVal = Memory::Read32(0x80797F70);
-                            if (stdVal != 0) Memory::Write32(0x8065B4C8, stdVal);
-                            Memory::Write8(0x8065B4D5, 0);
-                        }
-                        s_aspectMemoryPatched = true;
-                    }
+            if (Memory::Contains(0x8065B4C8, 4)) {
+                float curAspect = Memory::ReadFloat32(0x8065B4C8);
+                float desiredAspect = GetTargetAspect(m_aspectIndex);
+                if (std::abs(curAspect - desiredAspect) > 0.005f) {
+                    ApplyGuestAspect(m_aspectIndex);
                 }
+            }
 #if defined(__cpp_exceptions)
-            } catch (...) {}
+        } catch (...) {}
 #endif
-        }
 
         InitGL();
         if (!m_shaderProgram) return;
@@ -723,6 +702,8 @@ public:
             RenderEditMode();
         } else if (m_menuOpen) {
             RenderSettingsMenu();
+        } else if (AndroidKeyboard_IsImeShowing()) {
+            RenderFpsHud();
         } else {
             if (m_touchVisible) {
                 RenderGameplayOverlay();
@@ -1177,6 +1158,10 @@ private:
         RenderFpsHud();
     }
 
+    inline const char* Tr(const char* es, const char* en) const {
+        return (m_menuLang == 1) ? en : es;
+    }
+
     void RenderSettingsMenu() {
         // Semi-transparent Scrim
         DrawRectSolid(0, 0, float(m_width), float(m_height), { 0.0f, 0.0f, 0.0f, 0.72f });
@@ -1201,14 +1186,25 @@ private:
         }
 
         // Header Title & Subtitle (Larger readable fonts)
-        const char* titles[] = { "Gráficos", "Sistema", "Guardados", "Controles", "Online" };
-        const char* subtitles[] = {
+        const char* titles_es[] = { "Gráficos", "Sistema", "Guardados", "Controles", "Online" };
+        const char* titles_en[] = { "Graphics", "System", "Saves", "Controls", "Online" };
+        const char* const* titles = (m_menuLang == 1) ? titles_en : titles_es;
+
+        const char* subtitles_es[] = {
             "Pantalla, resolución y presentación",
-            "Idioma, guardados y reinicio",
+            "Idioma del menú, juego y reinicio",
             "Gestor de partidas Dolphin / Wii NAND",
             "Visibilidad en pantalla, mando gamepad y macros",
             "Multijugador local, ZeroTier y servidores comunitarios"
         };
+        const char* subtitles_en[] = {
+            "Display, resolution and presentation",
+            "Menu language, game language and restart",
+            "Dolphin / Wii NAND save file manager",
+            "On-screen controls, gamepad and macros",
+            "Multiplayer, ZeroTier and community servers"
+        };
+        const char* const* subtitles = (m_menuLang == 1) ? subtitles_en : subtitles_es;
         DrawText(padX + 24.0f, padY + 16.0f, titles[m_menuTab], 28.0f, COL_WHITE);
         DrawText(padX + 24.0f, padY + 48.0f, subtitles[m_menuTab], 14.5f, COL_MUTED);
 
@@ -1258,81 +1254,88 @@ private:
 
     void RenderTabGraphics(float x, float y, float w) {
         // Card 1: Internal Resolution
-        float c1H = 108.0f;
+        float c1H = 96.0f;
         DrawRoundedRect(x, y, w, c1H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, y + 14.0f, "Resolución interna", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, y + 36.0f, "Wii Original (1x por defecto) | Mayor resolución = mayor nitidez y detalle gráfico", 13.5f, COL_MUTED);
+        DrawText(x + 18.0f, y + 14.0f, Tr("Resolución interna", "Internal Resolution"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, y + 33.0f, Tr("Wii Original (1x por defecto) | Mayor resolución = mayor nitidez y detalle gráfico",
+                                         "Original Wii (1x default) | Higher resolution = crisper image & visual detail"), 12.5f, COL_MUTED);
 
-        const char* resLabels[] = { "Wii Original", "720p", "1080p", "1440p", "4K (2160p)", "Nativa" };
+        const char* resLabels_es[] = { "Wii Original", "720p", "1080p", "1440p", "4K (2160p)", "Nativa" };
+        const char* resLabels_en[] = { "Original Wii", "720p", "1080p", "1440p", "4K (2160p)", "Native" };
+        const char* const* resLabels = (m_menuLang == 1) ? resLabels_en : resLabels_es;
         float chipW = (w - 36.0f - 25.0f) / 6.0f;
-        float chipH = 42.0f;
-        float chipY = y + 54.0f;
+        float chipH = 38.0f;
+        float chipY = y + 46.0f;
         for (int i = 0; i < 6; ++i) {
             float cx = x + 18.0f + float(i) * (chipW + 5.0f);
             bool active = (m_resolutionIndex == i);
             DrawRoundedRect(cx, chipY, chipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
-            DrawText(cx + chipW * 0.5f, chipY + 12.0f, resLabels[i], 14.0f,
+            DrawText(cx + chipW * 0.5f, chipY + 11.0f, resLabels[i], 13.5f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
         // Card 2: Relación de aspecto
-        float c2Y = y + c1H + 12.0f;
-        float c2H = 108.0f;
+        float c2Y = y + c1H + 10.0f;
+        float c2H = 96.0f;
         DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
-        DrawText(x + 18.0f, c2Y + 14.0f, "Relación de aspecto", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, c2Y + 36.0f, "Ajuste de presentación geométrica (Panorámica 16:9 recomendada)", 13.0f, COL_MUTED);
+        DrawText(x + 18.0f, c2Y + 14.0f, Tr("Relación de aspecto", "Aspect Ratio"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, c2Y + 33.0f, Tr("Panorámica 16:9, Pantalla Completa adaptable o 4:3 Clásica",
+                                            "16:9 Widescreen, Adaptive Full Screen or 4:3 Classic"), 12.0f, COL_MUTED);
 
-        const char* aspectLabels[] = { "16:9 Panorámica (Recomendado)", "4:3 Clásica", "Estirar Pantalla" };
+        const char* aspectLabels_es[] = { "16:9 Panorámica", "Pantalla Completa", "4:3 Clásica" };
+        const char* aspectLabels_en[] = { "16:9 Widescreen", "Full Screen", "4:3 Classic" };
+        const char* const* aspectLabels = (m_menuLang == 1) ? aspectLabels_en : aspectLabels_es;
         float aChipW = (w - 36.0f - 20.0f) / 3.0f;
-        float aChipY = c2Y + 54.0f;
+        float aChipY = c2Y + 46.0f;
         for (int i = 0; i < 3; ++i) {
             float ax = x + 18.0f + float(i) * (aChipW + 10.0f);
             bool active = (m_aspectIndex == i);
             DrawRoundedRect(ax, aChipY, aChipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
-            DrawText(ax + aChipW * 0.5f, aChipY + 12.0f, aspectLabels[i], 14.0f,
+            DrawText(ax + aChipW * 0.5f, aChipY + 11.0f, aspectLabels[i], 12.0f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
         // Card 3: Límite de fotogramas (FPS: 30, 60, 90, 120) & V-Sync / HUD
-        float c3Y = c2Y + c2H + 12.0f;
-        float c3H = 114.0f;
+        float c3Y = c2Y + c2H + 10.0f;
+        float c3H = 98.0f;
         DrawRoundedRect(x, c3Y, w, c3H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
         float fpsColW = (w - 36.0f - 16.0f) * 0.52f;
-        DrawText(x + 18.0f, c3Y + 14.0f, "Límite de fotogramas (FPS)", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, c3Y + 36.0f, "30, 60, 90 o 120 FPS (Ajusta la tasa a tu gusto)", 12.5f, COL_MUTED);
+        DrawText(x + 18.0f, c3Y + 14.0f, Tr("Límite de fotogramas (FPS)", "Framerate Limit (FPS)"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, c3Y + 33.0f, Tr("30, 60, 90 o 120 FPS (Ajusta la tasa a tu gusto)",
+                                            "30, 60, 90 or 120 FPS (Select target framerate)"), 12.0f, COL_MUTED);
 
         const char* fpsLabels[] = { "30 FPS", "60 FPS", "90 FPS", "120 FPS" };
         const int fpsValues[] = { 30, 60, 90, 120 };
         float fChipW = (fpsColW - 15.0f) / 4.0f;
-        float fChipY = c3Y + 54.0f;
+        float fChipY = c3Y + 48.0f;
         for (int i = 0; i < 4; ++i) {
             float fx = x + 18.0f + float(i) * (fChipW + 5.0f);
             bool active = (m_fpsLimit == fpsValues[i]);
             DrawRoundedRect(fx, fChipY, fChipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
-            DrawText(fx + fChipW * 0.5f, fChipY + 12.0f, fpsLabels[i], 14.5f,
+            DrawText(fx + fChipW * 0.5f, fChipY + 11.0f, fpsLabels[i], 13.5f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
-        // Right side: Sincronización y Estadísticas
+        // Right side: Sincronización y HUD
         float syncColX = x + 18.0f + fpsColW + 16.0f;
-        float syncColW = (w - 36.0f - 16.0f) * 0.48f;
-        DrawText(syncColX, c3Y + 14.0f, "Sincronización y Estadísticas", 19.0f, COL_WHITE);
-        DrawText(syncColX, c3Y + 36.0f, "V-Sync anti-tearing y contador HUD en pantalla", 12.5f, COL_MUTED);
+        float syncColW = (w - 36.0f - 16.0f) * 0.50f;
+        DrawText(syncColX, c3Y + 14.0f, Tr("Sincronización y HUD", "Sync & HUD"), 18.0f, COL_WHITE);
+        DrawText(syncColX, c3Y + 33.0f, Tr("V-Sync anti-tearing y monitor FPS en pantalla", "Anti-tearing V-Sync & on-screen FPS HUD"), 12.0f, COL_MUTED);
 
         float sChipW = (syncColW - 10.0f) * 0.5f;
         // VSync chip
         DrawRoundedRect(syncColX, fChipY, sChipW, chipH, 8.0f,
                         m_vsync ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_vsync ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(syncColX + sChipW * 0.5f, fChipY + 12.0f, m_vsync ? "V-Sync: ACTIVADO" : "V-Sync: DESACTIVADO", 13.0f,
+        DrawText(syncColX + sChipW * 0.5f, fChipY + 11.0f, m_vsync ? "V-Sync: ON" : "V-Sync: OFF", 13.5f,
                  m_vsync ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // HUD FPS chip
@@ -1340,85 +1343,139 @@ private:
         DrawRoundedRect(hudX, fChipY, sChipW, chipH, 8.0f,
                         m_showFpsHud ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_showFpsHud ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(hudX + sChipW * 0.5f, fChipY + 12.0f, m_showFpsHud ? "HUD FPS: VISIBLE" : "HUD FPS: OCULTO", 13.0f,
+        DrawText(hudX + sChipW * 0.5f, fChipY + 11.0f,
+                 m_showFpsHud ? Tr("HUD: VISIBLE", "HUD: VISIBLE") : Tr("HUD: OCULTO", "HUD: HIDDEN"), 13.5f,
                  m_showFpsHud ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Card 4: Reemplazo de Texturas HD (Dolphin Texture Pack)
-        float c4Y = c3Y + c3H + 12.0f;
-        float c4H = 108.0f;
+        float c4Y = c3Y + c3H + 10.0f;
+        float c4H = 96.0f;
         DrawRoundedRect(x, c4Y, w, c4H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
         bool texEnabled = aurora::gfx::texture_replacement::is_enabled();
         size_t texCount = aurora::gfx::texture_replacement::get_replacement_count();
         char texSub[140];
-        std::snprintf(texSub, sizeof(texSub), "Texturas cargadas: %zu | Carpeta: /storage/emulated/0/MH3/textures/ (RMHE08 o RMHP08)", texCount);
+        std::snprintf(texSub, sizeof(texSub),
+                      (m_menuLang == 1) ? "Loaded textures: %zu | Folder: /storage/emulated/0/MH3/textures/ (RMHE08 or RMHP08)"
+                                        : "Texturas cargadas: %zu | Carpeta: /storage/emulated/0/MH3/textures/ (RMHE08 o RMHP08)",
+                      texCount);
 
-        DrawText(x + 18.0f, c4Y + 14.0f, "Texturas HD personalizadas (Pack Dolphin)", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, c4Y + 36.0f, texSub, 13.0f, (texCount > 0) ? COL_CYAN : COL_MUTED);
+        DrawText(x + 18.0f, c4Y + 14.0f, Tr("Texturas HD personalizadas (Pack Dolphin)", "Custom HD Textures (Dolphin Pack)"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, c4Y + 33.0f, texSub, 12.5f, (texCount > 0) ? COL_CYAN : COL_MUTED);
 
         float tBtnW = (w - 36.0f - 15.0f) * 0.50f;
-        float tBtnY = c4Y + 54.0f;
+        float tBtnY = c4Y + 46.0f;
 
         // Toggle button
         DrawRoundedRect(x + 18.0f, tBtnY, tBtnW, chipH, 8.0f,
                         texEnabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         texEnabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(x + 18.0f + tBtnW * 0.5f, tBtnY + 12.0f,
-                 texEnabled ? "Texturas HD: ACTIVADAS" : "Texturas HD: DESACTIVADAS", 14.5f,
+        DrawText(x + 18.0f + tBtnW * 0.5f, tBtnY + 11.0f,
+                 texEnabled ? Tr("Texturas HD: ACTIVADAS", "HD Textures: ENABLED") : Tr("Texturas HD: DESACTIVADAS", "HD Textures: DISABLED"), 14.0f,
                  texEnabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Reload button
         float reloadX = x + 18.0f + tBtnW + 15.0f;
         DrawRoundedRect(reloadX, tBtnY, tBtnW, chipH, 8.0f,
                         { 0.12f, 0.35f, 0.45f, 0.90f }, { 0.25f, 0.75f, 0.95f, 1.0f });
-        DrawText(reloadX + tBtnW * 0.5f, tBtnY + 12.0f, "🔄 Recargar texturas", 14.5f, COL_WHITE, true);
+        DrawText(reloadX + tBtnW * 0.5f, tBtnY + 11.0f, Tr("🔄 Recargar texturas", "🔄 Reload Textures"), 14.0f, COL_WHITE, true);
+
+        // Card 5: Iluminación y Bloom (Resplandor solar)
+        float c5Y = c4Y + c4H + 10.0f;
+        float c5H = 96.0f;
+        DrawRoundedRect(x, c5Y, w, c5H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
+
+        DrawText(x + 18.0f, c5Y + 14.0f, Tr("Iluminación y Bloom (Resplandor solar)", "Lighting & Bloom (Sunlight Glare)"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, c5Y + 33.0f, Tr("Intensidad del resplandor de luz y sol estilo consola Wii (Dolphin)",
+                                            "Wii-style sunlight glow and atmospheric bloom intensity (Dolphin)"), 12.0f, COL_MUTED);
+
+        const char* bloomLabels_es[] = { "Desactivado", "Suave", "Original (Wii)", "Intenso" };
+        const char* bloomLabels_en[] = { "Disabled", "Soft", "Original (Wii)", "Intense" };
+        const char* const* bloomLabels = (m_menuLang == 1) ? bloomLabels_en : bloomLabels_es;
+        float bChipW = (w - 36.0f - 30.0f) / 4.0f;
+        float bChipY = c5Y + 46.0f;
+        for (int i = 0; i < 4; ++i) {
+            float bx = x + 18.0f + float(i) * (bChipW + 10.0f);
+            bool active = (m_bloomLevel == i);
+            DrawRoundedRect(bx, bChipY, bChipW, chipH, 8.0f,
+                            active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                            active ? COL_CYAN : COL_CHIP_BORDER);
+            DrawText(bx + bChipW * 0.5f, bChipY + 11.0f, bloomLabels[i], 13.5f,
+                     active ? COL_ACTIVE_TEXT : COL_WHITE, true);
+        }
     }
 
     void RenderTabSystem(float x, float y, float w) {
-        // Card 1: Game Language
-        float c1H = 130.0f;
+        // Card 1: Menu Language
+        float c1H = 96.0f;
         DrawRoundedRect(x, y, w, c1H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, y + 14.0f, "Idioma del juego", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, y + 36.0f, "Texto y menús del disco europeo. Requiere reiniciar para aplicar cambios.", 14.0f, COL_MUTED);
+        DrawText(x + 18.0f, y + 14.0f, Tr("Idioma del menú", "Menu Language"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, y + 33.0f, Tr("Idioma de la interfaz y opciones de la app (cambio inmediato).",
+                                         "In-app overlay and settings menu language (applies immediately)."), 12.5f, COL_MUTED);
+
+        const char* menuLangLabels[] = { "Español", "English" };
+        float menuChipW = (w - 36.0f - 15.0f) / 2.0f;
+        float chipH = 38.0f;
+        float menuChipY = y + 46.0f;
+        for (int i = 0; i < 2; ++i) {
+            float mx = x + 18.0f + float(i) * (menuChipW + 15.0f);
+            bool active = (m_menuLang == i);
+            DrawRoundedRect(mx, menuChipY, menuChipW, chipH, 8.0f,
+                            active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
+                            active ? COL_CYAN : COL_CHIP_BORDER);
+            DrawText(mx + menuChipW * 0.5f, menuChipY + 11.0f, menuLangLabels[i], 14.5f,
+                     active ? COL_ACTIVE_TEXT : COL_WHITE, true);
+        }
+
+        // Card 2: Game ROM Language
+        float c2Y = y + c1H + 10.0f;
+        float c2H = 120.0f;
+        DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
+        DrawText(x + 18.0f, c2Y + 14.0f, Tr("Idioma del juego (ROM)", "Game Language (ROM)"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, c2Y + 33.0f, Tr("Texto y menús del disco europeo. Requiere reiniciar para aplicar cambios.",
+                                            "In-game text and dialogues from European ROM. Requires restart to apply."), 12.5f, COL_MUTED);
 
         const char* langLabels[] = { "Español", "English", "Français", "Deutsch", "Italiano" };
         float chipW = (w - 36.0f - 20.0f) / 5.0f;
-        float chipH = 44.0f;
-        float chipY = y + 60.0f;
+        float chipY2 = c2Y + 52.0f;
         for (int i = 0; i < 5; ++i) {
             float lx = x + 18.0f + float(i) * (chipW + 5.0f);
             bool active = (m_langChoice == i);
-            DrawRoundedRect(lx, chipY, chipW, chipH, 8.0f,
+            DrawRoundedRect(lx, chipY2, chipW, chipH, 8.0f,
                             active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                             active ? COL_CYAN : COL_CHIP_BORDER);
-            DrawText(lx + chipW * 0.5f, chipY + 13.0f, langLabels[i], 15.5f,
+            DrawText(lx + chipW * 0.5f, chipY2 + 11.0f, langLabels[i], 14.0f,
                      active ? COL_ACTIVE_TEXT : COL_WHITE, true);
         }
 
         // Active Language status text
-        float statusY = y + c1H + 12.0f;
-        std::string statStr = std::string("Idioma seleccionado: ") + langLabels[std::clamp(m_langChoice, 0, 4)];
-        DrawText(x + 18.0f, statusY, statStr.c_str(), 14.5f, COL_MUTED);
+        float statusY = c2Y + c2H + 8.0f;
+        std::string statStr = std::string(Tr("Idioma del juego seleccionado: ", "Selected game language: ")) + langLabels[std::clamp(m_langChoice, 0, 4)];
+        DrawText(x + 18.0f, statusY, statStr.c_str(), 13.5f, COL_MUTED);
 
-        // Card 2: Restart Action Card
-        float c2Y = statusY + 28.0f;
-        float c2H = 88.0f;
-        DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, c2Y + 16.0f, "Reiniciar el juego", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, c2Y + 42.0f, "Aplica cambios de idioma y ajustes pendientes de inmediato.", 14.0f, COL_MUTED);
+        // Card 3: Restart Action Card
+        float c3Y = statusY + 24.0f;
+        float c3H = 84.0f;
+        DrawRoundedRect(x, c3Y, w, c3H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
+        DrawText(x + 18.0f, c3Y + 16.0f, Tr("Reiniciar el juego", "Restart Game"), 18.0f, COL_WHITE);
+        DrawText(x + 18.0f, c3Y + 40.0f, Tr("Aplica cambios de idioma del juego y ajustes pendientes de inmediato.",
+                                            "Applies game language changes and pending settings immediately."), 12.5f, COL_MUTED);
 
         float rBtnW = 200.0f;
         float rBtnX = x + w - rBtnW - 18.0f;
-        float rBtnY = c2Y + 22.0f;
+        float rBtnY = c3Y + 20.0f;
         DrawRoundedRect(rBtnX, rBtnY, rBtnW, 44.0f, 8.0f, { 0.15f, 0.50f, 0.65f, 0.95f }, COL_CYAN);
-        DrawText(rBtnX + rBtnW * 0.5f, rBtnY + 13.0f, "Reiniciar Ahora", 16.0f, COL_WHITE, true);
+        DrawText(rBtnX + rBtnW * 0.5f, rBtnY + 13.0f,
+                 m_restarting ? Tr("Reiniciando...", "Restarting...") : Tr("Reiniciar Ahora", "Restart Now"),
+                 16.0f, COL_WHITE, true);
     }
 
     void RenderTabSaves(float x, float y, float w) {
         float c1H = 224.0f;
         DrawRoundedRect(x, y, w, c1H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, y + 14.0f, "Gestor de Guardados (Dolphin / Wii NAND)", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, y + 38.0f, "Ubicación: /storage/emulated/0/MH3/nand/title/00010000/524d4850/data/nocopy", 13.5f, COL_MUTED);
+        DrawText(x + 18.0f, y + 14.0f, Tr("Gestor de Guardados (Dolphin / Wii NAND)", "Save File Manager (Dolphin / Wii NAND)"), 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, y + 38.0f, Tr("Ubicación: /storage/emulated/0/MH3/nand/title/00010000/524d4850/data/nocopy",
+                                         "Location: /storage/emulated/0/MH3/nand/title/00010000/524d4850/data/nocopy"), 13.5f, COL_MUTED);
 
         // Action Buttons
         float btnW = (w - 36.0f - 20.0f) / 3.0f;
@@ -1428,23 +1485,23 @@ private:
         // 1. Export
         float b1X = x + 18.0f;
         DrawRoundedRect(b1X, btnY, btnW, btnH, 8.0f, { 0.08f, 0.35f, 0.45f, 0.95f }, COL_CYAN);
-        DrawText(b1X + btnW * 0.5f, btnY + 15.0f, "📁 Exportar a Descargas", 15.0f, COL_WHITE, true);
+        DrawText(b1X + btnW * 0.5f, btnY + 15.0f, Tr("📁 Exportar a Descargas", "📁 Export to Downloads"), 15.0f, COL_WHITE, true);
 
         // 2. Import
         float b2X = b1X + btnW + 10.0f;
         DrawRoundedRect(b2X, btnY, btnW, btnH, 8.0f, { 0.12f, 0.45f, 0.35f, 0.95f }, { 0.30f, 0.85f, 0.60f, 1.0f });
-        DrawText(b2X + btnW * 0.5f, btnY + 15.0f, "📥 Importar de Dolphin", 15.0f, COL_WHITE, true);
+        DrawText(b2X + btnW * 0.5f, btnY + 15.0f, Tr("📥 Importar de Dolphin", "📥 Import from Dolphin"), 15.0f, COL_WHITE, true);
 
         // 3. Quick Backup
         float b3X = b2X + btnW + 10.0f;
         DrawRoundedRect(b3X, btnY, btnW, btnH, 8.0f, { 0.35f, 0.30f, 0.15f, 0.95f }, { 0.90f, 0.75f, 0.30f, 1.0f });
-        DrawText(b3X + btnW * 0.5f, btnY + 15.0f, "💾 Crear Respaldo", 15.0f, COL_WHITE, true);
+        DrawText(b3X + btnW * 0.5f, btnY + 15.0f, Tr("💾 Crear Respaldo", "💾 Quick Backup"), 15.0f, COL_WHITE, true);
 
         // Status Banner
         float bannerY = y + 138.0f;
         float bannerH = 68.0f;
         DrawRoundedRect(x + 18.0f, bannerY, w - 36.0f, bannerH, 8.0f, { 0.02f, 0.08f, 0.12f, 0.90f }, COL_PANEL_BORDER);
-        DrawText(x + 30.0f, bannerY + 12.0f, "Estado:", 14.0f, COL_CYAN);
+        DrawText(x + 30.0f, bannerY + 12.0f, Tr("Estado:", "Status:"), 14.0f, COL_CYAN);
         DrawText(x + 30.0f, bannerY + 36.0f, m_saveStatusMsg.c_str(), 14.0f, COL_WHITE);
     }
 
@@ -1452,8 +1509,9 @@ private:
         // Card 1: Visibilidad y Opacidad de controles táctiles en pantalla
         float c1H = 176.0f;
         DrawRoundedRect(x, y, w, c1H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, y + 14.0f, "Controles táctiles en pantalla", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, y + 34.0f, "Oculta los botones virtuales si juegas con mando o ajusta su transparencia.", 13.0f, COL_MUTED);
+        DrawText(x + 18.0f, y + 14.0f, Tr("Controles táctiles en pantalla", "On-Screen Touch Controls"), 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, y + 34.0f, Tr("Oculta los botones virtuales si juegas con mando o ajusta su transparencia.",
+                                         "Hide virtual on-screen buttons when playing with a gamepad or adjust opacity."), 13.0f, COL_MUTED);
 
         float tvChipW = (w - 36.0f - 15.0f) / 2.0f;
         float tvChipH = 38.0f;
@@ -1464,7 +1522,7 @@ private:
         DrawRoundedRect(tv1X, tvChipY, tvChipW, tvChipH, 8.0f,
                         m_touchVisible ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_touchVisible ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(tv1X + tvChipW * 0.5f, tvChipY + 10.0f, "Botones táctiles: VISIBLES", 14.5f,
+        DrawText(tv1X + tvChipW * 0.5f, tvChipY + 10.0f, Tr("Botones táctiles: VISIBLES", "Touch buttons: VISIBLE"), 14.5f,
                  m_touchVisible ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Hidden chip
@@ -1472,12 +1530,12 @@ private:
         DrawRoundedRect(tv2X, tvChipY, tvChipW, tvChipH, 8.0f,
                         !m_touchVisible ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         !m_touchVisible ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(tv2X + tvChipW * 0.5f, tvChipY + 10.0f, "Botones táctiles: OCULTOS (Solo Mando)", 14.5f,
+        DrawText(tv2X + tvChipW * 0.5f, tvChipY + 10.0f, Tr("Botones táctiles: OCULTOS (Solo Mando)", "Touch buttons: HIDDEN (Gamepad only)"), 14.5f,
                  !m_touchVisible ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Row 2: Opacity selector (left) & Gear auto-hide (right)
         float opAreaW = (w - 36.0f) * 0.54f;
-        DrawText(x + 18.0f, y + 102.0f, "Opacidad de botones:", 14.5f, COL_WHITE);
+        DrawText(x + 18.0f, y + 102.0f, Tr("Opacidad de botones:", "Button opacity:"), 14.5f, COL_WHITE);
         const char* opLabels[] = { "25%", "50%", "75%", "100%" };
         const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
         float opChipW = (opAreaW - 30.0f) / 4.0f;
@@ -1496,8 +1554,10 @@ private:
         // Right side: Auto-ocultar rueda ⚙
         float ahX = x + 18.0f + opAreaW + 16.0f;
         float ahAreaW = (w - 36.0f) - opAreaW - 16.0f;
-        DrawText(ahX, y + 102.0f, "Auto-ocultar rueda ⚙:", 14.5f, COL_WHITE);
-        const char* ahLabels[] = { "Siempre", "3 s", "5 s", "10 s" };
+        DrawText(ahX, y + 102.0f, Tr("Auto-ocultar rueda ⚙:", "Auto-hide gear ⚙:"), 14.5f, COL_WHITE);
+        const char* ahLabels_es[] = { "Nunca", "3 s", "5 s", "10 s" };
+        const char* ahLabels_en[] = { "Never", "3 s", "5 s", "10 s" };
+        const char* const* ahLabels = (m_menuLang == 1) ? ahLabels_en : ahLabels_es;
         const int ahValues[] = { 0, 3, 5, 10 };
         float ahChipW = (ahAreaW - 24.0f) / 4.0f;
         for (int i = 0; i < 4; ++i) {
@@ -1514,8 +1574,9 @@ private:
         float c2Y = y + c1H + 12.0f;
         float c2H = 116.0f;
         DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, c2Y + 14.0f, "Distribución de botones del Mando (Gamepad)", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, c2Y + 36.0f, "Para mandos Bluetooth/USB (Xbox, PlayStation, Nintendo o genéricos):", 13.5f, COL_MUTED);
+        DrawText(x + 18.0f, c2Y + 14.0f, Tr("Distribución de botones del Mando (Gamepad)", "Gamepad Button Layout"), 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, c2Y + 36.0f, Tr("Para mandos Bluetooth/USB (Xbox, PlayStation, Nintendo o genéricos):",
+                                            "For Bluetooth/USB gamepads (Xbox, PlayStation, Nintendo or generic):"), 13.5f, COL_MUTED);
 
         const int gpLayout = Gamepad_GetLayout();
         const bool swapTrig = Gamepad_GetSwapTriggers();
@@ -1529,7 +1590,7 @@ private:
         DrawRoundedRect(l1X, gpChipY, lChipW, gpChipH, 8.0f,
                         (gpLayout == 0) ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         (gpLayout == 0) ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(l1X + lChipW * 0.5f, gpChipY + 12.0f, "Estilo Nintendo (A=Der, B=Abajo)", 13.5f,
+        DrawText(l1X + lChipW * 0.5f, gpChipY + 12.0f, Tr("Estilo Nintendo (A=Der, B=Abajo)", "Nintendo Style (A=Right, B=Down)"), 13.5f,
                  (gpLayout == 0) ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Xbox/Generic layout
@@ -1537,7 +1598,7 @@ private:
         DrawRoundedRect(l2X, gpChipY, lChipW, gpChipH, 8.0f,
                         (gpLayout == 1) ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         (gpLayout == 1) ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(l2X + lChipW * 0.5f, gpChipY + 12.0f, "Estilo Xbox / Genérico (A=Abajo, B=Der)", 13.5f,
+        DrawText(l2X + lChipW * 0.5f, gpChipY + 12.0f, Tr("Estilo Xbox / Genérico (A=Abajo, B=Der)", "Xbox / Generic Style (A=Down, B=Right)"), 13.5f,
                  (gpLayout == 1) ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Swap triggers
@@ -1547,15 +1608,16 @@ private:
                         swapTrig ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         swapTrig ? COL_CYAN : COL_CHIP_BORDER);
         DrawText(trigX + trigW * 0.5f, gpChipY + 12.0f,
-                 swapTrig ? "Gatillos: INVERTIDOS" : "Gatillos: NORMALES", 14.5f,
+                 swapTrig ? Tr("Gatillos: INVERTIDOS", "Triggers: SWAPPED") : Tr("Gatillos: NORMALES", "Triggers: DEFAULT"), 14.5f,
                  swapTrig ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Card 3: Macros y Personalización
         float c3Y = c2Y + c2H + 12.0f;
         float c3H = 154.0f;
         DrawRoundedRect(x, c3Y, w, c3H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, c3Y + 14.0f, "Botones especiales (Macros) y Editor de pantalla", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, c3Y + 36.0f, "Activa combinaciones de botones simultáneos para armas o reposiciona controles:", 13.5f, COL_MUTED);
+        DrawText(x + 18.0f, c3Y + 14.0f, Tr("Botones especiales (Macros) y Editor de pantalla", "Special Macro Buttons & Layout Editor"), 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, c3Y + 36.0f, Tr("Activa combinaciones de botones simultáneos para armas o reposiciona controles:",
+                                            "Enable simultaneous button combinations for weapons or customize layout:"), 13.5f, COL_MUTED);
 
         float mChipW = (w - 36.0f - 30.0f) / 4.0f;
         float mChipH = 40.0f;
@@ -1566,7 +1628,7 @@ private:
         DrawRoundedRect(m1X, mChipY, mChipW, mChipH, 8.0f,
                         m_macro1Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_macro1Enabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(m1X + mChipW * 0.5f, mChipY + 11.0f, m_macro1Enabled ? "M1 (A+X): SÍ" : "M1 (A+X): NO", 13.5f,
+        DrawText(m1X + mChipW * 0.5f, mChipY + 11.0f, m_macro1Enabled ? Tr("M1 (A+X): SÍ", "M1 (A+X): ON") : Tr("M1 (A+X): NO", "M1 (A+X): OFF"), 13.5f,
                  m_macro1Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Macro 2 (B+Y)
@@ -1574,7 +1636,7 @@ private:
         DrawRoundedRect(m2X, mChipY, mChipW, mChipH, 8.0f,
                         m_macro2Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_macro2Enabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(m2X + mChipW * 0.5f, mChipY + 11.0f, m_macro2Enabled ? "M2 (B+Y): SÍ" : "M2 (B+Y): NO", 13.5f,
+        DrawText(m2X + mChipW * 0.5f, mChipY + 11.0f, m_macro2Enabled ? Tr("M2 (B+Y): SÍ", "M2 (B+Y): ON") : Tr("M2 (B+Y): NO", "M2 (B+Y): OFF"), 13.5f,
                  m_macro2Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Macro 3 (L+R)
@@ -1582,7 +1644,7 @@ private:
         DrawRoundedRect(m3X, mChipY, mChipW, mChipH, 8.0f,
                         m_macro3Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_macro3Enabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(m3X + mChipW * 0.5f, mChipY + 11.0f, m_macro3Enabled ? "M3 (L+R): SÍ" : "M3 (L+R): NO", 13.5f,
+        DrawText(m3X + mChipW * 0.5f, mChipY + 11.0f, m_macro3Enabled ? Tr("M3 (L+R): SÍ", "M3 (L+R): ON") : Tr("M3 (L+R): NO", "M3 (L+R): OFF"), 13.5f,
                  m_macro3Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Macro 4 (A+B)
@@ -1590,7 +1652,7 @@ private:
         DrawRoundedRect(m4X, mChipY, mChipW, mChipH, 8.0f,
                         m_macro4Enabled ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         m_macro4Enabled ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(m4X + mChipW * 0.5f, mChipY + 11.0f, m_macro4Enabled ? "M4 (A+B): SÍ" : "M4 (A+B): NO", 13.5f,
+        DrawText(m4X + mChipW * 0.5f, mChipY + 11.0f, m_macro4Enabled ? Tr("M4 (A+B): SÍ", "M4 (A+B): ON") : Tr("M4 (A+B): NO", "M4 (A+B): OFF"), 13.5f,
                  m_macro4Enabled ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Row 2: Action Buttons
@@ -1599,12 +1661,12 @@ private:
         float editBtnW = (w - 36.0f - 15.0f) * 0.58f;
         float editBtnX = x + 18.0f;
         DrawRoundedRect(editBtnX, actBtnY, editBtnW, actBtnH, 8.0f, { 0.10f, 0.50f, 0.65f, 0.95f }, COL_CYAN);
-        DrawText(editBtnX + editBtnW * 0.5f, actBtnY + 12.0f, "✏ Modificar Posición y Tamaño Táctil", 15.0f, COL_WHITE, true);
+        DrawText(editBtnX + editBtnW * 0.5f, actBtnY + 12.0f, Tr("✏ Modificar Posición y Tamaño Táctil", "✏ Customize Touch Position & Size"), 15.0f, COL_WHITE, true);
 
         float rstBtnW = (w - 36.0f - 15.0f) * 0.42f;
         float rstBtnX = editBtnX + editBtnW + 15.0f;
         DrawRoundedRect(rstBtnX, actBtnY, rstBtnW, actBtnH, 8.0f, { 0.40f, 0.15f, 0.18f, 0.85f }, { 0.90f, 0.35f, 0.40f, 1.0f });
-        DrawText(rstBtnX + rstBtnW * 0.5f, actBtnY + 12.0f, "Restablecer Diseño", 15.0f, COL_WHITE, true);
+        DrawText(rstBtnX + rstBtnW * 0.5f, actBtnY + 12.0f, Tr("Restablecer Diseño", "Reset Layout"), 15.0f, COL_WHITE, true);
     }
 
     void RenderEditMode() {
@@ -1635,7 +1697,9 @@ private:
         float banX = (float(m_width) - banW) * 0.5f;
         float banY = 12.0f;
         DrawRoundedRect(banX, banY, banW, banH, 8.0f, COL_BG_DARK, COL_CYAN);
-        DrawText(banX + banW * 0.5f, banY + 11.0f, "MODO EDICIÓN: Arrastra para mover | Usa [-] y [+] para cambiar tamaño", 14.0f, COL_CYAN, true);
+        DrawText(banX + banW * 0.5f, banY + 11.0f,
+                 Tr("MODO EDICIÓN: Arrastra para mover | Usa [-] y [+] para cambiar tamaño",
+                    "EDIT MODE: Drag to move | Use [-] and [+] to resize"), 14.0f, COL_CYAN, true);
 
         // Bottom Toolbar
         float barW = float(m_width) * 0.80f;
@@ -1650,31 +1714,32 @@ private:
 
         // Button 1: [- Tamaño]
         DrawRoundedRect(barX + 10.0f, by, bw, bh, 6.0f, COL_INACTIVE_CHIP, COL_CHIP_BORDER);
-        DrawText(barX + 10.0f + bw * 0.5f, by + 9.0f, "[-] Tamaño", 13.0f, COL_WHITE, true);
+        DrawText(barX + 10.0f + bw * 0.5f, by + 9.0f, Tr("[-] Tamaño", "[-] Size"), 13.0f, COL_WHITE, true);
 
         // Button 2: [+ Tamaño]
         DrawRoundedRect(barX + 20.0f + bw, by, bw, bh, 6.0f, COL_INACTIVE_CHIP, COL_CHIP_BORDER);
-        DrawText(barX + 20.0f + bw * 1.5f, by + 9.0f, "[+] Tamaño", 13.0f, COL_WHITE, true);
+        DrawText(barX + 20.0f + bw * 1.5f, by + 9.0f, Tr("[+] Tamaño", "[+] Size"), 13.0f, COL_WHITE, true);
 
         // Button 3: [Restablecer]
         DrawRoundedRect(barX + 30.0f + bw * 2.0f, by, bw, bh, 6.0f, { 0.35f, 0.15f, 0.15f, 0.85f }, { 0.80f, 0.30f, 0.30f, 0.90f });
-        DrawText(barX + 30.0f + bw * 2.5f, by + 9.0f, "Restablecer", 13.0f, COL_WHITE, true);
+        DrawText(barX + 30.0f + bw * 2.5f, by + 9.0f, Tr("Restablecer", "Reset"), 13.0f, COL_WHITE, true);
 
         // Button 4: [Guardar y Salir]
         DrawRoundedRect(barX + 40.0f + bw * 3.0f, by, bw, bh, 6.0f, COL_ACTIVE_CHIP, COL_CYAN);
-        DrawText(barX + 40.0f + bw * 3.5f, by + 9.0f, "Guardar", 13.0f, COL_ACTIVE_TEXT, true);
+        DrawText(barX + 40.0f + bw * 3.5f, by + 9.0f, Tr("Guardar", "Save"), 13.0f, COL_ACTIVE_TEXT, true);
 
         // Button 5: [Cancelar]
         DrawRoundedRect(barX + 50.0f + bw * 4.0f, by, bw, bh, 6.0f, COL_INACTIVE_CHIP, COL_CHIP_BORDER);
-        DrawText(barX + 50.0f + bw * 4.5f, by + 9.0f, "Cancelar", 13.0f, COL_MUTED, true);
+        DrawText(barX + 50.0f + bw * 4.5f, by + 9.0f, Tr("Cancelar", "Cancel"), 13.0f, COL_MUTED, true);
     }
 
     void RenderTabOnline(float x, float y, float w) {
         // Card 1: Modo de Conexión
         float c1H = 108.0f;
         DrawRoundedRect(x, y, w, c1H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, y + 14.0f, "Conexión Multijugador Online", 19.0f, COL_WHITE);
-        DrawText(x + 18.0f, y + 36.0f, "Conexión directa a los servidores comunitarios de Monster Hunter 3 (MH3SP).", 13.5f, COL_MUTED);
+        DrawText(x + 18.0f, y + 14.0f, Tr("Conexión Multijugador Online", "Online Multiplayer Connection"), 19.0f, COL_WHITE);
+        DrawText(x + 18.0f, y + 36.0f, Tr("Conexión directa a los servidores comunitarios de Monster Hunter 3 (MH3SP).",
+                                         "Direct connection to Monster Hunter 3 community servers (MH3SP)."), 13.5f, COL_MUTED);
 
         float mChipW = (w - 36.0f - 12.0f) / 2.0f;
         float mChipH = 42.0f;
@@ -1686,7 +1751,7 @@ private:
         DrawRoundedRect(c0X, mChipY, mChipW, mChipH, 8.0f,
                         c0Active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         c0Active ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(c0X + mChipW * 0.5f, mChipY + 12.0f, "Comunidad MH3SP (mh3sp.com)", 14.0f,
+        DrawText(c0X + mChipW * 0.5f, mChipY + 12.0f, Tr("Comunidad MH3SP (mh3sp.com)", "MH3SP Community (mh3sp.com)"), 14.0f,
                  c0Active ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Chip 1: Desconectado
@@ -1695,7 +1760,7 @@ private:
         DrawRoundedRect(c1X, mChipY, mChipW, mChipH, 8.0f,
                         c1Active ? COL_ACTIVE_CHIP : COL_INACTIVE_CHIP,
                         c1Active ? COL_CYAN : COL_CHIP_BORDER);
-        DrawText(c1X + mChipW * 0.5f, mChipY + 12.0f, "Desconectado", 14.0f,
+        DrawText(c1X + mChipW * 0.5f, mChipY + 12.0f, Tr("Desconectado", "Offline"), 14.0f,
                  c1Active ? COL_ACTIVE_TEXT : COL_WHITE, true);
 
         // Card 2: Detalles
@@ -1704,24 +1769,24 @@ private:
         DrawRoundedRect(x, c2Y, w, c2H, 12.0f, COL_PANEL_CARD, COL_PANEL_BORDER);
 
         if (m_onlineMode == 3) { // Community
-            DrawText(x + 18.0f, c2Y + 14.0f, "Servidor de la Comunidad: mh3sp.com (SSL/TLS)", 19.0f, COL_CYAN);
-            DrawText(x + 18.0f, c2Y + 44.0f, "• Conexión directa a los servidores globales de Monster Hunter 3 (MH3SP).", 14.5f, COL_WHITE);
-            DrawText(x + 18.0f, c2Y + 74.0f, "• Eventos rotativos, misiones de evento y salas de cazadores en todo el mundo.", 14.5f, COL_WHITE);
-            DrawText(x + 18.0f, c2Y + 104.0f, "• Certificado CA oficial de MH3SP integrado para validar la conexión.", 14.5f, COL_WHITE);
-            DrawText(x + 18.0f, c2Y + 134.0f, "• Conexión optimizada directa a OPN (8200), NAS (80) y GameSpy.", 14.5f, COL_WHITE);
-            DrawText(x + 18.0f, c2Y + 174.0f, "Entra a la Ciudad (Loc Lac) desde la puerta de la Aldea de Moga para jugar.", 13.5f, COL_MUTED);
+            DrawText(x + 18.0f, c2Y + 14.0f, Tr("Servidor de la Comunidad: mh3sp.com (SSL/TLS)", "Community Server: mh3sp.com (SSL/TLS)"), 19.0f, COL_CYAN);
+            DrawText(x + 18.0f, c2Y + 44.0f, Tr("• Conexión directa a los servidores globales de Monster Hunter 3 (MH3SP).", "• Direct connection to Monster Hunter 3 global servers (MH3SP)."), 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 74.0f, Tr("• Eventos rotativos, misiones de evento y salas de cazadores en todo el mundo.", "• Rotating events, event quests, and hunter hubs worldwide."), 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 104.0f, Tr("• Certificado CA oficial de MH3SP integrado para validar la conexión.", "• Built-in official MH3SP CA certificate to validate connection."), 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 134.0f, Tr("• Conexión optimizada directa a OPN (8200), NAS (80) y GameSpy.", "• Direct optimized connection to OPN (8200), NAS (80), and GameSpy."), 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 174.0f, Tr("Entra a la Ciudad (Loc Lac) desde la puerta de la Aldea de Moga para jugar.", "Enter the City (Loc Lac) through Moga Village gate to play online."), 13.5f, COL_MUTED);
         } else { // Offline
-            DrawText(x + 18.0f, c2Y + 14.0f, "Modo Desconectado (Aldea de Moga)", 19.0f, COL_WHITE);
-            DrawText(x + 18.0f, c2Y + 44.0f, "• La red está desactivada.", 14.5f, COL_WHITE);
-            DrawText(x + 18.0f, c2Y + 74.0f, "• Juega las misiones de la historia individual en la Aldea de Moga sin conexión.", 14.5f, COL_WHITE);
-            DrawText(x + 18.0f, c2Y + 104.0f, "• No se realizarán conexiones a la red ni consumirá batería adicional.", 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 14.0f, Tr("Modo Desconectado (Aldea de Moga)", "Offline Mode (Moga Village)"), 19.0f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 44.0f, Tr("• La red está desactivada.", "• Network features are disabled."), 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 74.0f, Tr("• Juega las misiones de la historia individual en la Aldea de Moga sin conexión.", "• Play solo story quests in Moga Village without an internet connection."), 14.5f, COL_WHITE);
+            DrawText(x + 18.0f, c2Y + 104.0f, Tr("• No se realizarán conexiones a la red ni consumirá batería adicional.", "• No network activity is performed, saving battery power."), 14.5f, COL_WHITE);
         }
 
         // Status Banner at bottom
         float bannerY = c2Y + c2H + 12.0f;
         float bannerH = 44.0f;
         DrawRoundedRect(x, bannerY, w, bannerH, 8.0f, { 0.02f, 0.08f, 0.12f, 0.90f }, COL_PANEL_BORDER);
-        DrawText(x + 18.0f, bannerY + 12.0f, "Estado:", 14.0f, COL_CYAN);
+        DrawText(x + 18.0f, bannerY + 12.0f, Tr("Estado:", "Status:"), 14.0f, COL_CYAN);
         DrawText(x + 85.0f, bannerY + 12.0f, m_onlineStatusMsg.c_str(), 14.0f, COL_WHITE);
     }
 
@@ -1770,10 +1835,11 @@ private:
         float x = padX + 20.0f;
 
         if (m_menuTab == 0) { // Gráficos
-            // Resolution chips
-            float chipY = contentY + 54.0f;
+            float chipH = 38.0f;
+
+            // Card 1: Resolution chips
+            float chipY = contentY + 46.0f;
             float chipW = (contentW - 36.0f - 25.0f) / 6.0f;
-            float chipH = 42.0f;
             if (py >= chipY && py <= chipY + chipH) {
                 for (int i = 0; i < 6; ++i) {
                     float cx = x + 18.0f + float(i) * (chipW + 5.0f);
@@ -1787,9 +1853,9 @@ private:
             }
 
             // Card 2: Relación de aspecto
-            float c2Y = contentY + 108.0f + 12.0f;
+            float c2Y = contentY + 96.0f + 10.0f;
             float aChipW = (contentW - 36.0f - 20.0f) / 3.0f;
-            float aChipY = c2Y + 54.0f;
+            float aChipY = c2Y + 46.0f;
             if (py >= aChipY && py <= aChipY + chipH) {
                 for (int i = 0; i < 3; ++i) {
                     float ax = x + 18.0f + float(i) * (aChipW + 10.0f);
@@ -1803,9 +1869,9 @@ private:
             }
 
             // Card 3: FPS Limit (30, 60, 90, 120) & V-Sync / HUD
-            float c3Y = c2Y + 108.0f + 12.0f;
+            float c3Y = c2Y + 96.0f + 10.0f;
             float fpsColW = (contentW - 36.0f - 16.0f) * 0.52f;
-            float fChipY = c3Y + 54.0f;
+            float fChipY = c3Y + 48.0f;
             if (py >= fChipY && py <= fChipY + chipH) {
                 float fChipW = (fpsColW - 15.0f) / 4.0f;
                 for (int i = 0; i < 4; ++i) {
@@ -1820,7 +1886,7 @@ private:
                 }
 
                 float syncColX = x + 18.0f + fpsColW + 16.0f;
-                float syncColW = (contentW - 36.0f - 16.0f) * 0.48f;
+                float syncColW = (contentW - 36.0f - 16.0f) * 0.50f;
                 float sChipW = (syncColW - 10.0f) * 0.5f;
                 // VSync click
                 if (px >= syncColX && px <= syncColX + sChipW) {
@@ -1843,9 +1909,9 @@ private:
             }
 
             // Card 4: HD Textures click
-            float c4Y = c3Y + 114.0f + 12.0f;
+            float c4Y = c3Y + 98.0f + 10.0f;
             float tBtnW = (contentW - 36.0f - 15.0f) * 0.50f;
-            float tBtnY = c4Y + 54.0f;
+            float tBtnY = c4Y + 46.0f;
             if (py >= tBtnY && py <= tBtnY + chipH) {
                 if (px >= x + 18.0f && px <= x + 18.0f + tBtnW) {
                     bool cur = aurora::gfx::texture_replacement::is_enabled();
@@ -1856,11 +1922,47 @@ private:
                     return;
                 }
             }
+
+            // Card 5: Bloom Level chips click
+            float c5Y = c4Y + 96.0f + 10.0f;
+            float bChipW = (contentW - 36.0f - 30.0f) / 4.0f;
+            float bChipY = c5Y + 46.0f;
+            if (py >= bChipY && py <= bChipY + chipH) {
+                for (int i = 0; i < 4; ++i) {
+                    float bx = x + 18.0f + float(i) * (bChipW + 10.0f);
+                    if (px >= bx && px <= bx + bChipW) {
+                        m_bloomLevel = i;
+                        aurora_set_bloom_level(m_bloomLevel);
+                        SaveSettings();
+                        return;
+                    }
+                }
+            }
         } else if (m_menuTab == 1) { // Sistema
-            float chipY = contentY + 60.0f;
+            // Card 1: Idioma del menú
+            float chipH = 38.0f;
+            float menuChipW = (contentW - 36.0f - 15.0f) / 2.0f;
+            float menuChipY = contentY + 46.0f;
+            if (py >= menuChipY && py <= menuChipY + chipH) {
+                for (int i = 0; i < 2; ++i) {
+                    float mx = x + 18.0f + float(i) * (menuChipW + 15.0f);
+                    if (px >= mx && px <= mx + menuChipW) {
+                        m_menuLang = i;
+                        SaveMenuLanguage();
+                        m_saveStatusMsg = (m_menuLang == 1) ? "Ready to export or import save files." : "Listo para exportar o importar partidas guardadas.";
+                        m_onlineStatusMsg = (m_onlineMode == 0)
+                            ? ((m_menuLang == 1) ? "Offline mode. Play in Moga Village." : "Modo desconectado. Juega en la Aldea de Moga.")
+                            : ((m_menuLang == 1) ? "Official mh3sp.com community server enabled." : "Servidor oficial de la comunidad mh3sp.com activado.");
+                        return;
+                    }
+                }
+            }
+
+            // Card 2: Idioma del juego
+            float c2Y = contentY + 96.0f + 10.0f;
             float chipW = (contentW - 36.0f - 20.0f) / 5.0f;
-            float chipH = 44.0f;
-            if (py >= chipY && py <= chipY + chipH) {
+            float chipY2 = c2Y + 52.0f;
+            if (py >= chipY2 && py <= chipY2 + chipH) {
                 for (int i = 0; i < 5; ++i) {
                     float lx = x + 18.0f + float(i) * (chipW + 5.0f);
                     if (px >= lx && px <= lx + chipW) {
@@ -1871,15 +1973,15 @@ private:
                 }
             }
 
-            // Restart Button
-            float c2Y = contentY + 130.0f + 12.0f + 28.0f;
+            // Card 3: Restart Button
+            float c2H = 120.0f;
+            float statusY = c2Y + c2H + 8.0f;
+            float c3Y = statusY + 24.0f;
             float rBtnW = 200.0f;
             float rBtnX = x + contentW - rBtnW - 18.0f;
-            float rBtnY = c2Y + 22.0f;
+            float rBtnY = c3Y + 20.0f;
             if (px >= rBtnX && px <= rBtnX + rBtnW && py >= rBtnY && py <= rBtnY + 44.0f) {
-                SaveSettings();
-                SaveLanguage();
-                std::exit(0);
+                RestartApplication();
                 return;
             }
         } else if (m_menuTab == 2) { // Guardados
@@ -2048,13 +2150,17 @@ private:
             if (px >= c0X && px <= c0X + mChipW) {
                 m_onlineMode = 3;
                 LocalOnlineServer::SetMode(LocalOnlineServer::Mode::Community, "mh3sp.com");
-                m_onlineStatusMsg = "Servidor oficial de la comunidad mh3sp.com activado.";
+                m_onlineStatusMsg = (m_menuLang == 1)
+                    ? "Official mh3sp.com community server enabled."
+                    : "Servidor oficial de la comunidad mh3sp.com activado.";
                 return;
             }
             if (px >= c1X && px <= c1X + mChipW) {
                 m_onlineMode = 0;
                 LocalOnlineServer::SetMode(LocalOnlineServer::Mode::Offline);
-                m_onlineStatusMsg = "Modo desconectado. Juega en la Aldea de Moga.";
+                m_onlineStatusMsg = (m_menuLang == 1)
+                    ? "Offline mode. Play in Moga Village."
+                    : "Modo desconectado. Juega en la Aldea de Moga.";
                 return;
             }
         }
@@ -2158,22 +2264,66 @@ private:
         VISetFrameBufferScale(scales[idx]);
     }
 
+    float GetScreenAspect() const {
+        SDL_Window* win = aurora_get_window();
+        int winW = 0, winH = 0;
+        if (win && SDL_GetWindowSizeInPixels(win, &winW, &winH) && winW > 0 && winH > 0) {
+            return float(winW) / float(winH);
+        }
+        if (m_width > 0 && m_height > 0) {
+            return float(m_width) / float(m_height);
+        }
+        return 21.0f / 9.0f;
+    }
+
+    float GetTargetAspect(int idx) const {
+        if (idx == 0) return 16.0f / 9.0f;
+        if (idx == 1) return GetScreenAspect();
+        return 4.0f / 3.0f;
+    }
+
     void ApplyAspectRatio(int idx) {
         idx = std::clamp(idx, 0, 2);
+        m_aspectIndex = idx;
         if (idx == 0) aurora_set_native_target_aspect(2); // AURORA_NATIVE_TARGET_ASPECT_16_9
-        else if (idx == 1) aurora_set_native_target_aspect(0); // AURORA_NATIVE_TARGET_FIT (4:3)
-        else if (idx == 2) aurora_set_native_target_aspect(1); // AURORA_NATIVE_TARGET_FILL (Estirar)
+        else if (idx == 1) aurora_set_native_target_aspect(1); // AURORA_NATIVE_TARGET_FILL (Pantalla Completa Adaptable)
+        else if (idx == 2) aurora_set_native_target_aspect(0); // AURORA_NATIVE_TARGET_FIT (4:3)
 
-        SetWidescreenSetting(idx != 1);
+        SetWidescreenSetting(idx != 2);
+        ApplyGuestAspect(idx);
+    }
+
+    void ApplyGuestAspect(int idx) {
+        float targetAspect = GetTargetAspect(idx);
+        bool isWide = (idx != 2);
 #if defined(__cpp_exceptions)
         try {
 #endif
-            if (Memory::Contains(0x80797F68, 4) && Memory::Contains(0x8065B4C8, 4)) {
-                uint32_t aspectVal = Memory::Read32(idx != 1 ? 0x80797F68 : 0x80797F70);
-                if (aspectVal != 0) {
-                    Memory::Write32(0x8065B4C8, aspectVal);
-                    Memory::Write8(0x8065B4D5, idx != 1 ? 1 : 0);
+            if (Memory::Contains(0x8065B4C8, 4)) {
+                Memory::WriteFloat32(0x8065B4C8, targetAspect);
+            }
+            if (Memory::Contains(0x80797F68, 4)) {
+                if (isWide) {
+                    Memory::WriteFloat32(0x80797F68, targetAspect);
+                } else {
+                    Memory::WriteFloat32(0x80797F68, 16.0f / 9.0f);
                 }
+            }
+            if (Memory::Contains(0x8065B4C0, 4)) {
+                Memory::WriteFloat32(0x8065B4C0, isWide ? 854.0f : 640.0f);
+            }
+            if (Memory::Contains(0x8065B4F8, 2)) {
+                Memory::Write16(0x8065B4F8, isWide ? 854 : 640);
+            }
+            if (Memory::Contains(0x8065B4F0, 4)) {
+                Memory::WriteFloat32(0x8065B4F0, (isWide ? 854.0f : 640.0f) - 16.0f);
+            }
+            if (Memory::Contains(0x8065B4D5, 1)) {
+                Memory::Write8(0x8065B4D5, isWide ? 1 : 0);
+            }
+            if (Memory::Contains(0x8065B504, 8)) {
+                Memory::WriteFloat32(0x8065B504, targetAspect);
+                Memory::WriteFloat32(0x8065B508, targetAspect);
             }
 #if defined(__cpp_exceptions)
         } catch (...) {}
@@ -2187,9 +2337,20 @@ private:
 
         std::ifstream in(gfxPath);
         int msaa = 1, vsync = 1, resIdx = 0, fpsLimit = 60, aspect = 0, showFps = 1, fullscreen = 0;
+        int skipEfb = 1, asyncShd = 1, bloomLvl = 2;
         if (in >> msaa >> vsync >> resIdx >> fpsLimit >> aspect >> showFps) {
-            in >> fullscreen;
-            m_fullscreen = (fullscreen != 0);
+            if (in >> fullscreen) {
+                m_fullscreen = (fullscreen != 0);
+            }
+            if (in >> skipEfb) {
+                m_skipEfbCpu = (skipEfb != 0);
+            }
+            if (in >> asyncShd) {
+                m_asyncShaders = (asyncShd != 0);
+            }
+            if (in >> bloomLvl) {
+                m_bloomLevel = std::clamp(bloomLvl, 0, 3);
+            }
             m_vsync = (vsync != 0);
             m_resolutionIndex = std::clamp(resIdx, 0, 5);
             m_aspectIndex = std::clamp(aspect, 0, 2);
@@ -2206,7 +2367,14 @@ private:
             m_fpsLimit = 60;
             m_showFpsHud = true;
             m_fullscreen = false;
+            m_skipEfbCpu = true;
+            m_asyncShaders = true;
+            m_bloomLevel = 2; // 2: Original (Wii) by default!
         }
+
+        SetSkipEfbAccessFromCpu(m_skipEfbCpu);
+        aurora_set_skip_unready_pipelines(m_asyncShaders);
+        aurora_set_bloom_level(m_bloomLevel);
 
         ApplyResolutionScale(m_resolutionIndex);
         if (m_fullscreen) {
@@ -2216,6 +2384,16 @@ private:
         }
         MH3FrameRateControl::SetTargetFPS(m_fpsLimit);
         aurora_enable_vsync(m_vsync);
+
+        std::string menuLangPath = dir + "/MH3UI.menu_lang";
+        std::ifstream menuLangIn(menuLangPath);
+        std::string menuCode;
+        if (menuLangIn >> menuCode && !menuCode.empty()) {
+            if (menuCode == "en") m_menuLang = 1;
+            else m_menuLang = 0;
+        } else {
+            m_menuLang = 0; // Spanish default!
+        }
 
         std::string langPath = dir + "/MH3UI.language";
         std::ifstream langIn(langPath);
@@ -2235,8 +2413,9 @@ private:
         if (m_onlineMode != 0) m_onlineMode = 3;
         m_onlineHostIp = "mh3sp.com";
         m_onlineStatusMsg = (m_onlineMode == 0)
-            ? "Modo desconectado. Juega en la Aldea de Moga."
-            : "Servidor oficial de la comunidad mh3sp.com activado.";
+            ? ((m_menuLang == 1) ? "Offline mode. Play in Moga Village." : "Modo desconectado. Juega en la Aldea de Moga.")
+            : ((m_menuLang == 1) ? "Official mh3sp.com community server enabled." : "Servidor oficial de la comunidad mh3sp.com activado.");
+        m_saveStatusMsg = (m_menuLang == 1) ? "Ready to export or import save files." : "Listo para exportar o importar partidas guardadas.";
     }
 
     void SaveSettings() {
@@ -2248,7 +2427,8 @@ private:
         if (out) {
             out << "1 " << (m_vsync ? 1 : 0) << ' ' << m_resolutionIndex << ' '
                 << m_fpsLimit << ' ' << m_aspectIndex << ' ' << (m_showFpsHud ? 1 : 0) << ' '
-                << (m_fullscreen ? 1 : 0) << '\n';
+                << (m_fullscreen ? 1 : 0) << ' ' << (m_skipEfbCpu ? 1 : 0) << ' '
+                << (m_asyncShaders ? 1 : 0) << ' ' << m_bloomLevel << '\n';
         }
     }
 
@@ -2262,6 +2442,47 @@ private:
         if (out && m_langChoice >= 0 && m_langChoice < 5) {
             out << codes[m_langChoice] << '\n';
         }
+    }
+
+    void SaveMenuLanguage() {
+        const char* user = std::getenv("MH3_USER_DIR");
+        std::string dir = (user && *user) ? user : "/storage/emulated/0/MH3";
+        std::string menuLangPath = dir + "/MH3UI.menu_lang";
+
+        std::ofstream out(menuLangPath, std::ios::trunc);
+        if (out) {
+            out << (m_menuLang == 1 ? "en" : "es") << '\n';
+        }
+    }
+
+    void RestartApplication() {
+        if (m_restarting) return;
+        m_restarting = true;
+        SaveSettings();
+        SaveLanguage();
+        SaveMenuLanguage();
+#if defined(__ANDROID__)
+        LOGI("RestartApplication: sending COMMAND_RESTART (0x8001) to SDLActivity");
+        if (!SDL_SendAndroidMessage(0x8001, 0)) {
+            LOGE("SDL_SendAndroidMessage failed, attempting JNI call to ProcessPhoenix...");
+            JNIEnv* env = reinterpret_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+            if (env) {
+                jclass cls = env->FindClass("com/oceantri/mh3/ProcessPhoenix");
+                if (cls) {
+                    jmethodID mid = env->GetStaticMethodID(cls, "triggerRebirth", "(Landroid/content/Context;)V");
+                    jobject act = reinterpret_cast<jobject>(SDL_GetAndroidActivity());
+                    if (mid && act) {
+                        env->CallStaticVoidMethod(cls, mid, act);
+                        env->DeleteLocalRef(act);
+                        return;
+                    }
+                }
+            }
+            std::exit(0);
+        }
+#else
+        std::exit(0);
+#endif
     }
 
     void SaveLayoutConfig() {
@@ -2342,9 +2563,11 @@ private:
 
         auto res = mh3_save_manager::ExportSave(saveData, exportParent);
         if (res.success) {
-            m_saveStatusMsg = "Exportado: " + res.output.filename().string() + " (en Download/MH3_Saves)";
+            m_saveStatusMsg = (m_menuLang == 1)
+                ? ("Exported: " + res.output.filename().string() + " (in Download/MH3_Saves)")
+                : ("Exportado: " + res.output.filename().string() + " (en Download/MH3_Saves)");
         } else {
-            m_saveStatusMsg = "Error al exportar: " + res.detail;
+            m_saveStatusMsg = (m_menuLang == 1 ? "Error exporting: " : "Error al exportar: ") + res.detail;
         }
     }
 
@@ -2379,7 +2602,9 @@ private:
         }
 
         if (candidateFolder.empty()) {
-            m_saveStatusMsg = "No se halló partida Dolphin en Download/. Copia tu carpeta ahí.";
+            m_saveStatusMsg = (m_menuLang == 1)
+                ? "No Dolphin save found in Download/. Copy your save folder there."
+                : "No se halló partida Dolphin en Download/. Copia tu carpeta ahí.";
             return;
         }
 
@@ -2388,14 +2613,16 @@ private:
         std::filesystem::path pendingRoot = userDir / "PendingImport";
         auto stageRes = mh3_save_manager::StageImport(candidateFolder, pendingRoot);
         if (!stageRes.success) {
-            m_saveStatusMsg = "Error importando: " + stageRes.detail;
+            m_saveStatusMsg = (m_menuLang == 1 ? "Error importing: " : "Error importando: ") + stageRes.detail;
             return;
         }
         auto applyRes = mh3_save_manager::ApplyPendingImport(saveData, pendingRoot, backupsRoot);
         if (applyRes.success) {
-            m_saveStatusMsg = "¡Partida Dolphin importada con éxito! (Backup de seguridad creado).";
+            m_saveStatusMsg = (m_menuLang == 1)
+                ? "Dolphin save imported successfully! (Safety backup created)."
+                : "¡Partida Dolphin importada con éxito! (Backup de seguridad creado).";
         } else {
-            m_saveStatusMsg = "Error al aplicar: " + applyRes.detail;
+            m_saveStatusMsg = (m_menuLang == 1 ? "Error applying save: " : "Error al aplicar: ") + applyRes.detail;
         }
     }
 
@@ -2407,9 +2634,11 @@ private:
 
         auto res = mh3_save_manager::CreateBackup(saveData, backupsRoot);
         if (res.success) {
-            m_saveStatusMsg = "Copia guardada: " + res.output.filename().string();
+            m_saveStatusMsg = (m_menuLang == 1)
+                ? ("Backup saved: " + res.output.filename().string())
+                : ("Copia guardada: " + res.output.filename().string());
         } else {
-            m_saveStatusMsg = "Error creando copia: " + res.detail;
+            m_saveStatusMsg = (m_menuLang == 1 ? "Error creating backup: " : "Error creando copia: ") + res.detail;
         }
     }
 
@@ -2452,17 +2681,22 @@ private:
 
     // Settings Menu & Options State
     bool m_menuOpen = false;
+    bool m_restarting = false;
     int m_menuTab = 0;
     int m_resolutionIndex = 0; // 0: Wii Original (1x)
-    int m_aspectIndex = 1;     // 16:9 Panorámica
+    int m_aspectIndex = 0;     // 16:9 Panorámica (default)
     bool m_fullscreen = false;
     bool m_vsync = true;
     int m_fpsLimit = 60;
     bool m_showFpsHud = true;
+    bool m_skipEfbCpu = true;
+    bool m_asyncShaders = true;
+    int m_bloomLevel = 2; // 0: Desactivado, 1: Suave, 2: Original (Wii), 3: Intenso
     bool m_touchVisible = true;
     float m_buttonOpacity = 1.0f;
     int m_gearAutoHideSec = 0;
     std::atomic<int64_t> m_lastTouchMs{0};
+    int m_menuLang = 0;        // 0: Español (default), 1: English
     int m_langChoice = 0;      // 0: Español
     double m_liveFps = 60.0;
     std::string m_saveStatusMsg = "Listo para exportar o importar partidas guardadas.";
@@ -2524,6 +2758,11 @@ bool TouchControls_IsEnabled(void) {
 
 void TouchControls_HandleSdlEvent(const void* sdlEvent) {
     if (!sdlEvent) return;
+
+    if (AndroidKeyboard_HandleSdlEvent(sdlEvent)) {
+        return;
+    }
+
     const SDL_Event* event = reinterpret_cast<const SDL_Event*>(sdlEvent);
 
     switch (event->type) {
@@ -2554,6 +2793,9 @@ void TouchControls_HandleSdlEvent(const void* sdlEvent) {
         g_touchSettingsEngine.HandleMouseMove(event->motion.x, event->motion.y);
         break;
     case SDL_EVENT_FINGER_DOWN:
+        if (AndroidKeyboard_ShouldBeActive() && event->tfinger.y < 0.65f) {
+            AndroidKeyboard_OnScreenTouch();
+        }
         g_touchSettingsEngine.HandleTouchDown(event->tfinger.fingerID, event->tfinger.x, event->tfinger.y);
         break;
     case SDL_EVENT_FINGER_MOTION:
@@ -2575,6 +2817,10 @@ void TouchControls_HandleSdlEvent(const void* sdlEvent) {
 void TouchControls_UpdateSample(uint16_t* buttons, int16_t* leftX, int16_t* leftY,
                                 int16_t* rightX, int16_t* rightY,
                                 uint8_t* triggerL, uint8_t* triggerR) {
+    AndroidKeyboard_UpdatePerFrame();
+    if (AndroidKeyboard_IsImeShowing()) {
+        return;
+    }
     g_touchSettingsEngine.UpdateSample(buttons, leftX, leftY, rightX, rightY, triggerL, triggerR);
 }
 

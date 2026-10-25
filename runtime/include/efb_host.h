@@ -1,6 +1,9 @@
 #pragma once
 #include <cstdint>
 
+void SetSkipEfbAccessFromCpu(bool skip);
+bool GetSkipEfbAccessFromCpu();
+
 bool DecodeEfbColorAddress(uint32_t address, uint16_t& x, uint16_t& y);
 uint32_t ConvertEfbArgb(uint32_t argb, unsigned pixelFormat, unsigned alphaMode);
 bool ReadEfbColor32(uint32_t address, uint32_t& value);

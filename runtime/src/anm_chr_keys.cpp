@@ -671,7 +671,7 @@ uint32_t NodeData(uint32_t data, uint32_t index) {
     const uint32_t dic = offset ? data + offset : 0;
 
     if (dic & 3)
-        Panic("NW4R:Failed assertion ptr is not aligned", dic);
+        return 0;
 
     if (!dic)
         return 0;
@@ -679,7 +679,7 @@ uint32_t NodeData(uint32_t data, uint32_t index) {
     const int32_t i = int32_t(index);
 
     if (!(i >= 0 && i <= int32_t(MemoryInline::FlatRead32(dic + 4)) - 1))
-        Panic("idx is out of bounds", index);
+        return 0;
 
     const uint32_t entry = MemoryInline::FlatRead32(dic + (index + 1) * 16 + 0x14);
     return entry ? dic + entry : 0;
@@ -700,6 +700,10 @@ void GetAnmResult(CpuContext* ctx) {
         Panic("NW4R:Failed assertion IsValid()", anm);
 
     const uint32_t node = GuestFlat::CachedAlias(NodeData(data, index));
+    if (!node) {
+        MemoryInline::FlatWrite32(result, 0);
+        return;
+    }
 
     const uint32_t flags = MemoryInline::FlatRead32(node + 4);
     MemoryInline::FlatWrite32(result, flags & 0x1FFF);

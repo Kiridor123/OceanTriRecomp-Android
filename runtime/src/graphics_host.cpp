@@ -156,6 +156,11 @@ void FlushHostEfbPokes() {
     if (!efbDirty)
         return;
 
+    if (GetSkipEfbAccessFromCpu()) {
+        efbDirty = false;
+        return;
+    }
+
     if (!gpuSynchronized)
         MH3_THROW(std::runtime_error("EFB pokes require a completed framebuffer"));
     // Queued on the render thread behind every earlier draw, ahead of later ones.
@@ -417,6 +422,7 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
     }
     // Frameskip polls GPU completion before native draw preparation.
     aurora_set_frameskip(true);
+    aurora_set_skip_unready_pipelines(true);
 #ifdef MH3_DEVELOPMENT
     // MH3_CAPTURE=PATH[,interval=N[,start=N]|,frame=N]: frame dumps (BMP).
     // With interval, every Nth frame (from frame `start`) as PATH-<frame>.bmp;
@@ -508,7 +514,7 @@ void SubmitHostGraphicsTask(std::function<void()> task) {
 }
 
 float NativeWidescreenAspect() {
-    return float(DisplayWidth) / float(DisplayHeight);
+    return 16.0f / 9.0f;
 }
 
 bool UpscalingSetting() {
@@ -960,6 +966,9 @@ void CompleteHostGraphics() {
 }
 
 uint32_t ReadHostEfbColor(uint16_t x, uint16_t y) {
+    if (GetSkipEfbAccessFromCpu())
+        return 0;
+
     if (!initialized || !gpuSynchronized || guestStream.PendingBytes())
         MH3_THROW(std::runtime_error("EFB color peek requires a completed GXDrawDone boundary"));
 
@@ -1016,6 +1025,9 @@ uint32_t ReadHostEfbColor(uint16_t x, uint16_t y) {
 }
 
 void WriteHostEfbColor(uint16_t x, uint16_t y, uint32_t value) {
+    if (GetSkipEfbAccessFromCpu())
+        return;
+
     (void)ReadHostEfbColor(x, y); // Ensure a coherent snapshot for masks and later peeks.
     uint32_t blend = 0, alpha = 0, depth = 0, destinationAlpha = 0;
     ReadGxRegister(0xCC001002, 2, blend);

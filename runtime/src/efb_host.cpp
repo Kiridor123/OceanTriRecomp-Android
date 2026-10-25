@@ -4,12 +4,23 @@
 #include "recomp_mod_loader.h"
 #include "isa/ppc_isa_context.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <stdexcept>
 #include <tuple>
+
+static std::atomic<bool> s_skipEfbAccessFromCpu{true};
+
+void SetSkipEfbAccessFromCpu(bool skip) {
+    s_skipEfbAccessFromCpu.store(skip, std::memory_order_relaxed);
+}
+
+bool GetSkipEfbAccessFromCpu() {
+    return s_skipEfbAccessFromCpu.load(std::memory_order_relaxed);
+}
 
 bool DecodeEfbColorAddress(uint32_t address, uint16_t& x, uint16_t& y) {
     if ((address >> 30) == 1 || (address & 0x3FC00003u) != 0x08000000u)
@@ -61,7 +72,13 @@ bool ReadEfbColor32(uint32_t address, uint32_t& value) {
     if (!DecodeEfbColorAddress(address, x, y))
         return false;
 
-    PanicLegacyGx("GX CPU EFB color read", address);
+    // Skip EFB Access from CPU (as in Dolphin emulator Video Hacks):
+    // Ignore requests from CPU to read the EFB, preventing pipeline flushes,
+    // glReadPixels stalls, and shader artifacts from stale/desynced readbacks.
+    if (s_skipEfbAccessFromCpu.load(std::memory_order_relaxed)) {
+        value = 0;
+        return true;
+    }
 
     // The address encoding has ten bits per coordinate; the physical EFB is smaller.
     value = x < 640 && y < 528 ? ReadHostEfbColor(x, y) : 0;
@@ -74,7 +91,10 @@ bool WriteEfbColor32(uint32_t address, uint32_t value) {
     if (!DecodeEfbColorAddress(address, x, y))
         return false;
 
-    PanicLegacyGx("GX CPU EFB color write", address);
+    // Skip EFB Access from CPU: Ignore CPU writes to the EFB.
+    if (s_skipEfbAccessFromCpu.load(std::memory_order_relaxed)) {
+        return true;
+    }
 
     if (x < 640 && y < 528)
         WriteHostEfbColor(x, y, value);

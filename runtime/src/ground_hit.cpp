@@ -724,8 +724,17 @@ void HitGroundComon(CpuContext* cpu) {
 
 } // namespace
 
+static const bool s_exactGroundHit = [] {
+    const char* v = std::getenv("MH3_APPROX_COLLISION");
+    return !(v && v[0] == '1');
+}();
+
 extern "C" void func_80296A5C(CpuContext* cpu);
 extern "C" void MH3_GroundHitPointInTriangle(CpuContext* cpu) {
+    if (s_exactGroundHit) {
+        func_80296A5C(cpu);
+        return;
+    }
     if (PortCheck::Enabled("GroundHitPointInTriangle"))
         PortCheck::RunPure(cpu, "GroundHitPointInTriangle", PortCheck::Returns::Gpr3, func_80296A5C, PointInTrianglePort);
     else
@@ -735,6 +744,10 @@ REGISTER_NATIVE_FUNCTION_AS(0x80296A5C, MH3_GroundHitPointInTriangle, "GroundHit
 
 extern "C" void func_802916C8(CpuContext* cpu);
 extern "C" void MH3_GetGroundHit2(CpuContext* cpu) {
+    if (s_exactGroundHit) {
+        func_802916C8(cpu);
+        return;
+    }
     if (PortCheck::Enabled("GetGroundHit2"))
         PortCheck::RunOutput(cpu, "GetGroundHit2", PortCheck::Returns::Fpr1, func_802916C8, GetGroundHit2, {{cpu->gpr[6], 1}, {kTaken, 4 * kMaxTaken}});
     else
@@ -750,6 +763,10 @@ uint32_t Given(uint32_t output) {
 
 extern "C" void func_80291D34(CpuContext* cpu);
 extern "C" void MH3_HitGroundComon(CpuContext* cpu) {
+    if (s_exactGroundHit) {
+        func_80291D34(cpu);
+        return;
+    }
     if (PortCheck::Enabled("HitGroundComon")) {
         const uint32_t special10 = Memory::Read32(cpu->gpr[1] + 8);
         PortCheck::RunOutput(cpu, "HitGroundComon", PortCheck::Returns::Gpr3, func_80291D34, HitGroundComon,

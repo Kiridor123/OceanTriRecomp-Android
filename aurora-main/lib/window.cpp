@@ -55,8 +55,8 @@ std::atomic_bool g_presentSurfaceFill{false};
 // A fixed display surface the native target is sized for (0: the window's).
 int g_surfaceWidth = 0;
 int g_surfaceHeight = 0;
-int g_presentAspectWidth = 0;
-int g_presentAspectHeight = 0;
+std::atomic<int> g_presentAspectWidth{0};
+std::atomic<int> g_presentAspectHeight{0};
 AuroraWindowSize g_windowSize;
 std::vector<AuroraEvent> g_events;
 std::atomic_bool g_backgrounded = false;
@@ -638,6 +638,22 @@ AuroraWindowSize get_window_size() {
 
     fb_w = std::max(1, static_cast<int>(std::lround(static_cast<float>(baseW) * renderScale)));
     fb_h = std::max(1, static_cast<int>(std::lround(static_cast<float>(baseH) * renderScale)));
+  } else if (g_presentAspectWidth.load(std::memory_order_acquire) > 0 &&
+             g_presentAspectHeight.load(std::memory_order_acquire) > 0 && surface_w > 0 && surface_h > 0) {
+    const float targetAspect = static_cast<float>(g_presentAspectWidth.load(std::memory_order_relaxed)) /
+                               static_cast<float>(g_presentAspectHeight.load(std::memory_order_relaxed));
+    if (g_frameBufferScale > 0.f && baseW > 0 && baseH > 0) {
+      const auto [scaledW, scaledH] =
+          scale_frame_buffer_to_aspect(static_cast<int>(baseW), static_cast<int>(baseH),
+                                       g_frameBufferScale, targetAspect);
+      fb_w = scaledW;
+      fb_h = scaledH;
+    } else {
+      fb_w = std::min(surface_w,
+                      std::max(1, static_cast<int>(std::lround(surface_h * targetAspect))));
+      fb_h = std::min(surface_h,
+                      std::max(1, static_cast<int>(std::lround(surface_w * (1.f / targetAspect)))));
+    }
   } else if (g_frameBufferScale > 0.f && baseW > 0 && baseH > 0) {
     const auto [scaledW, scaledH] =
         scale_frame_buffer_to_aspect(static_cast<int>(baseW), static_cast<int>(baseH), g_frameBufferScale,
@@ -924,17 +940,24 @@ void lock_present_aspect_ratio(int width, int height) {
     return;
   }
 
-  if (g_presentAspectWidth == width && g_presentAspectHeight == height) {
+  if (g_presentAspectWidth.load(std::memory_order_relaxed) == width &&
+      g_presentAspectHeight.load(std::memory_order_relaxed) == height) {
     return;
   }
 
-  g_presentAspectWidth = width;
-  g_presentAspectHeight = height;
+  g_presentAspectWidth.store(width, std::memory_order_release);
+  g_presentAspectHeight.store(height, std::memory_order_release);
+  request_frame_buffer_resize();
 }
 
 void unlock_present_aspect_ratio() {
-  g_presentAspectWidth = 0;
-  g_presentAspectHeight = 0;
+  if (g_presentAspectWidth.load(std::memory_order_relaxed) == 0 &&
+      g_presentAspectHeight.load(std::memory_order_relaxed) == 0) {
+    return;
+  }
+  g_presentAspectWidth.store(0, std::memory_order_release);
+  g_presentAspectHeight.store(0, std::memory_order_release);
+  request_frame_buffer_resize();
 }
 
 bool get_present_aspect_ratio(float& aspect) noexcept {
@@ -966,13 +989,14 @@ bool get_present_aspect_ratio(float& aspect) noexcept {
     }
   }
 
-  if (g_presentAspectWidth <= 0 || g_presentAspectHeight <= 0) {
+  const int aspectW = g_presentAspectWidth.load(std::memory_order_acquire);
+  const int aspectH = g_presentAspectHeight.load(std::memory_order_acquire);
+  if (aspectW <= 0 || aspectH <= 0) {
     aspect = 0.f;
     return false;
   }
 
-  aspect = (static_cast<float>(g_presentAspectWidth) / static_cast<float>(g_presentAspectHeight)) *
-           vi::present_aspect_correction();
+  aspect = static_cast<float>(aspectW) / static_cast<float>(aspectH);
   return aspect > 0.f;
 }
 

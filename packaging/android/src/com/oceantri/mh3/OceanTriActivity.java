@@ -97,6 +97,18 @@ public class OceanTriActivity extends SDLActivity {
         return new String[0];
     }
 
+    public static final int COMMAND_RESTART = 0x8001;
+
+    @Override
+    protected boolean onUnhandledMessage(int command, Object param) {
+        if (command == COMMAND_RESTART) {
+            log("Received COMMAND_RESTART from native code. Triggering rebirth via ProcessPhoenix...");
+            ProcessPhoenix.triggerRebirth(this);
+            return true;
+        }
+        return super.onUnhandledMessage(command, param);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         log("OceanTriActivity.onCreate() called");

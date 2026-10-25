@@ -7,11 +7,35 @@
 #include "native_texture_layout.hpp"
 #include "native_scene_feedback_shaders.hpp"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
+
+static std::atomic<int> s_bloomLevel{2}; // 0 = Desactivado, 1 = Suave, 2 = Original (Wii), 3 = Intenso
+
+namespace aurora::gfx {
+void set_bloom_level(int level) {
+  s_bloomLevel.store(std::clamp(level, 0, 3));
+}
+
+int get_bloom_level() {
+  return s_bloomLevel.load();
+}
+
+float get_bloom_multiplier() {
+  int level = s_bloomLevel.load();
+  switch (level) {
+    case 0: return 0.0f;
+    case 1: return 0.65f;
+    case 2: return 1.15f;
+    case 3: return 1.85f;
+    default: return 1.15f;
+  }
+}
+} // namespace aurora::gfx
 
 namespace aurora {
 namespace {
@@ -346,8 +370,9 @@ bool publish_scene_glare(const void* id, const SceneGlareParameters& p) {
   gl::apply_raster_state({});
   auto program = brightProgram->get();
   gl::uniform4(program, "thresholds", p.low_threshold, p.high_threshold, p.darken, p.brighten);
-  gl::uniform4(program, "scale", p.shift_scale, 0, 0, 0);
-  gl::bind_texture(0, source->gl(), gl::sampler(gl::NearestClamp));
+  float bloomMult = gfx::get_bloom_multiplier();
+  gl::uniform4(program, "scale", p.shift_scale, bloomMult, 0, 0);
+  gl::bind_texture(0, source->gl(), gl::sampler(gl::LinearClamp));
   gl::draw_fullscreen(program);
   publish(id, std::move(output));
   return true;

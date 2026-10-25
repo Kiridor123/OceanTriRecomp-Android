@@ -38,6 +38,8 @@
 #include "native_effect_draw.h"
 #include "memory.h"
 #include "port_check.h"
+#include "village_boot.h"
+#include "../native/mh3_classic_map.h"
 #include <algorithm>
 #include <cstdio>
 #include <initializer_list>
@@ -190,6 +192,13 @@ uint32_t MovieFrames() {
 // Check_movie_finish: whether the frame drawn last (DrawFrame's result) is
 // the movie's last, compared unsigned (never with no movie open).
 void CheckMovieFinishPort(CpuContext* ctx) {
+    if (MovieFrames() != 0 && Memory::Read32(kMovie + kPendingFlag) == 0) {
+        const auto sample = ReadGameController();
+        if (sample.buttons & (MH3_CL_A | MH3_CL_PLUS)) {
+            ctx->gpr[3] = 1;
+            return;
+        }
+    }
     ctx->gpr[3] = Memory::Read32(kMovie + kDrawResult) >= MovieFrames() - 1;
 }
 
@@ -204,6 +213,12 @@ REGISTER_NATIVE_FUNCTION_AS(0x804352A4, MH3_MovieFrames, "MovieFrames");
 
 extern "C" void MH3_CheckMovieFinish(CpuContext* ctx) {
     PortCheck::Call(ctx, "CheckMovieFinish", func_80434604, CheckMovieFinishPort);
+    if (MovieFrames() != 0 && Memory::Read32(kMovie + kPendingFlag) == 0) {
+        const auto sample = ReadGameController();
+        if (sample.buttons & (MH3_CL_A | MH3_CL_PLUS)) {
+            ctx->gpr[3] = 1;
+        }
+    }
 #ifdef MH3_DEVELOPMENT
     // As Movie_cut, only with no frame pending (a read or decode in flight
     // would land in the closed movie's buffers).

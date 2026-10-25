@@ -99,8 +99,28 @@ NativeModelGPUPayload CopyNativeModelGPU(const void* payload, uint32_t bytes) {
 void RegisterNativeModelGPU(mh3_mesh_pack& pack, const char* path, uintptr_t handle, uint64_t generation) {
     Owner();
 
-    if (!handle || !generation || !path || residents.contains(handle))
-        MH3_THROW(std::runtime_error("Invalid or duplicate model GPU registration"));
+    if (!handle || !generation || !path)
+        MH3_THROW(std::runtime_error("Invalid model GPU registration parameters"));
+
+    const auto found = residents.find(handle);
+    if (found != residents.end()) {
+        if (found->second.generation == generation) {
+            // Already registered on GPU with the same generation.
+            if (found->second.pack)
+                pack.gpu = found->second.pack->gpu;
+            found->second.pack = &pack;
+            return;
+        }
+        // Stale handle with different generation: retire old resident first.
+        if (found->second.pack)
+            found->second.pack->gpu = {};
+        residents.erase(found);
+        ++residentsRevision;
+        if (lastHandle == handle) {
+            lastHandle = 0;
+            lastResident = nullptr;
+        }
+    }
 
     RegisterNativeModelGPU(pack, path, handle, generation, ReadNativeModelGPU(path, pack.gpu_file_offset, pack.gpu_bytes));
 }
@@ -108,8 +128,28 @@ void RegisterNativeModelGPU(mh3_mesh_pack& pack, const char* path, uintptr_t han
 void RegisterNativeModelGPU(mh3_mesh_pack& pack, const char* path, uintptr_t handle, uint64_t generation, NativeModelGPUPayload buffer) {
     Owner();
 
-    if (!handle || !generation || !path || !buffer || residents.contains(handle))
-        MH3_THROW(std::runtime_error("Invalid or duplicate model GPU registration"));
+    if (!handle || !generation || !path || !buffer)
+        MH3_THROW(std::runtime_error("Invalid model GPU registration parameters"));
+
+    const auto found = residents.find(handle);
+    if (found != residents.end()) {
+        if (found->second.generation == generation) {
+            // Already registered on GPU with the same generation.
+            if (found->second.pack)
+                pack.gpu = found->second.pack->gpu;
+            found->second.pack = &pack;
+            return;
+        }
+        // Stale handle with different generation: retire old resident first.
+        if (found->second.pack)
+            found->second.pack->gpu = {};
+        residents.erase(found);
+        ++residentsRevision;
+        if (lastHandle == handle) {
+            lastHandle = 0;
+            lastResident = nullptr;
+        }
+    }
 
     Resident next{&pack, generation, std::unique_ptr<aurora::gl::NativeMeshBuffer>(buffer.release()), {}, {}};
     auto bound = pack;
@@ -151,9 +191,10 @@ void UnregisterNativeModelGPU(uintptr_t handle, uint64_t generation) {
     const auto found = residents.find(handle);
 
     if (found == residents.end() || found->second.generation != generation)
-        MH3_THROW(std::runtime_error("Stale model GPU retirement"));
+        return; // Stale or already retired: safe no-op instead of throwing
 
-    found->second.pack->gpu = {};
+    if (found->second.pack)
+        found->second.pack->gpu = {};
 
     // NativeMeshBuffer retirement preserves every submitted frame's backing.
     residents.erase(found);
@@ -166,7 +207,8 @@ void ClearNativeModelGPU() {
     Owner();
 
     for (auto& [handle, resident] : residents)
-        resident.pack->gpu = {};
+        if (resident.pack)
+            resident.pack->gpu = {};
 
     residents.clear();
     ++residentsRevision;

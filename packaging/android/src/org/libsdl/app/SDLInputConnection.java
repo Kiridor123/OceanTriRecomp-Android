@@ -69,9 +69,12 @@ class SDLInputConnection extends BaseInputConnection
         // and https://bugzilla.libsdl.org/show_bug.cgi?id=2265
         if (beforeLength > 0 && afterLength == 0) {
             // backspace(s)
-            while (beforeLength-- > 0) {
+            int count = beforeLength;
+            while (count-- > 0) {
                 nativeGenerateScancodeForUnichar('\b');
             }
+            super.deleteSurroundingText(beforeLength, afterLength);
+            updateText();
             return true;
        }
 

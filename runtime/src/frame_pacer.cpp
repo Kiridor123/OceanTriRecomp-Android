@@ -22,6 +22,7 @@
 #endif
 #include "field_jump.h"
 #include "game_step.h"
+#include "load_progress.h"
 #include "mh3_frame_rate_control.h"
 #include "guest_threads.h"
 #include "memory.h"
@@ -214,6 +215,68 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
             now = Clock::now();
         }
 
+        // Comprehensive loading / transition detection using guest engine state
+        bool isLoading = LoadProgress::Showing();
+#if defined(__cpp_exceptions)
+        try {
+#endif
+            if (Memory::Contains(0x806970E8, 8)) {
+                // Loader active: state != 0 or count > 0
+                if (Memory::Read32(0x806970E8) != 0 || Memory::Read32(0x806970E8 + 4) != 0) {
+                    isLoading = true;
+                }
+            }
+            if (Memory::Contains(0x806978E8, 0x2C)) {
+                // Screen fade active: kActive != 0 or alpha > 0
+                if (Memory::Read8(0x806978E8 + 0x28) != 0 || Memory::Read32(0x806978E8 + 0x20) > 0) {
+                    isLoading = true;
+                }
+            }
+#if defined(__cpp_exceptions)
+        } catch (...) {}
+#endif
+
+        static bool s_wasLoading = false;
+        const bool justExitedLoading = (s_wasLoading && !isLoading);
+        s_wasLoading = isLoading;
+
+        // Detect area and map transitions directly
+        static uint8_t s_lastArea = 0xFF;
+        static uint8_t s_lastMap = 0xFF;
+        bool areaChanged = false;
+#if defined(__cpp_exceptions)
+        try {
+#endif
+            if (Memory::Contains(0x806BB805, 2)) {
+                uint8_t curMap = Memory::Read8(0x806BB805);
+                uint8_t curArea = Memory::Read8(0x806BB806);
+                if (s_lastMap == 0xFF) {
+                    s_lastMap = curMap;
+                    s_lastArea = curArea;
+                } else if (curMap != s_lastMap || curArea != s_lastArea) {
+                    s_lastMap = curMap;
+                    s_lastArea = curArea;
+                    areaChanged = true;
+                }
+            }
+#if defined(__cpp_exceptions)
+        } catch (...) {}
+#endif
+
+        // Settle countdown: gives physics and rendering 60 frames (~1-2s) of rock-solid
+        // fixed step (16.6ms at 60fps) upon spawn/area change or loading exit.
+        // During this settle window, even if Android stutters compiling shaders (e.g. 8 FPS),
+        // physics NEVER skips ahead, tunneling through colliders like the camp dock is 100% prevented.
+        static int s_settleFrames = 0;
+        if (areaChanged || justExitedLoading) {
+            s_settleFrames = 60;
+            frameEnd = now;
+        }
+
+        if (isLoading) {
+            frameEnd = now;
+        }
+
         const auto actualFrameDuration = now - frameEnd;
 
         // If deadline was missed (rendering bottleneck / framerate drop), reset frameEnd
@@ -224,28 +287,38 @@ extern "C" void MH3_FramePacer(CpuContext* ctx) {
             frameEnd = targetDeadline;
         }
 
-        // Measure actual frame duration in seconds, clamped to realistic bounds.
-        // If a massive stall occurred (e.g. loading screen or pause > 100ms), avoid physics spikes.
-        double dt = std::chrono::duration<double>(actualFrameDuration).count();
-        if (dt > 0.1) {
-            dt = std::min(dt, 0.05); // cap single frame contribution to 50ms (20 FPS)
-        } else if (dt < 1.0 / 240.0) {
-            dt = 1.0 / 240.0;
-        }
-
-        // Exponential moving average filter (alpha = 0.15).
-        // Smooths out VSync frame-drop cadence (e.g. 16.6ms / 33.3ms alternating on 60Hz displays when dropping to 45 FPS)
-        // so that logic does not jerk between 2.0x and 0.5x speed (eliminates the "mini-turbo"),
-        // while tracking the true real-time framerate so the game NEVER runs in slow motion
-        // even if FPS is 45, or if 120 FPS target is set on a 60 Hz display.
         static double smoothedDt = 1.0 / double(std::max(1, targetFps));
         static int lastTargetFps = targetFps;
-        if (targetFps != lastTargetFps) {
+        if (targetFps != lastTargetFps || justExitedLoading || areaChanged) {
             lastTargetFps = targetFps;
             smoothedDt = 1.0 / double(std::max(1, targetFps));
         }
 
-        smoothedDt = smoothedDt * 0.85 + dt * 0.15;
+        double dt = 0.0;
+        if (s_settleFrames > 0) {
+            --s_settleFrames;
+            frameEnd = now;
+            dt = 1.0 / double(std::max(1, targetFps));
+            smoothedDt = dt;
+        } else {
+            // Measure actual frame duration in seconds, clamped to realistic bounds.
+            // Cap single frame duration during severe stalls to at most 100ms (10 FPS, kMaxStep),
+            // allowing devices running at 15-25 FPS to maintain full 1.0x real-time game speed
+            // without falling into slow-motion, while preventing physics explosions during massive pauses.
+            dt = std::chrono::duration<double>(actualFrameDuration).count();
+            if (dt > 1.0 / 10.0) {
+                dt = 1.0 / 10.0;
+            } else if (dt < 1.0 / 240.0) {
+                dt = 1.0 / 240.0;
+            }
+
+            // Exponential moving average filter (alpha = 0.15).
+            // Smooths out VSync frame-drop cadence (e.g. 16.6ms / 33.3ms alternating on 60Hz displays when dropping to 45 FPS)
+            // so that logic does not jerk between 2.0x and 0.5x speed (eliminates the "mini-turbo"),
+            // while tracking the true real-time framerate so the game NEVER runs in slow motion
+            // even if FPS is 45, or if 120 FPS target is set on a 60 Hz display.
+            smoothedDt = smoothedDt * 0.85 + dt * 0.15;
+        }
 
         // Retrace period in seconds (e.g. 1 / 59.94 s)
         const double retraceSeconds = std::chrono::duration<double>(period).count();

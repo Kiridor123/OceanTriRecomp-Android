@@ -707,6 +707,24 @@ void aurora_set_native_target_aspect(AuroraNativeTargetAspect aspect) {
   aurora::window::set_frame_buffer_aspect_fit(aspect == AURORA_NATIVE_TARGET_FIT);
   aurora::window::set_force_aspect_16_9(aspect == AURORA_NATIVE_TARGET_ASPECT_16_9);
   aurora::window::set_present_surface_fill(aspect == AURORA_NATIVE_TARGET_FILL);
+  if (aspect == AURORA_NATIVE_TARGET_ASPECT_21_9) {
+    aurora::window::lock_present_aspect_ratio(21, 9);
+  } else {
+    aurora::window::unlock_present_aspect_ratio();
+  }
+}
+
+namespace aurora::gfx {
+void set_bloom_level(int level);
+int get_bloom_level();
+}
+
+extern "C" void aurora_set_bloom_level(int level) {
+  aurora::gfx::set_bloom_level(level);
+}
+
+extern "C" int aurora_get_bloom_level(void) {
+  return aurora::gfx::get_bloom_level();
 }
 
 void aurora_set_fullscreen(bool fullscreen) {

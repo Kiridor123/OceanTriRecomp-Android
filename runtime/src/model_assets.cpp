@@ -1109,10 +1109,20 @@ void PurgeUnusedNativeModelGPU() {
 
     if (!toRetire.empty()) {
         QueueNativeGraphicsTask(NativeTaskOrder::AfterDraws, [toRetire = std::move(toRetire)] {
+            if (!manager)
+                return;
+            std::lock_guard lock(manager->lock);
             for (const auto& [handle, gen] : toRetire) {
-                try {
-                    UnregisterNativeModelGPU(handle, gen);
-                } catch (...) {}
+                const auto it = manager->handles.find(handle);
+                if (it != manager->handles.end() && it->second->generation == gen) {
+                    if (NativeModelPackHasLiveSources(handle) ||
+                        (manager->frameKnown && it->second->lastDemandFrame == manager->demandFrame)) {
+                        continue;
+                    }
+                    it->second->gpuRegistered = false;
+                    ++manager->stats.gpu_evictions;
+                }
+                UnregisterNativeModelGPU(handle, gen);
             }
         });
     }

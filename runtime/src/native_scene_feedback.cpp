@@ -507,6 +507,8 @@ extern "C" void MH3_NativeSavedSceneDraw(CpuContext *cpu) {
     Emit(plan);
 }
 
+extern "C" int aurora_get_bloom_level(void);
+
 extern "C" void MH3_NativeGlareBrightPass(CpuContext *cpu) {
     GlareBrightPass(cpu->gpr[3]);
 }
@@ -526,6 +528,10 @@ extern "C" void MH3_NativeGlareDraw(CpuContext *cpu) {
 
     GlareBrightPass(self);
     SceneDrawBack(cpu, 0x8066d178, 0, captures);
+
+    if (aurora_get_bloom_level() == 0)
+        return;
+
     mh3_scene_quad_plan plan;
     Require(mh3_scene_capture_quad(FlatRead32(self + 8), FlatRead16(self + 0x14), FlatRead16(self + 0x16), FlatReadFloat32(0x8066d2a0), FlatReadFloat32(0x8066d2a4), 255, 0, &GetNativeDrawState(),
                                    &GetNativeMaterialState(), &plan),

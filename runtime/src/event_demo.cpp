@@ -41,6 +41,8 @@
 #include "guest_call.h"
 #include "memory.h"
 #include "port_check.h"
+#include "village_boot.h"
+#include "../native/mh3_classic_map.h"
 
 #include <chrono>
 #include <cstdint>
@@ -123,6 +125,8 @@ enum : uint32_t {
     CameraStart = 0x802BC884,   // (demo, 0): the demo's camera script
     CameraPlaying = 0x802BE450, // () -> 0 once the camera script is done
     CameraLength = 0x802BC8DC,  // () -> s16 steps
+    CameraFollow = 0x802BC700,  // (1)
+    CameraMgr = 0x802BED34,     // () -> camera work*
     DemoLight = 0x802C239C,     // (demo): demo 0x21's light, from the clock
     SetFlag = 0x8004D274,       // (flag): the story flag the demo sets
     DemoEnded = 0x8004E94C,     // (demo)
@@ -359,6 +363,44 @@ uint32_t EventDemoUpdate(GuestCall& game, uint32_t entry) {
     }
 
     if (phase == 1) {
+        const auto sample = ReadGameController();
+        const bool aPressed = (sample.buttons & (MH3_CL_A | MH3_CL_PLUS)) != 0;
+
+        if (aPressed && Clock() >= 5) {
+            // Player pressed A (or +) to skip the in-engine cutscene!
+            // 1. Advance the script clock so that all monster animations/triggers reach their end state
+            Memory::Write32(kClock, 0x7FFF);
+
+            // 2. Stop camera script playing flag
+            const uint32_t camMgr = game.Call<CameraMgr>();
+            if (camMgr && Memory::Contains(camMgr + 644, 1)) {
+                Memory::Write8(camMgr + 644, 2);
+            }
+
+            // 3. Restore camera to follow player immediately
+            game.Call<CameraFollow>({1});
+
+            // 4. Advance phase to end demo cleanly
+            Memory::Write8(entry + kPhase, uint8_t(phase + 1));
+
+            if (game.Call<Arena>() == 0) {
+                game.Call<SetFlag>({Memory::Read16(Memory::Read32(entry + kData) + kDataFlag)});
+                game.Call<DemoEnded>({Id()});
+                game.Call<FadeSet>({0, 2});
+            }
+
+            if (Memory::Read8(kOnlineMode) == 1) {
+                Memory::Write8(kOnlineDemo + 6, 1);
+                game.Call<OnlineEnd0>();
+                game.Call<OnlineEnd1>();
+                game.Call<OnlineEnd2>({Id() == kDemoJhen ? 28u : 14u});
+            } else if (Memory::Read8(kPlayMode) == 5) {
+                game.Call<TourEnd>();
+            }
+
+            return 0;
+        }
+
         Memory::Write32(kClock, uint32_t(Clock() + int32_t(GameStep::Ticks())));
         game.Call<DemoLight>({Id()});
         game.Call<0x803C4914>({Id()});

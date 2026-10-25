@@ -147,15 +147,6 @@ void RunGxPanicSelfTests(CpuContext* cpu) {
         }
     }
 
-    expect("CPU EFB read", "GX CPU EFB color read", [] {
-        uint32_t pixel;
-        ReadEfbColor32(0xC8000000, pixel);
-    });
-    expect("CPU EFB out-of-bounds read", "GX CPU EFB color read", [] {
-        uint32_t pixel;
-        ReadEfbColor32(0xC8000A00, pixel);
-    });
-    expect("CPU EFB write", "GX CPU EFB color write", [] { WriteEfbColor32(0x88000000, 0xFFFFFFFF); });
 #ifdef MH3_HAS_AURORA
     expect("host GX API", "GXSetCopyClear", [] { GXSetCopyClear({20, 40, 80, 255}, GX_MAX_Z24); });
     expect("FIFO decoder", "aurora::gx::fifo::process", [] {

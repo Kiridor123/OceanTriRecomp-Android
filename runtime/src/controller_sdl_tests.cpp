@@ -4,6 +4,12 @@
 #include <iostream>
 #include <stdexcept>
 
+extern "C" {
+bool TouchControls_IsMenuOpen(void) { return false; }
+void TouchControls_UpdateSample(uint16_t*, int16_t*, int16_t*, int16_t*, int16_t*, uint8_t*, uint8_t*) {}
+bool AndroidKeyboard_IsActive(void) { return false; }
+}
+
 namespace {
 void Check(bool ok, const char* message) {
     if (!ok)

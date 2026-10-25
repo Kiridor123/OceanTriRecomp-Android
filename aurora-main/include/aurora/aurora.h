@@ -173,9 +173,13 @@ typedef enum {
   AURORA_NATIVE_TARGET_FIT = 0,
   AURORA_NATIVE_TARGET_FILL = 1,
   AURORA_NATIVE_TARGET_ASPECT_16_9 = 2,
+  AURORA_NATIVE_TARGET_ASPECT_21_9 = 3,
 } AuroraNativeTargetAspect;
 
 void aurora_set_native_target_aspect(AuroraNativeTargetAspect aspect);
+
+void aurora_set_bloom_level(int level);
+int aurora_get_bloom_level(void);
 
 void aurora_set_fullscreen(bool fullscreen);
 bool aurora_get_fullscreen(void);

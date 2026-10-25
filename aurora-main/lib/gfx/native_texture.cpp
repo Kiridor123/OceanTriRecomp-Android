@@ -29,7 +29,8 @@ NativeTexturePatch s_patch = nullptr;
 // Budget resident texture storage separately from display/depth/offscreen
 // targets. GLES texel estimates exclude driver bookkeeping; GXM charges the
 // CDRAM image/palette layout. Backend fences retain evicted in-flight storage.
-constexpr size_t CacheBudget = 48u << 20;
+// Increased to 1024 MiB (1 GiB) to comfortably support modern HD texture packs (2K/4K).
+constexpr size_t CacheBudget = 1024u << 20;
 struct Key {
   uintptr_t bytes;
   uint32_t asset, width, height, levels, format;
@@ -84,16 +85,17 @@ gl::SamplerDesc sampler(const NativeTextureSampler& source) {
 }
 
 void make_room(size_t bytes) {
-  if (bytes > CacheBudget)
-    AURORA_THROW(std::runtime_error("Native texture exceeds resident cache budget"));
-  while (residentBytes > CacheBudget - bytes) {
+  // Allow CacheBudget to dynamically accommodate textures larger than the base budget (e.g. 4K/8K replacements)
+  const size_t effectiveBudget = std::max(CacheBudget, bytes + (128u << 20));
+
+  while (residentBytes > effectiveBudget - bytes) {
     auto victim = cache.end();
 
     for (auto it = cache.begin(); it != cache.end(); ++it)
       if (it->second.texture.use_count() == 1 && (victim == cache.end() || it->second.used < victim->second.used))
         victim = it;
     if (victim == cache.end())
-      AURORA_THROW(std::runtime_error("Bound native textures exceed resident cache budget"));
+      break; // All resident textures are currently bound; do not abort
 
     residentBytes -= victim->second.bytes;
     cache.erase(victim);
@@ -508,17 +510,24 @@ void bind(uint32_t unit, const NativeTextureSource& source, const NativeTextureS
     if (g_config.allowTextureReplacements) {
       auto rep = gfx::texture_replacement::load_native_replacement(source);
       if (rep.has_value() && !rep->data.empty()) {
-        make_room(rep->data.size());
-        texture = gl::create_texture(rep->width, rep->height, rep->mips, rep->format, "Native replacement texture");
-        size_t offset = 0;
-        for (unsigned mip = 0; mip < rep->mips; ++mip) {
-          const unsigned w = std::max(rep->width >> mip, 1u);
-          const unsigned h = std::max(rep->height >> mip, 1u);
-          gl::upload_texture(*texture, mip, 0, 0, w, h, rep->data.data() + offset, w * 4);
-          offset += size_t(w) * h * 4;
+        try {
+          make_room(rep->data.size());
+          texture = gl::create_texture(rep->width, rep->height, rep->mips, rep->format, "Native replacement texture");
+          if (texture) {
+            size_t offset = 0;
+            for (unsigned mip = 0; mip < rep->mips; ++mip) {
+              const unsigned w = std::max(rep->width >> mip, 1u);
+              const unsigned h = std::max(rep->height >> mip, 1u);
+              gl::upload_texture(*texture, mip, 0, 0, w, h, rep->data.data() + offset, w * 4);
+              offset += size_t(w) * h * 4;
+            }
+            allocated = rep->data.size();
+            usedReplacement = true;
+          }
+        } catch (const std::exception& e) {
+          std::fprintf(stderr, "Aurora native textures: failed to upload replacement texture (%s), falling back to native\n", e.what());
+          usedReplacement = false;
         }
-        allocated = rep->data.size();
-        usedReplacement = true;
       }
     }
 

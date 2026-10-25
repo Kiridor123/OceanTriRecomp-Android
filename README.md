@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%20ARM64-green.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android)
-[![Latest Release](https://img.shields.io/badge/Release-v1.4.5-orange.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
+[![Latest Release](https://img.shields.io/badge/Release-v1.5-brightgreen.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
 
 Port nativo para **Android** de **Monster Hunter Tri** mediante recompilación estática de código (AOT - *Ahead-of-Time*), logrando rendimiento nativo en hardware ARM64 sin necesidad de emulación pesada.
 
@@ -53,7 +53,42 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 
 ---
 
-## ✨ Novedades y Características (v1.4.5)
+## ✨ Novedades y Características (v1.5)
+
+### ⌨️ 1. Integración Nativa del Teclado de Android
+- **Apertura automática**: Al abrir cualquier diálogo de introducción de texto del juego (creación y nombre de personaje, chat de Loc Lac, nombres de equipamiento, etc.), se despliega automáticamente el teclado del sistema (Gboard, Samsung Keyboard, etc.).
+- **Escritura y borrado en tiempo real**: Se escribe y borra directamente sobre el búfer UTF-16BE del motor de juego con soporte para caracteres en español (`ñ`, tildes, números y signos).
+- **Confirmación con Enter**: Al presionar la tecla *Enter / Intro / Enviar*, el juego procesa y confirma el texto de forma nativa cerrando el menú de la Wii.
+- **Ocultamiento inteligente de controles virtuales**: Los botones táctiles en pantalla se ocultan automáticamente mientras el teclado está activo para no obstruir la visión, reapareciendo al cerrarlo.
+- **Restauración al volver de segundo plano**: Si sales de la aplicación o cambias de ventana con el teclado activo, este se restaura suavemente al reenfocar la pantalla.
+- **Aislamiento de controles de juego**: Se bloquean las teclas de control de PC mientras se escribe, evitando que espacios o letras activen botones o muevan al cazador.
+
+### ⏭️ 2. Salto de Cinemáticas con el Botón A
+- Permite omitir cinemáticas en tiempo real simplemente pulsando el **botón A** o el **botón +**.
+- Funciona tanto en las **secuencias del motor** (apariciones de monstruos y cinemáticas in-game) como en los **vídeos pre-renderizados** (vídeos de apertura y transición en formato THP).
+
+### 🚀 3. Corrección de Rendimiento y Cámara Lenta en Gamas de Entrada (Helio G25 / Nokia G10)
+- Se solucionó el problema por el cual dispositivos que corren a 15–25 FPS sufrían una ralentización artificial (simulación en cámara lenta).
+- Se amplió el límite delta dinámico de fotogramas hasta 100 ms (10 FPS), permitiendo que la física y las animaciones se sincronicen al 100% en tiempo real a cualquier tasa de cuadros.
+
+### 🛡️ 4. Corrección de Crash en Dispositivos con 4GB RAM (Helio G85 / Moto G24)
+- Solucionado el fallo `Invalid or duplicate model GPU registration` que ocurría al grabar pantalla o al reanudar la app en dispositivos con SoC MediaTek Helio G85.
+- Gestión segura de handles de malla y purga optimizada en el ciclo de dibujado.
+
+### 📺 5. Selector de Relación de Aspecto
+- En `Ajustes` → `Gráficos` se incluye selector entre **16:9 Panorámica (Recomendado)**, **Pantalla Completa Adaptable** (llena la pantalla del móvil sin bordes) y **4:3 Clásica**, resolviendo franjas negras desalineadas en menús.
+
+---
+
+### ⚠️ Bugs Conocidos (Known Issues)
+1. **Atajo acuático en "Sin amor para el Ludroth"**: En la misión de 2 estrellas de la aldea llamada *"Sin amor para el Ludroth"*, existe un fallo en el atajo acuático del campamento base donde pueden fallar las físicas (en otras misiones no se ha detectado este problema).
+2. **Autocompletado del teclado**: Con la integración del teclado de Android, si se hace uso de las sugerencias o autocompletado predictivo del teclado, el texto renderizado en la caja de texto del juego puede buguearse visualmente (se recomienda teclear directamente letra por letra).
+
+---
+
+## ✨ Versiones Anteriores
+
+### 🏰 Novedades de la v1.4.5
 
 ### 🏰 1. Modo Online — Ciudad Loc Lac
 - Conexión directa al servidor comunitario oficial **mh3sp.com** para jugar en línea con otros cazadores.

@@ -67,12 +67,23 @@ uniform vec4 scale;
 in vec2 v_uv;
 layout(location = 0) out vec4 frag_color;
 void main() {
-  vec3 rgb=texture(tex0,v_uv).rgb;
-  float l=dot(rgb,vec3(77.0,150.0,29.0)/256.0);
-  if(l<thresholds.x) l-=l*thresholds.z;
-  if(l>thresholds.y) l+=l*thresholds.w;
-  l=clamp(l,0.0,1.0)*scale.x;
-  frag_color=vec4(l,l,l,1.0);
+  float intensity = scale.y;
+  if (intensity <= 0.0001) {
+    frag_color = vec4(0.0);
+    return;
+  }
+  vec3 rgb = texture(tex0, v_uv).rgb;
+  float l = dot(rgb, vec3(77.0, 150.0, 29.0) / 256.0);
+  float bloom = l;
+  if (l < thresholds.x) {
+    float t = clamp(l / max(thresholds.x, 0.001), 0.0, 1.0);
+    bloom = l * (1.0 - thresholds.z * (1.0 - t * t));
+  } else if (l > thresholds.y) {
+    bloom = l + l * thresholds.w;
+  }
+  bloom = clamp(bloom, 0.0, 1.0) * scale.x * intensity;
+  vec3 bloomRgb = mix(vec3(bloom), rgb * (bloom / max(l, 0.001)), 0.65);
+  frag_color = vec4(bloomRgb, 1.0);
 }
 )";
 } // namespace aurora::gfx::scene_feedback::shaders

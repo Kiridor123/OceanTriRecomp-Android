@@ -3,6 +3,7 @@
 #include "controller_host.h"
 #include "village_boot.h"
 #include "ios_host.h"
+#include "android_keyboard.h"
 #include "../native/mh3_classic_map.h"
 #include <array>
 #include <chrono>
@@ -148,11 +149,13 @@ REGISTER_NATIVE_FUNCTION(0x804EF2A0, MH3_WPADSetDataFormat);
 
 extern "C" void MH3_WPADRead(CpuContext* cpu) {
     const auto channel = cpu->gpr[3];
+    const auto output = cpu->gpr[4];
+    AndroidKeyboard_ProcessPending(cpu);
     const auto sample = ReadGameController();
     const auto status = ControllerStatus(channel, sample);
     const auto block = ControlBlock(channel);
     const auto size = status || !block ? 0x2Au : ReportSize(Memory::Read32(block + 0x8B8));
-    CopyReport(cpu->gpr[4], Report(sample, status), size);
+    CopyReport(output, Report(sample, status), size);
 }
 REGISTER_NATIVE_FUNCTION(0x804EF9D0, MH3_WPADRead);
 

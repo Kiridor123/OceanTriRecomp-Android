@@ -592,11 +592,20 @@ void SweepQuery(CpuContext* cpu) {
 
 } // namespace
 
+static const bool s_exactLandSweep = [] {
+    const char* v = std::getenv("MH3_APPROX_COLLISION");
+    return !(v && v[0] == '1');
+}();
+
 // The two filters are precise natives (docs/optimizations/cpu/native-function-ports.md):
 // their bodies name only the argument registers, and r1 for the port check,
 // so translated callers call them directly, without the dispatch's guard.
 extern "C" void func_802962C4(CpuContext* cpu);
 extern "C" void MH3_LandSweepTriangleCounts(CpuContext* cpu) {
+    if (s_exactLandSweep) {
+        func_802962C4(cpu);
+        return;
+    }
 #ifdef MH3_DEVELOPMENT
     if (PortCheck::RunPrecise("LandSweepTriangleCounts", cpu->gpr[1], func_802962C4, TriangleCountsPort)) [[unlikely]]
         return;
@@ -607,6 +616,10 @@ REGISTER_NATIVE_FUNCTION_AS(0x802962C4, MH3_LandSweepTriangleCounts, "LandSweepT
 
 extern "C" void func_80292524(CpuContext* cpu);
 extern "C" void MH3_LandSweepTriangleCandidateFilter(CpuContext* cpu) {
+    if (s_exactLandSweep) {
+        func_80292524(cpu);
+        return;
+    }
 #ifdef MH3_DEVELOPMENT
     if (PortCheck::RunPrecise("LandSweepTriangleCandidateFilter", cpu->gpr[1], func_80292524, CandidateFilterPort)) [[unlikely]]
         return;
@@ -616,6 +629,10 @@ extern "C" void MH3_LandSweepTriangleCandidateFilter(CpuContext* cpu) {
 REGISTER_NATIVE_FUNCTION_AS(0x80292524, MH3_LandSweepTriangleCandidateFilter, "LandSweepTriangleCandidateFilter");
 
 extern "C" void MH3_LandSweepTriangle(CpuContext* cpu) {
+    if (s_exactLandSweep) {
+        func_8029459C(cpu);
+        return;
+    }
     if (PortCheck::Enabled("LandSweepTriangle"))
         PortCheck::Run(cpu, "LandSweepTriangle", func_8029459C, SweepTrianglePort);
     else
@@ -625,6 +642,10 @@ REGISTER_NATIVE_FUNCTION_AS(0x8029459C, MH3_LandSweepTriangle, "LandSweepTriangl
 
 extern "C" void func_80293AEC(CpuContext* cpu);
 extern "C" void MH3_LandSweepQuery(CpuContext* cpu) {
+    if (s_exactLandSweep) {
+        func_80293AEC(cpu);
+        return;
+    }
     if (PortCheck::Enabled("LandSweepQuery"))
         PortCheck::Run(cpu, "LandSweepQuery", func_80293AEC, SweepQuery);
     else

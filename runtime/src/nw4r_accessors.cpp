@@ -96,7 +96,11 @@ uint32_t OffsetToPtr(uint32_t r, uint32_t offset) {
 }
 
 uint32_t DicAtOffset14(uint32_t r, uint32_t index) {
-    const uint32_t dic = OffsetToPtr(r, Read32(RefChecked(r) + 0x14));
+    const uint32_t ref = Read32(r);
+    if (!ref)
+        return Aligned(0);
+
+    const uint32_t dic = OffsetToPtr(r, Read32(ref + 0x14));
 
     if (!dic)
         return Aligned(0);
@@ -104,7 +108,7 @@ uint32_t DicAtOffset14(uint32_t r, uint32_t index) {
     const int32_t i = int32_t(index);
 
     if (!(i >= 0 && i <= int32_t(Read32(dic + 4)) - 1))
-        Panic("idx is out of bounds", index);
+        return Aligned(0);
 
     const uint32_t offset = Read32(dic + (index + 1) * 16 + 0x14);
     return Aligned(offset ? dic + offset : 0);

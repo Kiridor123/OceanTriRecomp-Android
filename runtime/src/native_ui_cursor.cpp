@@ -5,6 +5,7 @@
 #include "guest_call.h"
 #include "memory.h"
 #include "native_graphics.h"
+#include "android_keyboard.h"
 #include "runtime/native/mh3_ui_cursor.h"
 #include <stdexcept>
 #include <string>
@@ -55,6 +56,7 @@ void Cursor(void *user, int32_t x, int32_t y) {
 } // namespace
 
 extern "C" void MH3_UICursorDraw(CpuContext *cpu) {
+    AndroidKeyboard_ProcessPending(cpu);
     GuestFrame frame(cpu, 0x10);
     GuestCall call{cpu};
     const mh3_ui_cursor_callbacks callbacks{&call, RasterRead, RasterPublish, Clear, Field, Virtual, Position, Cursor};
