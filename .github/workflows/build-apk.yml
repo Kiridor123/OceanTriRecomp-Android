@@ -26,6 +26,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Install Ninja and CMake
         run: |
           sudo apt-get update
@@ -36,6 +41,10 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.2.13676358" "build-tools;35.0.0" "platforms;android-35"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+
+      - name: Build Translator CLI
+        run: |
+          dotnet build toolchain/translator/src/Translator.Cli/Translator.Cli.csproj -c Release
 
       - name: Fetch prebuilt libSDL3.so
         run: |
