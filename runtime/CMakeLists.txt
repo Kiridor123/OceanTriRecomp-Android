@@ -295,7 +295,7 @@ target_sources(MH3 PRIVATE
   ${MKW_BASE_REGISTRATION_SOURCES})
 target_sources(MH3 PRIVATE src/gx_panic.cpp src/gx_panic_tests.cpp src/model_resources.cpp src/model_submission_trace.cpp
   native/mh3_model_resources.c native/mh3_model_runtime.c native/mh3_model_draw.c)
-target_sources(MH3 PRIVATE src/ground_hit.cpp src/land_sweep.cpp src/creature_groups.cpp src/scene_changes.cpp)
+target_sources(MH3 PRIVATE src/ground_hit.cpp src/land_sweep.cpp src/creature_groups.cpp src/scene_changes.cpp src/hunter_telemetry.cpp)
 set_source_files_properties(src/ground_hit.cpp
   PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
 target_sources(MH3 PRIVATE src/model_draw_dispatch.cpp native/mh3_model_draw_dispatch.c)
@@ -348,11 +348,20 @@ target_include_directories(MH3 PRIVATE include ..)
 if(ANDROID)
   set_target_properties(MH3 PROPERTIES OUTPUT_NAME "main")
   target_link_libraries(MH3 PRIVATE log GLESv3 EGL android)
-  target_include_directories(MH3 PRIVATE /var/mnt/juegos_sdb2/openssl-android-install/include)
-  target_link_libraries(MH3 PRIVATE
-    /var/mnt/juegos_sdb2/openssl-android-install/lib/libssl.a
-    /var/mnt/juegos_sdb2/openssl-android-install/lib/libcrypto.a)
-  target_compile_definitions(MH3 PRIVATE MH3_HAS_OPENSSL)
+  set(OPENSSL_ANDROID_DIR "" CACHE PATH "Path to openssl android install")
+  if(NOT OPENSSL_ANDROID_DIR AND DEFINED ENV{OPENSSL_ANDROID_DIR})
+    set(OPENSSL_ANDROID_DIR "$ENV{OPENSSL_ANDROID_DIR}")
+  endif()
+  if(NOT OPENSSL_ANDROID_DIR AND EXISTS "/var/mnt/juegos_sdb2/openssl-android-install")
+    set(OPENSSL_ANDROID_DIR "/var/mnt/juegos_sdb2/openssl-android-install")
+  endif()
+  if(OPENSSL_ANDROID_DIR AND EXISTS "${OPENSSL_ANDROID_DIR}/include")
+    target_include_directories(MH3 PRIVATE "${OPENSSL_ANDROID_DIR}/include")
+    target_link_libraries(MH3 PRIVATE
+      "${OPENSSL_ANDROID_DIR}/lib/libssl.a"
+      "${OPENSSL_ANDROID_DIR}/lib/libcrypto.a")
+    target_compile_definitions(MH3 PRIVATE MH3_HAS_OPENSSL)
+  endif()
 endif()
 
 # Host check executables under ../tests (absent from trimmed source trees).

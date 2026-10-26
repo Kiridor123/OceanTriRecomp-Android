@@ -4,9 +4,25 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 ANDROID_SDK_ROOT="${ANDROID_HOME:-/var/mnt/juegos_sdb2/MHFU/out/android-sdk}"
-SDK_BUILD_TOOLS="${ANDROID_SDK_ROOT}/build-tools/35.0.0"
-ANDROID_JAR="${ANDROID_SDK_ROOT}/platforms/android-35/android.jar"
-NDK_STRIP="${ANDROID_NDK_HOME:-${ANDROID_SDK_ROOT}/ndk/28.2.13676358}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+if [ -d "${ANDROID_SDK_ROOT}/build-tools/35.0.0" ]; then
+    SDK_BUILD_TOOLS="${ANDROID_SDK_ROOT}/build-tools/35.0.0"
+else
+    SDK_BUILD_TOOLS="$(find "${ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n1)"
+fi
+
+if [ -f "${ANDROID_SDK_ROOT}/platforms/android-35/android.jar" ]; then
+    ANDROID_JAR="${ANDROID_SDK_ROOT}/platforms/android-35/android.jar"
+else
+    ANDROID_JAR="$(find "${ANDROID_SDK_ROOT}/platforms" -name "android.jar" 2>/dev/null | sort -V | tail -n1)"
+fi
+
+if [ -n "${ANDROID_NDK_HOME:-}" ] && [ -d "${ANDROID_NDK_HOME}" ]; then
+    NDK_STRIP="$(find "${ANDROID_NDK_HOME}" -name "llvm-strip" 2>/dev/null | head -n1)"
+elif [ -d "${ANDROID_SDK_ROOT}/ndk/28.2.13676358" ]; then
+    NDK_STRIP="${ANDROID_SDK_ROOT}/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+else
+    NDK_STRIP="$(find "${ANDROID_SDK_ROOT}/ndk" -name "llvm-strip" 2>/dev/null | head -n1 || which llvm-strip || which strip)"
+fi
 
 PKG_DIR="${PROJECT_ROOT}/packaging/android"
 BUILD_DIR="${PKG_DIR}/build"
@@ -51,7 +67,11 @@ echo "=== 6. Preparing and Stripping Native Libraries ==="
 mkdir -p "${BUILD_DIR}/apk_root/lib/arm64-v8a"
 cp "${PROJECT_ROOT}/build-android/libmain.so" "${BUILD_DIR}/apk_root/lib/arm64-v8a/libmain.so"
 cp "${PROJECT_ROOT}/build-android/_deps/png-build/libpng16.so" "${BUILD_DIR}/apk_root/lib/arm64-v8a/libpng16.so"
-cp "/var/mnt/juegos_sdb2/MHFU/out/release-android-mhfu/deps/sdl3-install/lib/libSDL3.so" "${BUILD_DIR}/apk_root/lib/arm64-v8a/libSDL3.so"
+SDL3_SO="${PROJECT_ROOT}/packaging/android/libs/arm64-v8a/libSDL3.so"
+if [ ! -f "${SDL3_SO}" ] && [ -f "/var/mnt/juegos_sdb2/MHFU/out/release-android-mhfu/deps/sdl3-install/lib/libSDL3.so" ]; then
+    SDL3_SO="/var/mnt/juegos_sdb2/MHFU/out/release-android-mhfu/deps/sdl3-install/lib/libSDL3.so"
+fi
+cp "${SDL3_SO}" "${BUILD_DIR}/apk_root/lib/arm64-v8a/libSDL3.so"
 
 "${NDK_STRIP}" --strip-all "${BUILD_DIR}/apk_root/lib/arm64-v8a/libmain.so"
 "${NDK_STRIP}" --strip-all "${BUILD_DIR}/apk_root/lib/arm64-v8a/libpng16.so"
@@ -72,7 +92,7 @@ if [ ! -f "${KEYSTORE}" ]; then
     keytool -genkeypair -v -keystore "${KEYSTORE}" -alias oceantri -keyalg RSA -keysize 2048 -validity 10000 \
         -storepass oceantrikey -keypass oceantrikey -dname "CN=OceanTri, OU=Gaming, O=Recomp, L=City, S=State, C=US"
 fi
-OUTPUT_APK="${BUILD_DIR}/OceanTriRecomp-Android-v1.5-arm64.apk"
+OUTPUT_APK="${BUILD_DIR}/OceanTriRecomp-Android-v1.5.5-test-arm64.apk"
 rm -f "${OUTPUT_APK}"
 "${SDK_BUILD_TOOLS}/apksigner" sign \
     --ks "${KEYSTORE}" \
@@ -88,10 +108,10 @@ rm -f "${OUTPUT_APK}"
 echo "=== 10. Copying release APK ==="
 DEST_DIR="${PROJECT_ROOT}/release"
 mkdir -p "${DEST_DIR}"
-cp "${OUTPUT_APK}" "${DEST_DIR}/OceanTriRecomp-Android-v1.5-arm64.apk"
+cp "${OUTPUT_APK}" "${DEST_DIR}/OceanTriRecomp-Android-v1.5.5-test-arm64.apk"
 if [ -d "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3" ]; then
-    cp "${OUTPUT_APK}" "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3/OceanTriRecomp-Android-v1.5-arm64.apk"
+    cp "${OUTPUT_APK}" "/var/mnt/juegos_sdb2/OceanTriRecomp Alpha 1.3/OceanTriRecomp-Android-v1.5.5-test-arm64.apk"
 fi
 
 echo "=== APK Successfully Built ==="
-ls -lh "${DEST_DIR}/OceanTriRecomp-Android-v1.5-arm64.apk"
+ls -lh "${DEST_DIR}/OceanTriRecomp-Android-v1.5.5-test-arm64.apk"
