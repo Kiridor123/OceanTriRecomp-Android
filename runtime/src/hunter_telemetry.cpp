@@ -1,7 +1,5 @@
 #include "hunter_telemetry.h"
-#include "abi_bridge.h"
 #include "memory.h"
-#include "ppc_runtime.h"
 
 #include <cmath>
 #include <cstdio>
@@ -27,7 +25,7 @@ bool s_opened = false;
 uint64_t s_stepCounter = 0;
 int s_framesAfterAnomaly = 0;
 
-struct PreState {
+struct HunterState {
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;
@@ -41,11 +39,13 @@ struct PreState {
     uint8_t map = 0xFF;
     uint8_t area = 0xFF;
     uint32_t questId = 0;
+    float groundY = 0.0f;
+    float waterY = 0.0f;
+    uint32_t sweepFlags = 0;
     bool valid = false;
 };
 
-PreState s_preState;
-PreState s_lastCommittedState;
+HunterState s_lastState;
 
 void EnsureLogFileOpen() {
     if (s_opened) return;
@@ -96,40 +96,11 @@ const char* GetPlwStateName(uint8_t s) {
 
 } // namespace
 
-void PreMovementStep(CpuContext* ctx, uint32_t plw) {
+void Update(uint32_t plw) {
     if (!Memory::Contains(plw, 0x600))
         return;
 
-    // Only track local player (index 0)
-    uint8_t playerIndex = Memory::Read8(plw + 0xB6);
-    if (playerIndex != 0)
-        return;
-
-    std::lock_guard<std::mutex> lock(s_mutex);
-
-    s_preState.x = Memory::ReadFloat32(plw + 60);
-    s_preState.y = Memory::ReadFloat32(plw + 64);
-    s_preState.z = Memory::ReadFloat32(plw + 68);
-    s_preState.angle = Memory::Read32(plw + 0xA8);
-    s_preState.angle2 = Memory::Read32(plw + 0x58);
-    s_preState.pitch = Memory::Read32(plw + 0xAC);
-    s_preState.state = Memory::Read8(plw + 5);
-    s_preState.plwState = Memory::Read8(plw + 9);
-    s_preState.inWaterFlag = Memory::Read8(plw + 116);
-
-    uint32_t mhchar = Memory::Read32(plw + 0x13C);
-    s_preState.motion = (mhchar && Memory::Contains(mhchar, 0x100)) ? Memory::Read16(mhchar + 0x54) : 0;
-
-    s_preState.map = Memory::Contains(0x806BB805, 1) ? Memory::Read8(0x806BB805) : 0xFF;
-    s_preState.area = Memory::Contains(0x806BB806, 1) ? Memory::Read8(0x806BB806) : 0xFF;
-    s_preState.questId = Memory::Contains(0x8065B238, 4) ? Memory::Read32(0x8065B238) : 0;
-    s_preState.valid = true;
-}
-
-void PostMovementStep(CpuContext* ctx, uint32_t plw) {
-    if (!Memory::Contains(plw, 0x600) || !s_preState.valid)
-        return;
-
+    // Only track local player (player index 0 at +0xB6)
     uint8_t playerIndex = Memory::Read8(plw + 0xB6);
     if (playerIndex != 0)
         return;
@@ -139,50 +110,58 @@ void PostMovementStep(CpuContext* ctx, uint32_t plw) {
 
     ++s_stepCounter;
 
-    const float postX = Memory::ReadFloat32(plw + 60);
-    const float postY = Memory::ReadFloat32(plw + 64);
-    const float postZ = Memory::ReadFloat32(plw + 68);
-    const float groundY = Memory::ReadFloat32(plw + 96);
-    const float waterY = Memory::ReadFloat32(plw + 100);
-    const uint8_t inWaterFlag = Memory::Read8(plw + 116);
-    const uint8_t postPlwState = Memory::Read8(plw + 9);
-    const uint8_t postState = Memory::Read8(plw + 5);
-    const uint32_t sweepFlags = Memory::Read32(plw + 868);
+    HunterState current;
+    current.x = Memory::ReadFloat32(plw + 60);
+    current.y = Memory::ReadFloat32(plw + 64);
+    current.z = Memory::ReadFloat32(plw + 68);
+    current.angle = Memory::Read32(plw + 0xA8);
+    current.angle2 = Memory::Read32(plw + 0x58);
+    current.pitch = Memory::Read32(plw + 0xAC);
+    current.state = Memory::Read8(plw + 5);
+    current.plwState = Memory::Read8(plw + 9);
+    current.inWaterFlag = Memory::Read8(plw + 116);
+    current.groundY = Memory::ReadFloat32(plw + 96);
+    current.waterY = Memory::ReadFloat32(plw + 100);
+    current.sweepFlags = Memory::Read32(plw + 868);
 
     uint32_t mhchar = Memory::Read32(plw + 0x13C);
-    const uint16_t postMotion = (mhchar && Memory::Contains(mhchar, 0x100)) ? Memory::Read16(mhchar + 0x54) : 0;
+    current.motion = (mhchar && Memory::Contains(mhchar, 0x100)) ? Memory::Read16(mhchar + 0x54) : 0;
 
-    const float dx = postX - s_preState.x;
-    const float dy = postY - s_preState.y;
-    const float dz = postZ - s_preState.z;
+    current.map = Memory::Contains(0x806BB805, 1) ? Memory::Read8(0x806BB805) : 0xFF;
+    current.area = Memory::Contains(0x806BB806, 1) ? Memory::Read8(0x806BB806) : 0xFF;
+    current.questId = Memory::Contains(0x8065B238, 4) ? Memory::Read32(0x8065B238) : 0;
+    current.valid = true;
+
+    if (!s_lastState.valid) {
+        s_lastState = current;
+        return;
+    }
+
+    const float dx = current.x - s_lastState.x;
+    const float dy = current.y - s_lastState.y;
+    const float dz = current.z - s_lastState.z;
     const float dist2D = std::sqrt(dx * dx + dz * dz);
-    const float dist3D = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-    const bool isAreaTransition = !s_lastCommittedState.valid || 
-                                  (s_preState.map != s_lastCommittedState.map) || 
-                                  (s_preState.area != s_lastCommittedState.area);
+    const bool isAreaTransition = (current.map != s_lastState.map) || (current.area != s_lastState.area);
 
-    // TELEPORT ANOMALY: Horizontal jump > 10.0 units (approx 10cm) in ONE single logic step,
-    // within the same map and area, not due to an area transition.
+    // TELEPORT ANOMALY: Horizontal displacement > 10 units in one frame within same area
     const bool isTeleport = !isAreaTransition && (dist2D > 10.0f);
 
     // WALKING ON WATER ANOMALY:
-    // inWaterFlag is set (water detected), but plwState is NOT swimming (3),
-    // and hunter Y is at or above water surface, while solid ground is below water.
-    const bool isWalkingOnWater = (inWaterFlag != 0) && (postPlwState != 3) && 
-                                  (postY >= waterY - 5.0f) && (groundY < waterY - 8.0f);
+    // Water detected, but not swimming state (3), and hunter is standing near water level while solid ground is lower
+    const bool isWalkingOnWater = (current.inWaterFlag != 0) && (current.plwState != 3) &&
+                                  (current.y >= current.waterY - 5.0f) && (current.groundY < current.waterY - 8.0f);
 
-    const bool isStateChange = s_lastCommittedState.valid && 
-                               ((postPlwState != s_lastCommittedState.plwState) || 
-                                (inWaterFlag != s_lastCommittedState.inWaterFlag) ||
-                                (postMotion != s_lastCommittedState.motion && (postMotion == 17 || postMotion == 11 || postMotion == 12 || postMotion == 15 || postMotion == 0x41D)));
+    const bool isStateChange = (current.plwState != s_lastState.plwState) ||
+                               (current.inWaterFlag != s_lastState.inWaterFlag) ||
+                               (current.motion != s_lastState.motion && (current.motion == 17 || current.motion == 11 || current.motion == 12 || current.motion == 15));
 
     if (isTeleport || isWalkingOnWater) {
-        s_framesAfterAnomaly = 45; // continue logging high-density frames following the event
+        s_framesAfterAnomaly = 45;
     }
 
     if (isTeleport) {
-        const char* areaStr = GetAreaName(s_preState.map, s_preState.area);
+        const char* areaStr = GetAreaName(current.map, current.area);
         char alertBuf[512];
         std::snprintf(alertBuf, sizeof(alertBuf),
             "********************************************************************************\n"
@@ -191,10 +170,10 @@ void PostMovementStep(CpuContext* ctx, uint32_t plw) {
             "  After:  (%.3f, %.3f, %.3f) Dist2D: %.3f (dX=%.3f, dZ=%.3f) dY=%.3f\n"
             "  Env:    GroundY=%.3f WaterY=%.3f WaterFlag=%u PlwState=%u (%s) SweepFlags=0x%08X\n"
             "********************************************************************************\n",
-            static_cast<unsigned long long>(s_stepCounter), s_preState.map, areaStr, s_preState.area, s_preState.questId,
-            s_preState.x, s_preState.y, s_preState.z, (s_preState.angle & 0xFFFF), (s_preState.angle2 & 0xFFFF), s_preState.motion, s_preState.plwState, GetPlwStateName(s_preState.plwState),
-            postX, postY, postZ, dist2D, dx, dz, dy,
-            groundY, waterY, inWaterFlag, postPlwState, GetPlwStateName(postPlwState), sweepFlags
+            static_cast<unsigned long long>(s_stepCounter), current.map, areaStr, current.area, current.questId,
+            s_lastState.x, s_lastState.y, s_lastState.z, (s_lastState.angle & 0xFFFF), (s_lastState.angle2 & 0xFFFF), s_lastState.motion, s_lastState.plwState, GetPlwStateName(s_lastState.plwState),
+            current.x, current.y, current.z, dist2D, dx, dz, dy,
+            current.groundY, current.waterY, current.inWaterFlag, current.plwState, GetPlwStateName(current.plwState), current.sweepFlags
         );
 
         if (s_logFile) {
@@ -203,13 +182,13 @@ void PostMovementStep(CpuContext* ctx, uint32_t plw) {
         }
         std::fprintf(stderr, "%s", alertBuf);
         TELEMETRY_ANDROID_LOG("%s", alertBuf);
-    } else if (isWalkingOnWater && (s_stepCounter % 10 == 0 || s_lastCommittedState.plwState == 3)) {
-        const char* areaStr = GetAreaName(s_preState.map, s_preState.area);
+    } else if (isWalkingOnWater && (s_stepCounter % 10 == 0 || s_lastState.plwState == 3)) {
+        const char* areaStr = GetAreaName(current.map, current.area);
         char alertBuf[512];
         std::snprintf(alertBuf, sizeof(alertBuf),
             "[WALKING ON WATER] Step: %llu | %s (Area %u) | Pos=(%.2f, %.2f, %.2f) | WaterY=%.2f GroundY=%.2f | PlwState=%u (NOT SWIMMING!)\n",
-            static_cast<unsigned long long>(s_stepCounter), areaStr, s_preState.area,
-            postX, postY, postZ, waterY, groundY, postPlwState
+            static_cast<unsigned long long>(s_stepCounter), areaStr, current.area,
+            current.x, current.y, current.z, current.waterY, current.groundY, current.plwState
         );
 
         if (s_logFile) {
@@ -221,40 +200,31 @@ void PostMovementStep(CpuContext* ctx, uint32_t plw) {
     } else if (isAreaTransition) {
         if (s_logFile) {
             std::fprintf(s_logFile, "[AREA CHANGE] Step: %llu | Map: %u | Area: %u (%s) | Pos=(%.2f, %.2f, %.2f)\n",
-                static_cast<unsigned long long>(s_stepCounter), s_preState.map, s_preState.area, GetAreaName(s_preState.map, s_preState.area), postX, postY, postZ);
+                static_cast<unsigned long long>(s_stepCounter), current.map, current.area, GetAreaName(current.map, current.area), current.x, current.y, current.z);
             std::fflush(s_logFile);
         }
     } else if (isStateChange) {
         if (s_logFile) {
             std::fprintf(s_logFile, "[STATE CHANGE] Step: %llu | Area %u | Motion: %u->%u | PlwState: %u->%u | WaterFlag: %u->%u | Pos=(%.2f, %.2f, %.2f)\n",
-                static_cast<unsigned long long>(s_stepCounter), s_preState.area, s_lastCommittedState.motion, postMotion, s_lastCommittedState.plwState, postPlwState, s_lastCommittedState.inWaterFlag, inWaterFlag, postX, postY, postZ);
+                static_cast<unsigned long long>(s_stepCounter), current.area, s_lastState.motion, current.motion, s_lastState.plwState, current.plwState, s_lastState.inWaterFlag, current.inWaterFlag, current.x, current.y, current.z);
             std::fflush(s_logFile);
         }
     } else if (s_framesAfterAnomaly > 0) {
         --s_framesAfterAnomaly;
         if (s_logFile) {
             std::fprintf(s_logFile, "  [TRAIL] Step: %llu | Pos=(%.2f, %.2f, %.2f) | d2D=%.2f | GroundY=%.2f WaterY=%.2f | Mot=%u PlwState=%u\n",
-                static_cast<unsigned long long>(s_stepCounter), postX, postY, postZ, dist2D, groundY, waterY, postMotion, postPlwState);
+                static_cast<unsigned long long>(s_stepCounter), current.x, current.y, current.z, dist2D, current.groundY, current.waterY, current.motion, current.plwState);
             std::fflush(s_logFile);
         }
     } else if (s_stepCounter % 60 == 0) {
-        // Periodic heartbeat line every ~1-2 seconds of gameplay
         if (s_logFile) {
             std::fprintf(s_logFile, "[HEARTBEAT] Step: %llu | Map: %u Area: %u | Pos=(%.2f, %.2f, %.2f) | Mot=%u PlwState=%u WaterFlag=%u\n",
-                static_cast<unsigned long long>(s_stepCounter), s_preState.map, s_preState.area, postX, postY, postZ, postMotion, postPlwState, inWaterFlag);
+                static_cast<unsigned long long>(s_stepCounter), current.map, current.area, current.x, current.y, current.z, current.motion, current.plwState, current.inWaterFlag);
             std::fflush(s_logFile);
         }
     }
 
-    s_lastCommittedState = s_preState;
-    s_lastCommittedState.x = postX;
-    s_lastCommittedState.y = postY;
-    s_lastCommittedState.z = postZ;
-    s_lastCommittedState.motion = postMotion;
-    s_lastCommittedState.plwState = postPlwState;
-    s_lastCommittedState.state = postState;
-    s_lastCommittedState.inWaterFlag = inWaterFlag;
-    s_lastCommittedState.valid = true;
+    s_lastState = current;
 }
 
 void LogAction(uint32_t plw, const char* actionName, float param1, float param2) {
@@ -282,13 +252,3 @@ void Flush() {
 }
 
 } // namespace HunterTelemetry
-
-extern "C" void func_802094EC(CpuContext* ctx);
-
-extern "C" void MH3_PlayerMovementCollisionUpdate(CpuContext* ctx) {
-    const uint32_t plw = ctx->gpr[3];
-    HunterTelemetry::PreMovementStep(ctx, plw);
-    func_802094EC(ctx);
-    HunterTelemetry::PostMovementStep(ctx, plw);
-}
-REGISTER_NATIVE_FUNCTION_AS(0x802094EC, MH3_PlayerMovementCollisionUpdate, "PlayerMovementCollisionUpdate");

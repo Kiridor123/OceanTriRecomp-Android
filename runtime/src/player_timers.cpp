@@ -19,6 +19,7 @@
 #include "game_step.h"
 #include "guest_call.h"
 #include "port_check.h"
+#include "hunter_telemetry.h"
 
 #include <cstdint>
 #include <tuple>
@@ -389,5 +390,6 @@ extern "C" void func_80260B9C(CpuContext* ctx);
 extern "C" void MH3_PlayerStepTimers(CpuContext* ctx) {
     PortCheck::Fuzz(ctx, 'P', ctx->gpr[3]);
     PortCheck::Call(ctx, "PlayerStepTimers", func_80260B9C, PlayerStepTimers);
+    HunterTelemetry::Update(ctx->gpr[3]);
 }
 REGISTER_NATIVE_FUNCTION_AS(0x80260B9C, MH3_PlayerStepTimers, "PlayerStepTimers");
