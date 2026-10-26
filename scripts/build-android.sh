@@ -22,7 +22,7 @@ cmake -S "${ROOT_DIR}/runtime" -B "${BUILD_DIR}" -G Ninja \
   -DMH3_AURORA_ROOT="${ROOT_DIR}/aurora-main"
 
 echo "=== 2. Building native libraries ==="
-cmake --build "${BUILD_DIR}" --target libmain.so png16 --parallel "$(nproc)"
+cmake --build "${BUILD_DIR}" --target MH3 png_shared --parallel "$(nproc)"
 
 echo "=== 3. Packaging and signing APK ==="
 bash "${ROOT_DIR}/packaging/android/build_apk.sh"
