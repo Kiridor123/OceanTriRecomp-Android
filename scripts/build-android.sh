@@ -18,7 +18,8 @@ cmake -S "${ROOT_DIR}/runtime" -B "${BUILD_DIR}" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_ROOT}/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a \
   -DANDROID_PLATFORM=android-29 \
-  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_BUILD_TYPE=Release \
+  -DMH3_AURORA_ROOT="${ROOT_DIR}/aurora-main"
 
 echo "=== 2. Building native libraries ==="
 cmake --build "${BUILD_DIR}" --target libmain.so png16 --parallel "$(nproc)"

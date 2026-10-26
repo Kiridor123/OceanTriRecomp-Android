@@ -184,6 +184,10 @@ elseif(MH3_PGO_USE)
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-fprofile-instr-use=${MH3_PGO_USE};-Wno-profile-instr-unprofiled;-Wno-profile-instr-out-of-date;-Wno-profile-instr-missing>")
 endif()
 
+if(NOT MH3_AURORA_ROOT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../aurora-main")
+  set(MH3_AURORA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../aurora-main")
+endif()
+
 if(MH3_AURORA_ROOT)
   enable_language(C)
 

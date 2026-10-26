@@ -67,6 +67,7 @@ __pycache__/
 *.exe
 *.pdb
 *.idb
+!packaging/android/libs/**
 
 # Broken symlinks / temporary tools
 tools/dotnet/dotnet
