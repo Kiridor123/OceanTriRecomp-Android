@@ -696,8 +696,10 @@ void GetAnmResult(CpuContext* ctx) {
 
     const uint32_t data = MemoryInline::FlatRead32(anm);
 
-    if (!data)
-        Panic("NW4R:Failed assertion IsValid()", anm);
+    if (!data) {
+        MemoryInline::FlatWrite32(result, 0);
+        return;
+    }
 
     const uint32_t node = GuestFlat::CachedAlias(NodeData(data, index));
     if (!node) {

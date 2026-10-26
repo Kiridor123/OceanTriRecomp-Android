@@ -115,12 +115,14 @@ uint32_t WithIdentityBits(uint32_t flags) {
 
 void ChrAnmResult(uint32_t ref, uint32_t result) {
     if (!result)
-        Panic("NW4R panic (g3d_resnode.cpp:126): Pointer must not be NULL (pResult)");
+        return;
 
     const uint32_t node = Read32(ref);
 
-    if (!node)
-        Panic("NW4R panic (g3d_resnode.cpp:127): Failed assertion IsValid()");
+    if (!node) {
+        Write32(result, 0);
+        return;
+    }
 
     const uint32_t nodeFlags = Read32(node + kNodeFlags);
     uint32_t flags = 0;
@@ -164,12 +166,12 @@ void ChrAnmResult(uint32_t ref, uint32_t result) {
 
 void PatchChrAnmResult(uint32_t ref, uint32_t result) {
     if (!result)
-        Panic("NW4R panic (g3d_resnode.cpp:32): Pointer must not be NULL (pResult)");
+        return;
 
     const uint32_t node = Read32(ref);
 
     if (!node)
-        Panic("NW4R panic (g3d_resnode.cpp:33): Failed assertion IsValid()");
+        return;
 
     const uint32_t nodeFlags = Read32(node + kNodeFlags);
     uint32_t flags = Read32(result);

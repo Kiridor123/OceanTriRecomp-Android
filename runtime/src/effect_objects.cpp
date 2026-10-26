@@ -1248,7 +1248,7 @@ void CameraGetPosition(GuestCall& game, uint32_t camera, uint32_t out) {
     const uint32_t data = FlatRead32(camera);
 
     if (!data)
-        Panic("g3d_camera.cpp", 0xC3, "IsValid()");
+        return;
 
     if (out)
         for (uint32_t k = 0; k < 12; k += 4)
@@ -1281,12 +1281,19 @@ void JointWpos(uint32_t chara, uint32_t joint, uint32_t out) {
         return;
     }
 
+    const uint32_t matrices = FlatRead32(model + 0xEC);
+    if (!matrices) {
+        const uint32_t word = FlatRead32(0x807988F8);
+
+        for (uint32_t k = 0; k < 12; k += 4)
+            FlatWrite32(out + k, word);
+
+        return;
+    }
+
     const uint32_t node = G3dNative::ResDicAtOffset14(chara + 0x114, joint);
-
-    if (!node)
-        Panic("g3d_resnode_ac.h", 0x53, "IsValid()");
-
-    const uint32_t m = FlatRead32(model + 0xEC) + FlatRead32(node + 0x10) * 0x30;
+    const uint32_t id = node ? FlatRead32(node + 0x10) : 0;
+    const uint32_t m = matrices + id * 0x30;
 
     for (uint32_t k = 0; k < 3; ++k)
         FlatWrite32(out + 4 * k, FlatRead32(m + 0xC + 0x10 * k));
@@ -1470,7 +1477,7 @@ uint32_t CopiedMatPart(uint32_t mdl, uint32_t mat, uint32_t bit, bool dirty) {
 // (bit 1); alpha for those and for GX_COLOR0A0 / GX_COLOR1A1 (4, 5).
 void MatChanSetColor(uint32_t data, uint32_t chan, uint32_t color) {
     if (!data)
-        Panic("g3d_resmat_ac.h", 0x1D1, "ResMatChan: Object not valid");
+        return;
 
     const uint32_t at = data + (chan & 1) * 0x14;
 
@@ -1488,10 +1495,12 @@ void MatChanSetColor(uint32_t data, uint32_t chan, uint32_t color) {
 // ResMatChan::GetColor (0x80096EF0): the channel's colour into `out`.
 uint32_t MatChanGetColor(uint32_t data, uint32_t chan, uint32_t out) {
     if (!out)
-        Panic("g3d_resmat.cpp", 0x903, "Pointer must not be NULL (color)");
+        return 0;
 
-    if (!data)
-        Panic("g3d_resmat_ac.h", 0x1D1, "ResMatChan: Object not valid");
+    if (!data) {
+        FlatWrite32(out, 0xFFFFFFFF);
+        return 0;
+    }
 
     FlatWrite32(out, FlatRead32(data + (chan & 1) * 0x14 + 4));
     return 1;
@@ -1503,13 +1512,10 @@ uint32_t MatChanGetColor(uint32_t data, uint32_t chan, uint32_t out) {
 // into `out`; whether it is set.
 uint32_t TevKColorGet(uint32_t data, uint32_t id, uint32_t out) {
     if (!out)
-        Panic("g3d_resmat.cpp", 0x654, "Pointer must not be NULL (color)");
+        return 0;
 
-    if (id > 3)
-        Panic("g3d_resmat.cpp", 0x655, "id is out of bounds");
-
-    if (!data)
-        Panic("g3d_resmat_ac.h", 0x17A, "ResMatTevColor: Object not valid");
+    if (id > 3 || !data)
+        return 0;
 
     const uint32_t base = data + id * 10;
 
@@ -2715,7 +2721,7 @@ MH3_GAME_PORT(8006FE30, ResNodeGetId, {
     const uint32_t node = FlatRead32(frame.Arg(3));
 
     if (!node)
-        Panic("g3d_resnode_ac.h", 0x53, "IsValid()");
+        return 0;
 
     return FlatRead32(node + 0x10);
 });
