@@ -31,11 +31,6 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Install Ninja and CMake
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build cmake unzip curl
-
       - name: Set up Android SDK & NDK 28
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
