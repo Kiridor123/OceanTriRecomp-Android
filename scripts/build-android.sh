@@ -10,6 +10,7 @@ else
     ANDROID_NDK_ROOT="$(find "${ANDROID_SDK_ROOT}/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n1)"
 fi
 
+export DOTNET_BIN="${DOTNET_BIN:-$(which dotnet 2>/dev/null || echo "$ROOT_DIR/tools/dotnet/dotnet")}"
 BUILD_DIR="${ROOT_DIR}/build-android"
 
 echo "=== 1. Configuring CMake for Android arm64-v8a ==="

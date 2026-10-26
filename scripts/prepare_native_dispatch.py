@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -166,7 +167,8 @@ def main():
     parser.add_argument('--out', type=Path, default=ROOT / 'generated/build_shards')
     parser.add_argument('--translator', type=Path,
                         default=ROOT / 'toolchain/translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll')
-    parser.add_argument('--dotnet', type=Path, default=Path(os.environ.get('DOTNET_BIN', ROOT / 'tools/dotnet/dotnet')))
+    default_dotnet = os.environ.get('DOTNET_BIN') or shutil.which('dotnet') or (ROOT / 'tools/dotnet/dotnet')
+    parser.add_argument('--dotnet', type=Path, default=Path(default_dotnet))
     parser.add_argument('--resolved-profile', type=Path)
     parser.add_argument('--retro-cpp-dir', type=Path)
     parser.add_argument('--check', action='store_true')
