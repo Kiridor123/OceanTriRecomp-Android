@@ -495,6 +495,156 @@ static int overlay(classifier *c) {
     return 1;
 }
 
+/* Two-texture blend + ambient, then lit (Tundra ice walls/floor, idaruma, etc.):
+ *   s0: prev = C0 + texture0 * k
+ *   s1: prev = prev + texture1 * (1 - k)
+ *   s2: prev = scale * prev * ras
+ */
+static int blend_detail_lit(classifier *c) {
+    const mh3_native_material_state *s = c->state;
+
+    if (s->tev_count != 3)
+        return 0;
+
+    const mh3_pack_tev_pass *p0 = &s->tev[0].color, *p1 = &s->tev[1].color, *p2 = &s->tev[2].color;
+
+    /* Stage 0: output to PREV (0), C0 (2) + texture0 (8) * konst (14) */
+    if (p0->output != 0 || p0->operation || p0->bias || p0->scale || p0->d != 2 /* C0 */)
+        return 0;
+    if (p0->a != COLOR_ZERO || p0->b != COLOR_TEXTURE || p0->c != COLOR_KONST)
+        return 0;
+
+    /* Stage 1: output to PREV (0), prev (0) + texture1 (8) * (1 - konst (14)) */
+    if (p1->output != 0 || p1->operation || p1->bias || p1->scale || p1->d != 0 /* CPREV */)
+        return 0;
+    if (p1->a != COLOR_TEXTURE || p1->b != COLOR_ZERO || p1->c != COLOR_KONST)
+        return 0;
+    if (s->tev[0].konst_color != s->tev[1].konst_color)
+        return 0;
+
+    /* Stage 2: output to PREV (0), scale * prev (0) * ras (10) */
+    if (p2->output != 0 || p2->operation || p2->bias || p2->d != COLOR_ZERO || p2->a != COLOR_ZERO)
+        return 0;
+    if ((p2->b != COLOR_PREV || p2->c != COLOR_RASTER) && (p2->c != COLOR_PREV || p2->b != COLOR_RASTER))
+        return 0;
+
+    mh3_shade_material *m = c->out;
+
+    if (texture_role(c, &s->tev[0]) != 0 || texture_role(c, &s->tev[1]) != 1)
+        return 0;
+
+    for (unsigned i = 0; i < 3; ++i)
+        note_swap(c, &s->tev[i], 1);
+
+    mh3_shade_equation *eq = &m->color;
+    eq->subtract = eq->bias = 0;
+    eq->scale = p2->scale;
+
+    c->stage = 1;
+    eq->input[0] = source_term(MH3_SHADE_SOURCE_TEXTURE, 1, 0);
+    eq->input[0].scale = constant(MH3_SHADE_CONSTANT_ONE_MINUS_KONST, s->tev[1].konst_color, 0);
+
+    c->stage = 0;
+    eq->input[1] = source_term(MH3_SHADE_SOURCE_TEXTURE, 0, 0);
+    eq->input[1].scale = color_argument(c, p0->c).offset;
+    eq->input[1].offset = constant(MH3_SHADE_CONSTANT_REGISTER, 1, 0); /* C0 */
+
+    c->stage = 2;
+    eq->input[2] = color_argument(c, COLOR_RASTER);
+    eq->input[2].scale = constant(MH3_SHADE_CONSTANT_ONE, 0, 0);
+    eq->input[2].offset = constant(MH3_SHADE_CONSTANT_ZERO, 0, 0);
+
+    eq->input[3] = zero_term();
+
+    /* Alpha for blend_detail_lit is opaque (1.0) */
+    mh3_shade_equation *alpha_eq = &m->alpha;
+    alpha_eq->subtract = alpha_eq->bias = alpha_eq->scale = 0;
+    alpha_eq->input[0] = zero_term();
+    alpha_eq->input[1] = constant_term(constant(MH3_SHADE_CONSTANT_ONE, 0, 0));
+    alpha_eq->input[2] = constant_term(constant(MH3_SHADE_CONSTANT_ONE, 0, 0));
+    alpha_eq->input[3] = zero_term();
+    return 1;
+}
+
+/* Three-texture weighted sum, then lit (Tundra Area 7 ice wall pillars Al-p15-kmap-kabeE / F):
+ *   s0: prev = texture0 * k0
+ *   s1: prev = prev + texture1 * k1
+ *   s2: prev = prev + texture2 * k2
+ *   s3: prev = scale * prev * ras
+ */
+static int layers_kmap_lit(classifier *c, int *layered) {
+    const mh3_native_material_state *s = c->state;
+
+    if (s->tev_count != 4)
+        return 0;
+
+    const mh3_pack_tev_pass *p0 = &s->tev[0].color, *p1 = &s->tev[1].color;
+    const mh3_pack_tev_pass *p2 = &s->tev[2].color, *p3 = &s->tev[3].color;
+
+    /* Stage 0: output to PREV (0), 0 + texture0 (8) * konst (14) */
+    if (p0->output != 0 || p0->operation || p0->bias || p0->scale || p0->d != COLOR_ZERO)
+        return 0;
+    if (p0->a != COLOR_ZERO || p0->b != COLOR_TEXTURE || p0->c != COLOR_KONST)
+        return 0;
+
+    /* Stage 1: output to PREV (0), prev (0) + texture1 (8) * konst (14) */
+    if (p1->output != 0 || p1->operation || p1->bias || p1->scale || p1->d != COLOR_PREV)
+        return 0;
+    if (p1->a != COLOR_ZERO || p1->b != COLOR_TEXTURE || p1->c != COLOR_KONST)
+        return 0;
+
+    /* Stage 2: output to PREV (0), prev (0) + texture2 (8) * konst (14) */
+    if (p2->output != 0 || p2->operation || p2->bias || p2->scale || p2->d != COLOR_PREV)
+        return 0;
+    if (p2->a != COLOR_ZERO || p2->b != COLOR_TEXTURE || p2->c != COLOR_KONST)
+        return 0;
+
+    /* Stage 3: output to PREV (0), scale * prev (0) * ras (10) */
+    if (p3->output != 0 || p3->operation || p3->bias || p3->d != COLOR_ZERO || p3->a != COLOR_ZERO)
+        return 0;
+    if ((p3->b != COLOR_PREV || p3->c != COLOR_RASTER) && (p3->c != COLOR_PREV || p3->b != COLOR_RASTER))
+        return 0;
+
+    if (texture_role(c, &s->tev[0]) != 0 || texture_role(c, &s->tev[1]) != 1 || texture_role(c, &s->tev[2]) != 2)
+        return 0;
+
+    for (unsigned i = 0; i < 4; ++i)
+        note_swap(c, &s->tev[i], 1);
+
+    mh3_shade_material *m = c->out;
+
+    mh3_shade_equation *eq = &m->color;
+    eq->subtract = eq->bias = 0;
+    eq->scale = 0; /* Sum scale is 1.0 so individual texture highlights do not clamp prematurely */
+
+    c->stage = 0;
+    eq->input[0] = constant_term(constant(MH3_SHADE_CONSTANT_KONST, s->tev[0].konst_color, 0));
+    c->stage = 1;
+    eq->input[1] = constant_term(constant(MH3_SHADE_CONSTANT_KONST, s->tev[1].konst_color, 0));
+    c->stage = 2;
+    eq->input[2] = constant_term(constant(MH3_SHADE_CONSTANT_KONST, s->tev[2].konst_color, 0));
+    eq->input[3] = zero_term();
+
+    /* Stage 3 scales prev * ras by p3->scale (2.0x): apply the scale to the raster factor */
+    c->stage = 3;
+    const uint8_t fraction = p3->scale == 1 ? 16 : p3->scale == 2 ? 32 : p3->scale == 3 ? 4 : 8;
+    m->factor[0] = color_argument(c, COLOR_RASTER);
+    m->factor[0].scale = constant(MH3_SHADE_CONSTANT_FRACTION, fraction, 0);
+    m->factor[0].offset = constant(MH3_SHADE_CONSTANT_ZERO, 0, 0);
+
+    /* Alpha is opaque (1.0) */
+    mh3_shade_equation *alpha_eq = &m->alpha;
+    alpha_eq->subtract = alpha_eq->bias = alpha_eq->scale = 0;
+    alpha_eq->input[0] = zero_term();
+    alpha_eq->input[1] = zero_term();
+    alpha_eq->input[2] = zero_term();
+    alpha_eq->input[3] = constant_term(constant(MH3_SHADE_CONSTANT_ONE, 0, 0));
+    m->factor[1] = constant_term(constant(MH3_SHADE_CONSTANT_ONE, 0, 0));
+
+    *layered = 1;
+    return 1;
+}
+
 /* MODULATE: a = 0, b * c with one factor a texture role (or constant) and the
  * other the vertex colour (or constant), d constant. Overlay bases use role 0
  * only (roles 1/2 feed the overlay); other bases may use roles 0 and 1. */
@@ -510,8 +660,13 @@ static int vertex_side(const mh3_shade_term *t, int alpha) {
 }
 
 static int modulate_channel(const mh3_shade_material *m, const mh3_shade_equation *e, int alpha) {
-    if ((m->textures > 2 && !m->overlay) || !is_zero(&e->input[0]) || !is_constant(&e->input[3]))
+    if ((m->textures > 2 && !m->overlay) || !is_constant(&e->input[3]))
         return 0;
+
+    if (!is_zero(&e->input[0])) {
+        if (m->textures != 2 || !texture_side(m, &e->input[0], alpha))
+            return 0;
+    }
 
     return (texture_side(m, &e->input[1], alpha) && vertex_side(&e->input[2], alpha)) || (vertex_side(&e->input[1], alpha) && texture_side(m, &e->input[2], alpha));
 }
@@ -760,7 +915,7 @@ uint8_t mh3_shade_classify(const mh3_native_material_state *state, mh3_shade_mat
     int layered = 0;
     const unsigned count = state->tev_count ? (state->tev_count < 16 ? state->tev_count : 16) : 1;
 
-    if (!overlay(&c)) {
+    if (!overlay(&c) && !blend_detail_lit(&c) && !layers_kmap_lit(&c, &layered)) {
         /* Try each start stage per channel; keep the first exact fold, else
          * the first stage that samples a texture. Textures are re-allocated
          * by the final attempt so roles only cover what is read. */
@@ -880,6 +1035,11 @@ static void factor(const mh3_native_material_state *s, uint8_t kind, uint8_t ind
         break;
     case MH3_SHADE_CONSTANT_KONST:
         konst_value(s, index, out);
+        break;
+    case MH3_SHADE_CONSTANT_ONE_MINUS_KONST:
+        konst_value(s, index, out);
+        for (unsigned i = 0; i < 4; ++i)
+            out[i] = 1.f - out[i];
         break;
     default:
         out[0] = out[1] = out[2] = out[3] = index / 8.f;
@@ -1021,6 +1181,12 @@ static void modulate_fill(const mh3_shade_material *m, const mh3_native_material
                 (base->texture == 1 ? out->w1 : out->w0)[i] = scale[i];
         }
 
+        if (!is_zero(&e->input[0]) && e->input[0].source == MH3_SHADE_SOURCE_TEXTURE) {
+            resolve(s, &e->input[0].scale, scale);
+            for (unsigned i = first; i < last; ++i)
+                (e->input[0].texture == 1 ? out->w1 : out->w0)[i] = scale[i];
+        }
+
         resolve(s, &light->offset, offset);
         resolve(s, &light->scale, scale);
         resolve(s, &e->input[3].offset, d);
@@ -1138,6 +1304,8 @@ static int gpu_split_constant(const mh3_shade_constant *c, gpu_split *out) {
 
             break;
         }
+        case MH3_SHADE_CONSTANT_ONE_MINUS_KONST:
+            return 0;
         default:
             value = index / 8.f;
             break;
@@ -1228,6 +1396,13 @@ int mh3_shade_gpu_bake(const mh3_shade_material *m, mh3_shade_gpu_material *out,
 
             if (!is_constant(base))
                 ok &= gpu_lanes(out, base->texture == 1 ? MH3_SHADE_GPU_W1 : MH3_SHADE_GPU_W0, alpha, &base->scale, 1.f, dynamic);
+
+            if (!is_zero(&e->input[0])) {
+                if (e->input[0].source == MH3_SHADE_SOURCE_TEXTURE)
+                    ok &= gpu_lanes(out, e->input[0].texture == 1 ? MH3_SHADE_GPU_W1 : MH3_SHADE_GPU_W0, alpha, &e->input[0].scale, 1.f, dynamic);
+                else
+                    ok = 0;
+            }
 
             ok &= gpu_lanes(out, MH3_SHADE_GPU_KC, alpha, &light->offset, sign, dynamic);
             ok &= gpu_lanes(out, MH3_SHADE_GPU_KV, alpha, is_constant(light) ? &gpu_zero : &light->scale, sign, dynamic);
