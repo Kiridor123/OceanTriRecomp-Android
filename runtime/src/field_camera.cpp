@@ -87,8 +87,9 @@ enum : uint32_t {
     kTarget = 0x0C,       // VEC3
     kOldEye = 0x18,       // VEC3, the reset blend's
     kOldTarget = 0x24,    // VEC3
-    kFovB = 0x30,         // f32
-    kFovA = 0x34,         // f32
+    kTwist = 0x30,        // f32: camera twist/roll in degrees (0.0f = upright; passed as f2 to CameraSet)
+    kFovB = kTwist,       // legacy alias
+    kFovA = 0x34,         // f32: vertical field of view (fovy; passed as f1 to CameraSet)
     kReset = 0x42,        // u8: 1 start a reset blend, 2 blending
     kResetLeft = 0x44,    // s16 steps (here ticks) of the blend left
     kResetRate = 0x48,    // f32: 1 / 20
@@ -552,12 +553,14 @@ static void FieldCameraUpdatePort(CpuContext* ctx) {
                     Memory::WriteFloat32(eye + 4 * k, F(target + 4 * k) + away[k] / length * distance + (k == 1 ? distance / 3.0f : 0.0f));
             }
 
-            game.Call<CameraSet>({0, eye, target}, {F(cam + kFovA), F(cam + kFovB)});
+            WF(cam + kTwist, 0.0f);
+            game.Call<CameraSet>({0, eye, target}, {F(cam + kFovA), 0.0f});
             return;
         }
     }
 #endif
-    game.Call<CameraSet>({0, cam + kEye, cam + kTarget}, {F(cam + kFovA), F(cam + kFovB)});
+    WF(cam + kTwist, 0.0f);
+    game.Call<CameraSet>({0, cam + kEye, cam + kTarget}, {F(cam + kFovA), 0.0f});
 }
 
 // 0x802B8ED0 BindCamera (camera, PLW), each step after the field camera
@@ -681,13 +684,16 @@ static void BindCameraPort(CpuContext* ctx) {
     }
 
     // Safety: If hold just ended (was placed on previous frame, but no longer placed),
-    // ensure FOV is restored to standard 55.0f and camera distance row is restored from Option 11
-    // so the camera never gets stuck zoomed in or too close after Rathian/monster pins.
+    // ensure FOV is restored to standard 55.0f, camera twist/roll is zeroed (upright),
+    // and camera distance row is restored from Option 11
+    // so the camera never gets stuck zoomed in, tilted or too close after Rathian/monster pins.
     if (wasPlaced && !placed) {
         float defaultFov = Memory::Contains(0x8079C9A8u, 4) ? Memory::ReadFloat32(0x8079C9A8u) : 55.0f;
         if (defaultFov <= 0.0f || defaultFov > 120.0f) defaultFov = 55.0f;
         WF(cam + kFovA, defaultFov);
-        WF(cam + kFovB, defaultFov);
+        WF(cam + kTwist, 0.0f);
+        W32(cam + kTiltTarget, 0);
+        W32(cam + kTilt, 0);
 
         GuestCall game{ctx};
         const uint8_t playerId = Memory::Read8(plw + kPlwPlayer);
