@@ -156,6 +156,10 @@ constexpr std::uint32_t kReqLayerDetailSearchFoot = 0x64920100;
 constexpr std::uint32_t kAnsLayerDetailSearchFoot = 0x64920200;
 constexpr std::uint32_t kReqLayerMediationList = 0x64820100;
 constexpr std::uint32_t kAnsLayerMediationList = 0x64820200;
+constexpr std::uint32_t kNtcLayerChat = 0x64721000;
+constexpr std::uint32_t kReqLayerTell = 0x64730100;
+constexpr std::uint32_t kAnsLayerTell = 0x64730200;
+constexpr std::uint32_t kNtcLayerTell = 0x64731000;
 constexpr std::uint32_t kReqLayerMediationLock = 0x64800100;
 constexpr std::uint32_t kAnsLayerMediationLock = 0x64800200;
 constexpr std::uint32_t kReqLayerMediationUnlock = 0x64810100;
@@ -177,6 +181,9 @@ constexpr std::uint32_t kReqCircleMatchEnd = 0x65130100;
 constexpr std::uint32_t kAnsCircleMatchEnd = 0x65130200;
 constexpr std::uint32_t kReqCircleInfoSet = 0x65200100;
 constexpr std::uint32_t kAnsCircleInfoSet = 0x65200200;
+constexpr std::uint32_t kReqCircleTell = 0x65730100;
+constexpr std::uint32_t kAnsCircleTell = 0x65730200;
+constexpr std::uint32_t kNtcCircleTell = 0x65731000;
 constexpr std::uint32_t kReqCircleInfoNoticeSet = 0x65800100;
 constexpr std::uint32_t kAnsCircleInfoNoticeSet = 0x65800200;
 constexpr std::uint32_t kReqFriendAdd = 0x66500100;
@@ -187,6 +194,7 @@ constexpr std::uint32_t kReqFriendDelete = 0x66530100;
 constexpr std::uint32_t kAnsFriendDelete = 0x66530200;
 constexpr std::uint32_t kReqTell = 0x66110100;
 constexpr std::uint32_t kAnsTell = 0x66110200;
+constexpr std::uint32_t kNtcTell = 0x66111000;
 constexpr std::uint32_t kReqBlackAdd = 0x66600100;
 constexpr std::uint32_t kAnsBlackAdd = 0x66600200;
 constexpr std::uint32_t kReqBlackDelete = 0x66610100;
@@ -194,10 +202,14 @@ constexpr std::uint32_t kAnsBlackDelete = 0x66610200;
 constexpr std::uint32_t kReqUserBinaryNotice = 0x66320100;
 constexpr std::uint32_t kAnsUserBinaryNotice = 0x66320200;
 
+struct ClientEntry {
+    mh3_socket sock;
+    std::uint16_t port;
+};
 std::atomic<bool> g_running{false};
 std::mutex g_mutex;
 std::vector<mh3_socket> g_listeners;
-std::vector<mh3_socket> g_clients;
+std::vector<ClientEntry> g_clients;
 std::vector<std::thread> g_threads;
 std::vector<std::thread> g_workers;
 #if defined(_WIN32)
@@ -382,7 +394,15 @@ bool handlePacket(mh3_socket s, std::uint16_t servicePort, std::uint32_t id, con
         else if (servicePort==8202) status=3;
         reply(kNtcLogin,u8bytes(status)); return true;
     }
-    if (id==0x60010200 || id==0x60801000 || id==0x60501000) return true;
+    if (id==0x60010200 || id==0x60801000) return true;
+    if (id==0x60501000) {
+        std::uint32_t err = 0;
+        if (d.size() >= 7) {
+            err = get32(d, 2);
+        }
+        std::fprintf(stderr, "[MH3SP-native][%u] NtcLog / CollectionLog: err=0x%08x (size=%zu)\n", static_cast<unsigned>(servicePort), err, d.size());
+        return true;
+    }
     if (id==kReqServerTime) { Bytes b;u32(b,0);u32(b,unixNow());reply(kAnsServerTime,b);return true; }
     if (id==kReqShut) { reply(kAnsShut,Bytes{d.empty()?std::uint8_t(0):d[0]});return true; }
     if (id==kReqConnection) { Bytes b;u32(b,0);reply(kReqConnection,b);return true; }
@@ -440,6 +460,123 @@ bool handlePacket(mh3_socket s, std::uint16_t servicePort, std::uint32_t id, con
     if (id==kReqLayerDown) { reply(id+0x100,u16bytes(get16(d,0)));return true; }
     if (id==kReqLayerCreateHead || id==kReqLayerCreateSet || id==kReqLayerCreateFoot) { reply(id+0x100,u16bytes(get16(d,0)));return true; }
     if (id==kReqLayerUserList) { Bytes b;u32(b,1);auto u=patData({fString(1,"C9I7D4")});b.insert(b.end(),u.begin(),u.end());reply(kAnsLayerUserList,b);return true; }
+    if (id==kNtcLayerChat) {
+        std::uint8_t unk1 = d.empty() ? 0 : d[0];
+        std::size_t p = 1;
+        if (p < d.size()) {
+            std::size_t fCount = d[p++];
+            for (std::size_t i = 0; i < fCount && p + 2 <= d.size(); ++i) {
+                std::uint8_t fid = d[p++];
+                std::uint8_t ftyp = d[p++];
+                std::size_t n = (ftyp == 1) ? 1 : (ftyp == 2) ? 2 : (ftyp == 3) ? 4 : (ftyp == 4) ? 8 : 0;
+                if (ftyp == 5 || ftyp == 6) {
+                    if (p + 2 > d.size()) break;
+                    n = 2 + get16(d, p);
+                }
+                p += n;
+            }
+        }
+        std::string msg;
+        if (p + 2 <= d.size()) {
+            std::uint16_t mlen = get16(d, p);
+            if (p + 2 + mlen <= d.size()) {
+                msg = std::string(reinterpret_cast<const char*>(d.data() + p + 2), mlen);
+            }
+        }
+        Bytes out;
+        u8(out, unk1);
+        auto info = patData({
+            fLong(0x01, 0xbb3385ff),
+            fLong(0x02, 20),
+            fString(0x03, "C9I7D4"),
+            fString(0x04, "Hunter")
+        });
+        out.insert(out.end(), info.begin(), info.end());
+        auto lpMsg = lp2(msg.empty() ? "..." : msg);
+        out.insert(out.end(), lpMsg.begin(), lpMsg.end());
+
+        std::lock_guard<std::mutex> lock(g_mutex);
+        for (const auto& client : g_clients) {
+            if (client.port == 8202) {
+                sendPacket(client.sock, kNtcLayerChat, out, (client.sock == s) ? seq : 0);
+            }
+        }
+        return true;
+    }
+    if (id==kReqTell) {
+        std::string recipient;
+        std::size_t p = 0;
+        if (p + 2 <= d.size()) {
+            std::uint16_t rlen = get16(d, p);
+            p += 2;
+            if (p + rlen <= d.size()) {
+                recipient = std::string(reinterpret_cast<const char*>(d.data() + p), rlen);
+                p += rlen;
+            }
+        }
+        if (p < d.size()) {
+            std::size_t fCount = d[p++];
+            for (std::size_t i = 0; i < fCount && p + 2 <= d.size(); ++i) {
+                std::uint8_t fid = d[p++];
+                std::uint8_t ftyp = d[p++];
+                std::size_t n = (ftyp == 1) ? 1 : (ftyp == 2) ? 2 : (ftyp == 3) ? 4 : (ftyp == 4) ? 8 : 0;
+                if (ftyp == 5 || ftyp == 6) {
+                    if (p + 2 > d.size()) break;
+                    n = 2 + get16(d, p);
+                }
+                p += n;
+            }
+        }
+        std::string msg;
+        if (p + 2 <= d.size()) {
+            std::uint16_t mlen = get16(d, p);
+            if (p + 2 + mlen <= d.size()) {
+                msg = std::string(reinterpret_cast<const char*>(d.data() + p + 2), mlen);
+            }
+        }
+        reply(kAnsTell);
+
+        Bytes out;
+        auto lpRecip = lp2(recipient);
+        out.insert(out.end(), lpRecip.begin(), lpRecip.end());
+        auto info = patData({
+            fLong(0x01, 0xbb3385ff),
+            fLong(0x02, 20),
+            fString(0x03, "C9I7D4"),
+            fString(0x04, "Hunter")
+        });
+        out.insert(out.end(), info.begin(), info.end());
+        auto lpMsg = lp2(msg.empty() ? "..." : msg);
+        out.insert(out.end(), lpMsg.begin(), lpMsg.end());
+
+        std::lock_guard<std::mutex> lock(g_mutex);
+        for (const auto& client : g_clients) {
+            if (client.port == 8202) {
+                sendPacket(client.sock, kNtcTell, out, (client.sock == s) ? seq : 0);
+            }
+        }
+        return true;
+    }
+    if (id==kReqCircleTell) {
+        reply(kAnsCircleTell);
+        std::lock_guard<std::mutex> lock(g_mutex);
+        for (const auto& client : g_clients) {
+            if (client.port == 8202) {
+                sendPacket(client.sock, kNtcCircleTell, d, (client.sock == s) ? seq : 0);
+            }
+        }
+        return true;
+    }
+    if (id==kReqLayerTell) {
+        reply(kAnsLayerTell);
+        std::lock_guard<std::mutex> lock(g_mutex);
+        for (const auto& client : g_clients) {
+            if (client.port == 8202) {
+                sendPacket(client.sock, kNtcLayerTell, d, (client.sock == s) ? seq : 0);
+            }
+        }
+        return true;
+    }
     if (id==kReqUserSearchInfoMine) { reply(kAnsUserSearchInfoMine,patData({}));return true; }
     if (id==kReqUserSearchInfo) { auto u=fakeUserSearchInfo();u.insert(u.end(),{0,0,0});reply(kAnsUserSearchInfo,u);return true; }
     if (id==kReqLayerMediationList) { Bytes b;u8(b,0);u8(b,1);auto item=patData({fString(1,"Test"),fByte(2,0),fByte(3,0)});b.insert(b.end(),item.begin(),item.end());reply(kAnsLayerMediationList,b);return true; }
@@ -452,7 +589,17 @@ bool handlePacket(mh3_socket s, std::uint16_t servicePort, std::uint32_t id, con
     if (id==kReqCircleInfo) { const auto which=get32(d,0);Bytes b;u32(b,which);auto circle=fakeCircle(which,false,advertisedIp);b.insert(b.end(),circle.begin(),circle.end());b.insert(b.end(),{0,0,0});reply(kAnsCircleInfo,b);return true; }
     if (id==kReqCircleLeave) { reply(kAnsCircleLeave,u32bytes(get32(d,0)));return true; }
     if (id==kReqCircleInfoSet) { reply(kAnsCircleInfoSet,u32bytes(0));return true; }
-    if (id==kReqCircleMatchStart) { Bytes n;u32(n,1);u8(n,1);auto a=lp2("HUNTER");n.insert(n.end(),a.begin(),a.end());auto c=lp2(Bytes{1});n.insert(n.end(),c.begin(),c.end());u16(n,21);Bytes body;u16(body,static_cast<std::uint16_t>(n.size()));body.insert(body.end(),n.begin(),n.end());u32(body,1);reply(kNtcCircleMatchStart,body);reply(kAnsCircleMatchStart);return true; }
+    if (id==kReqCircleMatchStart) {
+        Bytes n;
+        u32(n, 0); // 0 other players in circle matchmaking (no ghost hunter)
+        Bytes body;
+        u16(body, static_cast<std::uint16_t>(n.size()));
+        body.insert(body.end(), n.begin(), n.end());
+        u32(body, 1);
+        reply(kNtcCircleMatchStart, body);
+        reply(kAnsCircleMatchStart);
+        return true;
+    }
     if (id==kReqFriendList) { Bytes b;u32(b,0);u32(b,1);auto item=patData({fLong(1,1),fString(2,"D9R7K4"),fString(3,"Drakea")});b.insert(b.end(),item.begin(),item.end());reply(kAnsFriendList,b);return true; }
     if (id==kReqBlackList) { Bytes b;u32(b,0);u32(b,1);auto item=patData({fLong(1,0),fString(2,""),fString(3,"")});b.insert(b.end(),item.begin(),item.end());reply(kAnsBlackList,b);return true; }
     if ((id & 0xffffu)==0x0100u) {
@@ -466,10 +613,11 @@ bool handlePacket(mh3_socket s, std::uint16_t servicePort, std::uint32_t id, con
 
 void unregisterClient(mh3_socket c) {
     std::lock_guard<std::mutex> lock(g_mutex);
-    auto it=std::find(g_clients.begin(),g_clients.end(),c); if(it!=g_clients.end()) g_clients.erase(it);
+    auto it = std::find_if(g_clients.begin(), g_clients.end(), [c](const ClientEntry& e) { return e.sock == c; });
+    if (it != g_clients.end()) g_clients.erase(it);
 }
 void clientLoop(mh3_socket c,std::uint16_t port) {
-    { std::lock_guard<std::mutex> lock(g_mutex); g_clients.push_back(c); }
+    { std::lock_guard<std::mutex> lock(g_mutex); g_clients.push_back({c, port}); }
     const char* svc = port==8200?"OPN":port==8201?"LMP":port==8202?"FMP":"RFP";
     logLine(svc,port,"client connected");
 
@@ -563,7 +711,7 @@ void Stop() {
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         for(auto s:g_listeners) mh3_shutdown_socket(s);
-        for(auto s:g_clients) mh3_shutdown_socket(s);
+        for(const auto& c:g_clients) mh3_shutdown_socket(c.sock);
     }
     for(auto& t:g_threads) if(t.joinable()) t.join();
     g_threads.clear();

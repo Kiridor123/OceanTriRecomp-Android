@@ -15,7 +15,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 
@@ -51,9 +50,7 @@ def validate(output, native, resolved_profile=None):
     manifest = output / 'shards.cmake'
     if not manifest.is_file():
         raise ValueError('missing generated shards.cmake')
-    raw_manifest = manifest.read_text()
-    resolved_manifest = raw_manifest.replace('${CMAKE_CURRENT_LIST_DIR}', str(output.resolve()).replace('\\', '/'))
-    selected = {Path(p) for p in re.findall(r'"([^"\n]+\.(?:cpp|h|inc))"', resolved_manifest)}
+    selected = {Path(p) for p in re.findall(r'"([^"\n]+\.(?:cpp|h|inc))"', manifest.read_text())}
     checked = {}
     higher_priority_mods = set()
     if resolved_profile:
@@ -115,16 +112,6 @@ def prepare(args):
     args.out.mkdir(parents=True, exist_ok=True)
     with (args.out / '.native-dispatch.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        native = native_addresses(args.native_dir)
-        manifest = args.out / 'shards.cmake'
-        if manifest.is_file() and not args.force:
-            try:
-                tables = validate(args.out, native, args.resolved_profile)
-                print(f'Native dispatch fresh: {len(native)} literal native addresses; base + retro_rewind')
-                return tables
-            except Exception as e:
-                print(f'Validation failed ({e}), regenerating...', flush=True)
-
         stamp = args.out / 'native_dispatch_freshness.json'
         inputs = input_digests(args)
         recipe = [str(args.base_metadata), str(args.functions), str(args.native_dir),
@@ -132,6 +119,7 @@ def prepare(args):
         previous = json.loads(stamp.read_text()) if stamp.is_file() else {}
         fresh = (previous.get('format') == 2 and previous.get('inputs') == inputs and
                  previous.get('recipe') == recipe and previous.get('outputs') == output_digests(args.out))
+        native = native_addresses(args.native_dir)
         if fresh and not args.force:
             tables = validate(args.out, native, args.resolved_profile)
             print(f'Native dispatch fresh: {len(native)} literal native addresses; base + retro_rewind')
@@ -178,8 +166,7 @@ def main():
     parser.add_argument('--out', type=Path, default=ROOT / 'generated/build_shards')
     parser.add_argument('--translator', type=Path,
                         default=ROOT / 'toolchain/translator/src/Translator.Cli/bin/Release/net8.0/Translator.Cli.dll')
-    default_dotnet = os.environ.get('DOTNET_BIN') or shutil.which('dotnet') or (ROOT / 'tools/dotnet/dotnet')
-    parser.add_argument('--dotnet', type=Path, default=Path(default_dotnet))
+    parser.add_argument('--dotnet', type=Path, default=Path(os.environ.get('DOTNET_BIN', ROOT / 'tools/dotnet/dotnet')))
     parser.add_argument('--resolved-profile', type=Path)
     parser.add_argument('--retro-cpp-dir', type=Path)
     parser.add_argument('--check', action='store_true')

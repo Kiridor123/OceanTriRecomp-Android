@@ -212,7 +212,7 @@ namespace {
 bool IsSupportedDiscImage(const std::filesystem::path& path) {
     std::string extension = path.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return char(std::tolower(c)); });
-    return extension == ".iso" || extension == ".rvz" || extension == ".wia";
+    return extension == ".rvz";
 }
 
 
@@ -239,7 +239,7 @@ std::optional<std::filesystem::path> SelectDiscImage(const std::filesystem::path
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = owner;
-    dialog.lpstrFilter = L"Monster Hunter Tri ROM (*.iso;*.rvz;*.wia)\0*.iso;*.rvz;*.wia\0Todos los archivos (*.*)\0*.*\0\0";
+    dialog.lpstrFilter = L"Monster Hunter Tri ROM (*.rvz)\0*.rvz\0Todos los archivos (*.*)\0*.*\0\0";
     dialog.nFilterIndex = 1;
     dialog.lpstrFile = filename.data();
     dialog.nMaxFile = static_cast<DWORD>(filename.size());
@@ -683,17 +683,17 @@ bool PrepareGameData(const char* rom) {
             std::vector<std::string> searchPaths;
 #if defined(__ANDROID__)
             searchPaths = {
-                "/storage/emulated/0/Download",
                 "/storage/emulated/0/MH3",
-                "/storage/emulated/0/OceanTri",
-                "/storage/emulated/0/ROMs",
-                "/storage/emulated/0/Games",
-                "/storage/emulated/0",
-                "/sdcard/Download",
                 "/sdcard/MH3",
+                "/storage/emulated/0/Download",
+                "/sdcard/Download",
+                "/storage/emulated/0/OceanTri",
                 "/sdcard/OceanTri",
+                "/storage/emulated/0/ROMs",
                 "/sdcard/ROMs",
+                "/storage/emulated/0/Games",
                 "/sdcard/Games",
+                "/storage/emulated/0",
                 "/sdcard"
             };
             if (extFiles && extFiles[0]) searchPaths.push_back(extFiles);
@@ -720,7 +720,7 @@ bool PrepareGameData(const char* rom) {
             auto isRomExtension = [](const std::string& ext) {
                 std::string lower = ext;
                 std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                return lower == ".rvz" || lower == ".iso" || lower == ".wia";
+                return lower == ".rvz" || lower == ".iso" || lower == ".wia" || lower == ".wbfs" || lower == ".ciso";
             };
 
             for (const auto& dirPath : searchPaths) {
@@ -768,7 +768,7 @@ bool PrepareGameData(const char* rom) {
                 SDL_MESSAGEBOX_ERROR,
                 "Monster Hunter Tri",
                 "No se encontró el archivo del juego (ROM).\n\n"
-                "Por favor copia tu juego Monster Hunter Tri Europeo (.rvz, .iso o .wia)\n"
+                "Por favor copia tu juego Monster Hunter Tri Europeo (.rvz)\n"
                 "en la carpeta 'Download' o 'MH3' de la memoria de tu teléfono y vuelve a abrir la app.",
                 nullptr
             );
@@ -779,7 +779,7 @@ bool PrepareGameData(const char* rom) {
                 SDL_MESSAGEBOX_ERROR,
                 "Monster Hunter Tri",
                 "No se encontró el archivo del juego (ROM).\n\n"
-                "Por favor copia tu juego Monster Hunter Tri Europeo (.rvz, .iso o .wia)\n"
+                "Por favor copia tu juego Monster Hunter Tri Europeo (.rvz)\n"
                 "en tu carpeta de Descargas o junto a la AppImage, o ejecuta con --rom <ruta>.",
                 nullptr
             );
@@ -976,7 +976,7 @@ void PrepareVitaGameData() {
     std::filesystem::path image;
 
     for (const auto& entry : std::filesystem::directory_iterator(data.parent_path()))
-        if (entry.is_regular_file() && (entry.path().extension() == ".iso" || entry.path().extension() == ".rvz" || entry.path().extension() == ".wia")) {
+        if (entry.is_regular_file() && (entry.path().extension() == ".rvz")) {
             if (!image.empty())
                 MH3_THROW(std::runtime_error("More than one disc image in " + data.parent_path().string()));
 

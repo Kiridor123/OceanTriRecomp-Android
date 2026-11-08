@@ -86,14 +86,6 @@ float F32(uint32_t address) {
     return Memory::ReadFloat32(address);
 }
 
-// The pause and hold counters count ticks of game time. A tick can be part
-// used up when a step ends: the part is kept here, with the count it belongs
-// to (a count the game sets anew starts from a whole tick).
-struct Partial {
-    uint8_t count = 0;
-    double used = 0;
-};
-
 // A channel's root-node translation at the frame its last motion window ended
 // on: the next window starts there.
 struct RootSample {
@@ -103,7 +95,6 @@ struct RootSample {
 };
 
 struct Counters {
-    Partial pause, hold;
     std::array<RootSample, 6> roots;
 };
 
@@ -122,10 +113,10 @@ struct AheadWindow {
     bool updated = false;
 };
 
-std::array<AheadWindow, 64> aheadWindows;
+std::unordered_map<uint32_t, AheadWindow> aheadWindows;
 
 AheadWindow& WindowOf(uint32_t self) {
-    return aheadWindows[(self * 2654435761u) >> 26];
+    return aheadWindows[self];
 }
 
 // One frame update of `self`, an advance or a step without one (a pause);
@@ -143,31 +134,6 @@ void NoteFrameUpdate(uint32_t self, bool framesSet) {
     }
 }
 
-// Spends up to `time` ticks on the u8 count at `address`; returns the time
-// left over once it has run out (0 while it still runs).
-double Spend(uint32_t address, Partial& partial, double time) {
-    uint8_t count = Memory::Read8(address);
-
-    if (count != partial.count)
-        partial.used = 0;
-    while (count > 0 && time > 0) {
-        const double need = 1.0 - partial.used;
-
-        if (time >= need) {
-            time -= need;
-            partial.used = 0;
-            --count;
-        } else {
-            partial.used += time;
-            time = 0;
-        }
-    }
-
-    Memory::Write8(address, count);
-    partial.count = count;
-    return count > 0 ? 0 : time;
-}
-
 // The root node's translation in channel animation `anim` at `frame`, through
 // the guest's result buffer `result` and VEC3 `out`; leaves the frame set.
 std::array<float, 3> RootAt(GuestCall& game, uint32_t self, uint32_t anim, float frame, uint32_t result, uint32_t out) {
@@ -182,6 +148,9 @@ std::array<float, 3> RootAt(GuestCall& game, uint32_t self, uint32_t anim, float
 // `known` is the translation at `from` when the caller has it.
 std::array<float, 3> RootDelta(GuestCall& game, uint32_t self, uint32_t anim, float from, float to, uint32_t result, uint32_t out, const std::array<float, 3>* known, std::array<float, 3>* atTo) {
     game.Call<InitAnmResult>({result});
+    Memory::WriteFloat32(result + 0x28, 0.0f);
+    Memory::WriteFloat32(result + 0x38, 0.0f);
+    Memory::WriteFloat32(result + 0x48, 0.0f);
 
     if (Memory::Read32(anim) == kAnmObjChrResVtable) {
         // Setting an AnmObjChrRes's frame re-evaluates its whole result cache,
@@ -357,29 +326,16 @@ static void MHcharRootMotionPort(CpuContext* ctx) {
         return;
     }
 
-    // The pause (hit stop) and hold counters count ticks of game time (the
-    // original: 1 per step), to the exact time within the step: the animation
-    // only advances for the part of the step after the pause, and the
-    // character only moves for the part after the hold.
-    const double step = GameStep::Scale();
-#ifdef MH3_DEVELOPMENT
-    GuestWorker::NoteShared("MHchar motion counters");
-#endif
-    Counters& state = counters[self];
-    const bool pausing = Memory::Read8(self + kPauseSteps) != 0;
-    const double animated = pausing ? Spend(self + kPauseSteps, state.pause, step) : step;
-
-    if (animated <= 0) {
+    if (const uint8_t pause = Memory::Read8(self + kPauseSteps)) {
+        Memory::Write8(self + kPauseSteps, pause - 1);
         *ctx = saved;
         return;
     }
 
-    // The part of the step after a pause: the animation's base rate is the
-    // step's length, so it advances by that part here.
-    const float stepRate = F32(kAnimationBaseRate);
-
-    if (animated != step)
-        Memory::WriteFloat32(kAnimationBaseRate, float(stepRate * (animated / step)));
+#ifdef MH3_DEVELOPMENT
+    GuestWorker::NoteShared("MHchar motion counters");
+#endif
+    Counters& state = counters[self];
 
     game.Call<InitAnmResult>({result});
 
@@ -458,16 +414,15 @@ static void MHcharRootMotionPort(CpuContext* ctx) {
         game.Call<VecAdd>({sum, scaled});
     }
 
-    Memory::WriteFloat32(kAnimationBaseRate, stepRate);
-    const bool holding = Memory::Read8(self + kHoldSteps) != 0;
-    const double moved = holding ? Spend(self + kHoldSteps, state.hold, animated) : animated;
+    if (const uint8_t hold = Memory::Read8(self + kHoldSteps)) {
+        Memory::Write8(self + kHoldSteps, hold - 1);
+        *ctx = saved;
+        return;
+    }
 
-    if (moved > 0 && (Memory::Read32(self + kFlags) & 2) == 0) { // 0x800E19BC, inlined
-        // After a hold ends within the step, only the motion of the rest of it.
-        const float part = moved == animated ? 1.0f : float(moved / animated);
-
+    if ((Memory::Read32(self + kFlags) & 2) == 0) { // 0x800E19BC, inlined
         for (uint32_t k = 0; k < 3; ++k)
-            Memory::WriteFloat32(sum + k * 4, F32(sum + k * 4) * F32(self + kScale + k * 4) * part);
+            Memory::WriteFloat32(sum + k * 4, F32(sum + k * 4) * F32(self + kScale + k * 4));
 
         game.Call<RotVecZXY>({sum, self + kRotation});
         game.Call<VecAdd>({self + kPosition, sum});
@@ -513,9 +468,10 @@ void TileAhead(uint32_t self, float frame, float& from, float& to) {
         return;
     }
 
-    const bool previousStep = std::fabs(last.step - (step - GameStep::Scale())) <= 1e-6 * std::max(1.0, step);
-    const bool updatedOnce = last.updated ? last.updates == 1 : previousStep;
-    const bool continues = same && updatedOnce && last.frame <= frame && last.to > last.frame;
+    const double dt = GameStep::Scale();
+    const bool previousStep = (step > last.step) && ((step - last.step) <= 2.0 * std::max(0.01, dt));
+    const bool updatedOnce = last.updated ? (last.updates == 1) : previousStep;
+    const bool continues = same && (updatedOnce || previousStep) && last.frame <= frame && last.to > last.frame;
 
     if (continues)
         from = last.to;
@@ -585,11 +541,24 @@ uint32_t FrameCheck(uint32_t self, uint32_t mode, bool ahead, double frame, doub
     }
 
     switch (mode) {
-    case 0:
+    case 0: {
         if (wrapped)
             return (frame <= to && frame >= F32(self + kLoopFrame)) || frame > from;
 
-        return frame > from && frame <= to;
+        if (frame > from && frame <= to)
+            return 1;
+
+        // Safety catch: if the frame advance crossed `frame` across consecutive steps
+        // (e.g. frame rate fluctuation or dropped frame caused a gap where last.to < frame <= from),
+        // trigger the event once so throwables/items/effects are never dropped.
+        if (ahead) {
+            const AheadWindow& win = WindowOf(self);
+            if (win.self == self && win.to < frame && from >= frame && (from - win.to) < 5.0f)
+                return 1;
+        }
+
+        return 0;
+    }
     case 1:
     case 6:
         return reached >= frame;
@@ -597,6 +566,10 @@ uint32_t FrameCheck(uint32_t self, uint32_t mode, bool ahead, double frame, doub
         return to < frame;
     case 3:
     case 7:
+        if (frame < -500.0)
+            return reached >= frame;
+        if (frame == end)
+            return (from < frame && reached >= frame) || (reached >= frame && reached <= end);
         return reached >= frame && reached <= end;
     case 4:
         return reached > frame && reached <= end;

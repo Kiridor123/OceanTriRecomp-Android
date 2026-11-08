@@ -15,6 +15,10 @@
 #include <aurora/native_frame_gate.hpp>
 
 #include <SDL3/SDL.h>
+
+#if defined(ANDROID) || defined(__ANDROID__)
+extern "C" bool MH3_SwappySwap(SDL_Window* window);
+#endif
 #include <xxhash.h>
 #include <aurora/fast_map.h>
 
@@ -1493,8 +1497,15 @@ void present(const TexturePtr& source, int32_t x, int32_t y, int32_t width, int3
   int winW = 0, winH = 0;
   SDL_GetWindowSizeInPixels(g_context->window, &winW, &winH);
   TouchControls_RenderGL(winW, winH);
+  invalidate_state();
 
-  if (!SDL_GL_SwapWindow(g_context->window)) {
+#if defined(ANDROID) || defined(__ANDROID__)
+  // Swappy (swappy_glue.cpp in the game) presents when it is on.
+  const bool swappyPresented = MH3_SwappySwap(g_context->window);
+#else
+  const bool swappyPresented = false;
+#endif
+  if (!swappyPresented && !SDL_GL_SwapWindow(g_context->window)) {
 #if defined(ANDROID) || defined(__ANDROID__)
     __android_log_print(ANDROID_LOG_WARN, "MH3", "SDL_GL_SwapWindow failed: %s; re-binding GL context", SDL_GetError());
     SDL_GL_MakeCurrent(nullptr, nullptr);

@@ -7,6 +7,7 @@
 #include "status.h"
 #include <algorithm>
 #include <cerrno>
+#include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <atomic>
@@ -436,6 +437,7 @@ Status DiscImage::Load(const std::filesystem::path& root, bool applyNativeTextur
         }
     }
 
+    ApplyBuiltinFixes(root);
     return {};
 }
 
@@ -533,12 +535,77 @@ void DiscImage::SetFileOverride(const std::string& name, std::vector<uint8_t> by
     const auto it = fileEntries.find(name);
 
     if (it == fileEntries.end() || bytes.size() != it->second.second)
-        MH3_THROW(std::runtime_error("Quest override must preserve the disc file length"));
-
-    if (name != "05/quest00_eng.bin" && name != "05/quest01_eng.bin" && name != "05/quest03_eng.bin")
-        MH3_THROW(std::runtime_error("Only quest files may be overridden"));
+        MH3_THROW(std::runtime_error("File override must preserve the disc file length: " + name));
 
     fileOverrides[it->second.first] = std::move(bytes);
+}
+
+void DiscImage::ApplyBuiltinFixes(const std::filesystem::path& root) {
+    // 1. Built-in Tundra Area 5 cave lighting fix (m04a05d.bin / m04a05n.bin)
+    // In retail disc images, Capcom authored Area 5 (Gigginox cave) with outdoor daylight values:
+    // c2 = (235, 245, 255), flat fog start = 0, color = (55, 55, 55).
+    // This caused unlit stage geometry (ice walls, floors) to glow blinding white instead of being dark.
+    const char* stageFiles[] = {
+        "15/m04d/m04a05d/m04a05d.bin",
+        "15/m04n/m04a05n/m04a05n.bin"
+    };
+
+    for (const char* name : stageFiles) {
+        const auto it = fileEntries.find(name);
+        if (it != fileEntries.end() && it->second.second == 480) {
+            std::vector<uint8_t> data;
+            if (TryRead(it->second.first, 480, data).ok()) {
+                // If it has retail daylight values c2 = (235, 245, 255)
+                if (data[8] == 0xeb && data[9] == 0xf5 && data[10] == 0xff) {
+                    // Match dark cave settings from Area 4 (m04a04) / Area 6 (m04a06):
+                    // c1, c2, c3: rgb = (18, 20, 22) -> 0x12, 0x14, 0x16
+                    const uint8_t dark[3] = {0x12, 0x14, 0x16};
+                    std::memcpy(&data[0x004], dark, 3);
+                    std::memcpy(&data[0x008], dark, 3);
+                    std::memcpy(&data[0x00c], dark, 3);
+                    std::memcpy(&data[0x034], dark, 3);
+                    std::memcpy(&data[0x038], dark, 3);
+                    std::memcpy(&data[0x03c], dark, 3);
+                    std::memcpy(&data[0x094], dark, 3);
+                    std::memcpy(&data[0x098], dark, 3);
+                    std::memcpy(&data[0x09c], dark, 3);
+                    // Fog 1: start distance = 2000.0f (0x44fa0000), color = (5, 5, 5, 255)
+                    data[0x1c0] = 0x44; data[0x1c1] = 0xfa;
+                    data[0x1c8] = 0x05; data[0x1c9] = 0x05; data[0x1ca] = 0x05;
+                    // Fog 2: start distance = 2000.0f (0x44fa0000), color = (5, 5, 5, 255)
+                    data[0x1d0] = 0x44; data[0x1d1] = 0xfa;
+                    data[0x1d8] = 0x05; data[0x1d9] = 0x05; data[0x1da] = 0x05;
+
+                    fileOverrides[it->second.first] = std::move(data);
+                }
+            }
+        }
+    }
+
+    // 2. Loose file overrides (from overrides/ or mods/ directory if present)
+    std::error_code ec;
+    const std::filesystem::path overrideDirs[] = {
+        root / "overrides",
+        root / "mods"
+    };
+
+    for (const auto& dir : overrideDirs) {
+        if (std::filesystem::exists(dir, ec) && std::filesystem::is_directory(dir, ec)) {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec)) {
+                if (entry.is_regular_file(ec)) {
+                    std::string rel = std::filesystem::relative(entry.path(), dir, ec).generic_string();
+                    const auto fit = fileEntries.find(rel);
+                    if (fit != fileEntries.end() && entry.file_size(ec) == fit->second.second) {
+                        std::vector<uint8_t> content(fit->second.second);
+                        std::ifstream stream(entry.path(), std::ios::binary);
+                        if (stream.read(reinterpret_cast<char*>(content.data()), content.size())) {
+                            fileOverrides[fit->second.first] = std::move(content);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void DiscImage::ApplyFileOverrides(uint64_t offset, std::vector<uint8_t>& data) const {

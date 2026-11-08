@@ -236,6 +236,11 @@ bool SDLCALL OnAppLifecycle(void*, SDL_Event* event) {
 
         if (sdlPlayback && !stallCheckRunning.exchange(true))
             std::thread(ReopenIfStalled, pulledFrames.load()).detach();
+    } else if (event->type == SDL_EVENT_AUDIO_DEVICE_ADDED || event->type == SDL_EVENT_AUDIO_DEVICE_REMOVED) {
+        // Bluetooth headset or audio peripheral connected/disconnected:
+        // Reopen stream to seamlessly route audio to the new device and recover from disconnected state.
+        if (sdlPlayback && !stallCheckRunning.exchange(true))
+            std::thread(ReopenIfStalled, pulledFrames.load()).detach();
     }
 
     return true;
@@ -261,9 +266,13 @@ void StartAudioOutput() {
         null = v[0] == '1';
 #endif
     if (!null) {
-#ifndef __EMSCRIPTEN__
+#if defined(__ANDROID__)
+        // 1024 frames at 32 kHz (~32ms) provides a robust AAudio/OpenSLES buffer, preventing crackling/underruns
+        // on mobile SOCs and Bluetooth A2DP audio devices (fixes issue #16).
+        SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "1024");
+#elif !defined(__EMSCRIPTEN__)
         // Not on the web: its ScriptProcessorNode takes a power of two, SDL picks it.
-        SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "384");
+        SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "512");
 #endif
 
         if (SDL_InitSubSystem(SDL_INIT_AUDIO)) {

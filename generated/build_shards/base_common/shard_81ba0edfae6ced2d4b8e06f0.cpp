@@ -120042,6 +120042,18 @@ extern "C" void func_8029CBC4(CpuContext* MKW_RESTRICT ctx)
 // RECOMP_GUEST_ABI gpr_read=0x00003FFF gpr_write=0x00001FFB gpr_return=0x00000018 fpr_read=0xFC00FFFF fpr_write=0xFC00FFFF fpr_return=0x00000002 cr_read=0xFF cr_write=0xFF xer_read=1 xer_write=1 fence=0
 #line 1 "func_8029CDE0.cpp"
 #include <cstdint>
+#if defined(__ANDROID__)
+#if defined(__ANDROID__)
+#include <android/log.h>
+#else
+#include <cstdio>
+#ifndef ANDROID_LOG_WARN
+#define ANDROID_LOG_WARN 5
+#define ANDROID_LOG_INFO 4
+#define __android_log_print(prio, tag, fmt, ...) std::fprintf(stderr, "[" tag "] " fmt "\n", ##__VA_ARGS__)
+#endif
+#endif
+#endif
 #include "ppc_runtime.h"
 #include "abi_bridge.h"
 #include "memory.h"
@@ -120400,6 +120412,16 @@ loc_8029CE5C:
     }
     mkw_gqr0 = ctx->gqr[0];
     r28 = r3;
+
+    // Tranquilizer Bomb Gas Cloud (Attack Type 32) Volumetric Reach:
+    // When monsters are trapped in pitfall traps (escollos), their model/capsules sink ~150-250 units along Y.
+    // Ground detonation at flat terrain misses sunken parts with the default 120 radius sphere.
+    // Lower center by 100 units and expand radius to 320 to match the visual pink smoke cloud.
+    if (MemoryInline::FlatRead8(r29 + 2) == 32) {
+        float bomb_y = MemoryInline::FlatReadFloat32(r1 + 68);
+        MemoryInline::FlatWriteFloat32(r1 + 68, bomb_y - 100.0f);
+        MemoryInline::FlatWriteFloat32(r1 + 76, 320.0f);
+    }
 }
 
 loc_8029CE7C:
@@ -121196,6 +121218,18 @@ loc_8029D10C:
         f31 = ctx->fpr[31];
     }
     mkw_gqr0 = ctx->gqr[0];
+
+    if (MemoryInline::FlatRead8(r29 + 2) == 32) {
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_INFO, "MH3",
+            "[TRANQ BOMB HIT] em=0x%08X Part=%d PendingGauge=%d CurrentGauge=%d Threshold=%d",
+            r30, static_cast<int>(r26),
+            static_cast<int>(MemoryInline::FlatRead16(r30 + 2018)),
+            static_cast<int>(MemoryInline::FlatRead16(r30 + 2362)),
+            static_cast<int>(MemoryInline::FlatRead16(r30 + 2360)));
+#endif
+    }
+
     goto loc_8029D150;
 }
 

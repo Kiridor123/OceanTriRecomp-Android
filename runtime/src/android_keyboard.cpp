@@ -153,20 +153,26 @@ bool AndroidKeyboard_HandleSdlEvent(const void* sdlEvent) {
             KEYBOARD_LOG("[KEYBOARD] SDL_EVENT_TEXT_INPUT: '%s' (0x%02X)\n",
                          event->text.text, static_cast<unsigned char>(event->text.text[0]));
 
-            // Catch control codes transmitted as text
-            const unsigned char firstChar = static_cast<unsigned char>(event->text.text[0]);
-            if (firstChar == '\b' || firstChar == 8 || firstChar == 127) {
+            std::string text = event->text.text;
+            if (text == "\b" || text == "\x7f" || text[0] == 8) {
                 std::lock_guard<std::mutex> lock(s_inputMutex);
                 s_pendingActions.push_back({ KeyAction::Type::Backspace, "" });
                 return true;
-            } else if (firstChar == '\n' || firstChar == '\r') {
-                std::lock_guard<std::mutex> lock(s_inputMutex);
-                s_pendingActions.push_back({ KeyAction::Type::Return, "" });
-                return true;
             }
-
-            std::lock_guard<std::mutex> lock(s_inputMutex);
-            s_pendingActions.push_back({ KeyAction::Type::Text, event->text.text });
+            bool hasReturn = false;
+            while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+                text.pop_back();
+                hasReturn = true;
+            }
+            {
+                std::lock_guard<std::mutex> lock(s_inputMutex);
+                if (!text.empty()) {
+                    s_pendingActions.push_back({ KeyAction::Type::Text, text });
+                }
+                if (hasReturn) {
+                    s_pendingActions.push_back({ KeyAction::Type::Return, "" });
+                }
+            }
             return true;
         }
     } else if (event->type == SDL_EVENT_KEY_DOWN) {
@@ -280,9 +286,10 @@ void AndroidKeyboard_ProcessPending(CpuContext* cpu) {
     }
 
     // Determine field maximum capacity from kMaxCharsAddr (r13 - 20980 = 0x807960EC)
+    // Clamp to 30 chars maximum to prevent text overflowing the speech bubble / chat area.
     uint32_t max_len = Memory::Contains(kMaxCharsAddr, 4) ? Memory::Read32(kMaxCharsAddr) : 0;
-    if (max_len == 0 || max_len > 256) {
-        max_len = 60;
+    if (max_len == 0 || max_len > 30) {
+        max_len = 30;
     }
 
     bool text_changed = false;

@@ -119428,6 +119428,16 @@ extern "C" void func_80286D58(CpuContext* MKW_RESTRICT ctx)
 // RECOMP_GUEST_ABI gpr_read=0x00003FFF gpr_write=0x00001FFB gpr_return=0x00000018 fpr_read=0xF0003FFF fpr_write=0xF0003FFF fpr_return=0x00000002 cr_read=0xFF cr_write=0xFF xer_read=1 xer_write=1 fence=0
 #line 1 "func_80286E5C.cpp"
 #include <cstdint>
+#if defined(__ANDROID__)
+#include <android/log.h>
+#else
+#include <cstdio>
+#ifndef ANDROID_LOG_WARN
+#define ANDROID_LOG_WARN 5
+#define ANDROID_LOG_INFO 4
+#define __android_log_print(prio, tag, fmt, ...) std::fprintf(stderr, "[" tag "] " fmt "\n", ##__VA_ARGS__)
+#endif
+#endif
 #include "ppc_runtime.h"
 #include "abi_bridge.h"
 #include "memory.h"
@@ -119519,6 +119529,7 @@ extern "C" uint64_t func_80286E5C_ra38_1fe_18_0(CpuContext* MKW_RESTRICT ctx, ui
 
 loc_80286E5C:
 {
+    __android_log_print(ANDROID_LOG_WARN, "MH3_HAMMER", "PlHammerActions: action_id=%u plw=0x%08X", MemoryInline::FlatRead16(r3 + 12), r3);
     MemoryInline::FlatWriteRam32((r1 + -32), r1);
     r1 = (r1 + -32);
     r0 = ctx->lr;

@@ -1998,12 +1998,13 @@ void Spin(CpuContext* ctx) {
         p.Flags(k.mode, 1, 0);
         game.Call<0x80277CB4>({plw, 60});
         game.Call<0x8027714C>({plw, k.list0, 0});
+        Memory::Write8(plw + 617, 1);
         break;
     case 1:
         game.Call<0x80277CB4>({plw, 2});
+        Memory::Write8(plw + 617, 1);
 
         if (p.Master()) {
-            // The original: 192 a step. Here its share of this step.
             if (game.Call<0x8026FB84>({plw, 2048}) == 1)
                 Memory::Write32(plw + kAngle, Memory::Read32(plw + kAngle) + uint32_t(GameStep::Share(192)));
             else if (game.Call<0x8026FB84>({plw, 1024}) == 1)
@@ -2028,7 +2029,8 @@ void Spin(CpuContext* ctx) {
             Memory::Write16(plw + 182, uint16_t(Memory::Read16(plw + 182) + 3));
             game.Call<0x80284268>({plw, k.cueFinish, 0});
             game.Call<0x8027714C>({plw, 0, 0});
-        } else if (p.Timer() >= 2) {
+            Memory::Write8(plw + 617, 0);
+        } else if (p.Timer() == 2) {
             game.Call<0x8027714C>({plw, k.list, 0});
         }
 
@@ -2083,6 +2085,7 @@ void HammerSwing(CpuContext* ctx) {
     const Player p{{game, frame.Arg(3)}};
     const uint32_t plw = p.plw;
     const uint32_t kind = frame.Arg(4);
+
     game.Call<Vec3Ctor>({frame[8]});
 
     switch (p.State()) {
@@ -3857,10 +3860,15 @@ REGISTER_NATIVE_FUNCTION_AS(0x80252B50, MH3_SwimPitch, "SwimPitch");
 extern "C" void func_802629A4(CpuContext* ctx);
 extern "C" void MH3_ComboTable(CpuContext* ctx) {
     const uint32_t plw = ctx->gpr[3];
+    const uint32_t table = Memory::Read32(plw + 0x318);
 
-    if (Memory::Read32(plw + 0x318) == 0 || int8_t(Memory::Read8(plw + 0x313)) > 0) {
+    if (table == 0 || int8_t(Memory::Read8(plw + 0x313)) > 0) {
         ctx->gpr[3] = 0;
         return;
+    }
+
+    if (Memory::Read8(plw + 9) == 3 && (Memory::Read8(plw + 357) & 0x40) != 0) {
+        Memory::Write8(plw + 356, uint8_t(Memory::Read8(plw + 356) | 0x80));
     }
 
     func_802629A4(ctx);

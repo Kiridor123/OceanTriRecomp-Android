@@ -25,6 +25,12 @@ public class SDLDummyEdit extends View implements View.OnKeyListener
         this.input_type = input_type;
     }
 
+    public void reset() {
+        if (ic instanceof SDLInputConnection) {
+            ((SDLInputConnection) ic).reset();
+        }
+    }
+
     @Override
     public boolean onCheckIsTextEditor() {
         return true;

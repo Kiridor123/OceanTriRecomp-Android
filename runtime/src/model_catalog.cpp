@@ -1519,6 +1519,11 @@ void PublishNativeLiveMaterialBlock(const NativeLiveMaterialBlock& block) {
     MH3_THROW(std::runtime_error("Native material publication refers to a retired resident allocation"));
 }
 
+void BumpNativeLiveMaterialRevision() {
+    std::lock_guard guard(catalogLock);
+    ++live_version;
+}
+
 void ReadNativeModelCoordinateMap(uint32_t pipeline, uint8_t mapping[8], uint8_t* known) {
     std::lock_guard guard(catalogLock);
 

@@ -933,6 +933,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                 break;
             case COMMAND_TEXTEDIT_HIDE:
                 if (mTextEdit != null) {
+                    mTextEdit.reset();
                     // Note: On some devices setting view to GONE creates a flicker in landscape.
                     // Setting the View's sizes to 0 is similar to GONE but without the flicker.
                     // The sizes will be set to useful values when the keyboard is shown again.
@@ -1411,6 +1412,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             } else {
                 mTextEdit.setLayoutParams(params);
             }
+            mTextEdit.reset();
             mTextEdit.setInputType(input_type);
 
             mTextEdit.setVisibility(View.VISIBLE);

@@ -1,6 +1,7 @@
 #include "controller_host.h"
 #include "touch_controls.h"
 #include "android_keyboard.h"
+#include "pointer_controls.h"
 #include "mh3_mouse_look_sensitivity.h"
 #include "fatal.h"
 #include "dev_options.h"
@@ -42,14 +43,64 @@ void QueueMouseDelta(std::atomic<int32_t>& target, int32_t delta) {
 int g_gamepadLayout = 0; // 0 = Nintendo, 1 = Xbox / Generic
 bool g_gamepadSwapTriggers = false; // true = Swap L/R with ZL/ZR
 bool g_gamepadConfigLoaded = false;
+int8_t g_gamepadBindings[14] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+SDL_Gamepad* g_activeGamepad = nullptr;
+
+SDL_Gamepad* GetActiveGamepad() {
+    if (g_activeGamepad && !SDL_GamepadConnected(g_activeGamepad)) {
+        SDL_CloseGamepad(g_activeGamepad);
+        g_activeGamepad = nullptr;
+    }
+    if (!g_activeGamepad) {
+        int count = 0;
+        auto* ids = SDL_GetGamepads(&count);
+        if (ids && count > 0) {
+            g_activeGamepad = SDL_OpenGamepad(ids[0]);
+        }
+        SDL_free(ids);
+    }
+    return g_activeGamepad;
+}
 
 } // namespace
 
 extern "C" {
 
+void Gamepad_ResetToPreset(int layout, bool swapTriggers) {
+    g_gamepadLayout = (layout == 1) ? 1 : 0;
+    g_gamepadSwapTriggers = swapTriggers;
+
+    int8_t btnA = (g_gamepadLayout == 1) ? SDL_GAMEPAD_BUTTON_SOUTH : SDL_GAMEPAD_BUTTON_EAST;
+    int8_t btnB = (g_gamepadLayout == 1) ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_SOUTH;
+    int8_t btnX = (g_gamepadLayout == 1) ? SDL_GAMEPAD_BUTTON_WEST : SDL_GAMEPAD_BUTTON_NORTH;
+    int8_t btnY = (g_gamepadLayout == 1) ? SDL_GAMEPAD_BUTTON_NORTH : SDL_GAMEPAD_BUTTON_WEST;
+
+    int8_t btnL  = swapTriggers ? 20 : SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    int8_t btnR  = swapTriggers ? 21 : SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
+    int8_t btnZL = swapTriggers ? SDL_GAMEPAD_BUTTON_LEFT_SHOULDER : 20;
+    int8_t btnZR = swapTriggers ? SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER : 21;
+
+    g_gamepadBindings[0]  = btnA;
+    g_gamepadBindings[1]  = btnB;
+    g_gamepadBindings[2]  = btnX;
+    g_gamepadBindings[3]  = btnY;
+    g_gamepadBindings[4]  = btnL;
+    g_gamepadBindings[5]  = btnR;
+    g_gamepadBindings[6]  = btnZL;
+    g_gamepadBindings[7]  = btnZR;
+    g_gamepadBindings[8]  = SDL_GAMEPAD_BUTTON_DPAD_UP;
+    g_gamepadBindings[9]  = SDL_GAMEPAD_BUTTON_DPAD_DOWN;
+    g_gamepadBindings[10] = SDL_GAMEPAD_BUTTON_DPAD_LEFT;
+    g_gamepadBindings[11] = SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+    g_gamepadBindings[12] = SDL_GAMEPAD_BUTTON_BACK;
+    g_gamepadBindings[13] = SDL_GAMEPAD_BUTTON_START;
+}
+
 void Gamepad_LoadConfig() {
     if (g_gamepadConfigLoaded) return;
     g_gamepadConfigLoaded = true;
+
+    Gamepad_ResetToPreset(g_gamepadLayout, g_gamepadSwapTriggers);
 
     const char* user = std::getenv("MH3_USER_DIR");
     std::string dir = (user && *user) ? user : "/storage/emulated/0/MH3";
@@ -60,6 +111,13 @@ void Gamepad_LoadConfig() {
         if (in >> layout >> swap) {
             g_gamepadLayout = (layout == 1) ? 1 : 0;
             g_gamepadSwapTriggers = (swap != 0);
+            Gamepad_ResetToPreset(g_gamepadLayout, g_gamepadSwapTriggers);
+            for (int i = 0; i < 14; ++i) {
+                int b = 0;
+                if (in >> b) {
+                    g_gamepadBindings[i] = (int8_t)b;
+                }
+            }
         }
     }
 }
@@ -70,7 +128,11 @@ void Gamepad_SaveConfig() {
     std::string path = dir + "/gamepad.cfg";
     std::ofstream out(path, std::ios::trunc);
     if (out) {
-        out << g_gamepadLayout << ' ' << (g_gamepadSwapTriggers ? 1 : 0) << '\n';
+        out << g_gamepadLayout << ' ' << (g_gamepadSwapTriggers ? 1 : 0);
+        for (int i = 0; i < 14; ++i) {
+            out << ' ' << int(g_gamepadBindings[i]);
+        }
+        out << '\n';
     }
 }
 
@@ -81,6 +143,7 @@ int Gamepad_GetLayout() {
 
 void Gamepad_SetLayout(int layout) {
     g_gamepadLayout = (layout == 1) ? 1 : 0;
+    Gamepad_ResetToPreset(g_gamepadLayout, g_gamepadSwapTriggers);
     Gamepad_SaveConfig();
 }
 
@@ -91,7 +154,144 @@ bool Gamepad_GetSwapTriggers() {
 
 void Gamepad_SetSwapTriggers(bool swap) {
     g_gamepadSwapTriggers = swap;
+    Gamepad_ResetToPreset(g_gamepadLayout, g_gamepadSwapTriggers);
     Gamepad_SaveConfig();
+}
+
+int Gamepad_GetBinding(int action) {
+    Gamepad_LoadConfig();
+    if (action < 0 || action >= 14) return -1;
+    return g_gamepadBindings[action];
+}
+
+void Gamepad_SetBinding(int action, int inputCode) {
+    Gamepad_LoadConfig();
+    if (action < 0 || action >= 14) return;
+    g_gamepadBindings[action] = (int8_t)inputCode;
+    Gamepad_SaveConfig();
+}
+
+bool Gamepad_IsConnected() {
+    return GetActiveGamepad() != nullptr;
+}
+
+int Gamepad_DetectPressedInput() {
+    SDL_Gamepad* pad = GetActiveGamepad();
+    if (!pad) return -1;
+
+    for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b) {
+        if (SDL_GetGamepadButton(pad, (SDL_GamepadButton)b)) {
+            return b;
+        }
+    }
+
+    const auto axis = [&](SDL_GamepadAxis source) {
+        return std::clamp(SDL_GetGamepadAxis(pad, source) / 32767.0f, -1.0f, 1.0f);
+    };
+
+    if (axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 0.5f) {
+        return 20; // Trigger L / LT
+    }
+    if (axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 0.5f) {
+        return 21; // Trigger R / RT
+    }
+
+    return -1;
+}
+
+const char* Gamepad_GetActionName(int action, int lang) {
+    static const char* s_names_es[14] = {
+        "Botón A", "Botón B", "Botón X", "Botón Y",
+        "Botón L", "Botón R", "Botón ZL", "Botón ZR",
+        "Cruceta Arriba ▲", "Cruceta Abajo ▼", "Cruceta Izquierda ◀", "Cruceta Derecha ▶",
+        "Botón Menú (-)", "Botón Inicio (+)"
+    };
+    static const char* s_names_en[14] = {
+        "A Button", "B Button", "X Button", "Y Button",
+        "L Button", "R Button", "ZL Button", "ZR Button",
+        "D-Pad Up ▲", "D-Pad Down ▼", "D-Pad Left ◀", "D-Pad Right ▶",
+        "Minus Button (-)", "Plus Button (+)"
+    };
+    if (action < 0 || action >= 14) return "?";
+    return (lang == 1) ? s_names_en[action] : s_names_es[action];
+}
+
+const char* Gamepad_GetActionDesc(int action, int lang) {
+    static const char* s_desc_es[14] = {
+        "Aceptar / Interactuar / Ataque",
+        "Cancelar / Esquivar / Rodar",
+        "Ataque / Desenvainar arma",
+        "Usar objeto / Envainar arma",
+        "Centrar cámara / Rueda de objetos",
+        "Correr / Guardia / Transformar arma",
+        "Fijar objetivo de cámara (Lock-on)",
+        "Ataque especial / Disparo de ballesta",
+        "Cámara arriba / Seleccionar objeto",
+        "Cámara abajo / Seleccionar objeto",
+        "Cámara izquierda / Seleccionar objeto",
+        "Cámara derecha / Seleccionar objeto",
+        "Menú de chat / Patada de cazador",
+        "Pausa / Opciones / Menú principal"
+    };
+    static const char* s_desc_en[14] = {
+        "Confirm / Interact / Attack",
+        "Cancel / Evade / Roll",
+        "Attack / Draw weapon",
+        "Use item / Sheathe weapon",
+        "Center camera / Item menu",
+        "Sprint / Guard / Transform weapon",
+        "Target camera lock-on",
+        "Special attack / Bowgun fire",
+        "Camera up / Select item",
+        "Camera down / Select item",
+        "Camera left / Select item",
+        "Camera right / Select item",
+        "Chat menu / Hunter kick",
+        "Pause / Options / Main menu"
+    };
+    if (action < 0 || action >= 14) return "";
+    return (lang == 1) ? s_desc_en[action] : s_desc_es[action];
+}
+
+const char* Gamepad_GetInputName(int inputCode, int layout, int lang) {
+    switch (inputCode) {
+        case SDL_GAMEPAD_BUTTON_SOUTH:
+            return (layout == 1) ? "A (Xbox/PC) / B (Switch) / ✕" : "B (Inferior) / A (Xbox) / ✕";
+        case SDL_GAMEPAD_BUTTON_EAST:
+            return (layout == 1) ? "B (Xbox/PC) / A (Switch) / ◯" : "A (Derecha) / B (Xbox) / ◯";
+        case SDL_GAMEPAD_BUTTON_WEST:
+            return (layout == 1) ? "X (Xbox/PC) / Y (Switch) / □" : "Y (Izquierda) / X (Xbox) / □";
+        case SDL_GAMEPAD_BUTTON_NORTH:
+            return (layout == 1) ? "Y (Xbox/PC) / X (Switch) / △" : "X (Superior) / Y (Xbox) / △";
+        case SDL_GAMEPAD_BUTTON_BACK:
+            return "Back / Select / Share / (-)";
+        case SDL_GAMEPAD_BUTTON_GUIDE:
+            return "Guía / Home / PS";
+        case SDL_GAMEPAD_BUTTON_START:
+            return "Start / Options / (+)";
+        case SDL_GAMEPAD_BUTTON_LEFT_STICK:
+            return (lang == 1) ? "L3 (Left Stick Click)" : "L3 (Pulsar Stick Izq)";
+        case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
+            return (lang == 1) ? "R3 (Right Stick Click)" : "R3 (Pulsar Stick Der)";
+        case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
+            return "LB / L1 (Hombro Izq)";
+        case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
+            return "RB / R1 (Hombro Der)";
+        case SDL_GAMEPAD_BUTTON_DPAD_UP:
+            return (lang == 1) ? "D-Pad Up ▲" : "Cruceta Arriba ▲";
+        case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
+            return (lang == 1) ? "D-Pad Down ▼" : "Cruceta Abajo ▼";
+        case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+            return (lang == 1) ? "D-Pad Left ◀" : "Cruceta Izquierda ◀";
+        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+            return (lang == 1) ? "D-Pad Right ▶" : "Cruceta Derecha ▶";
+        case 20:
+            return "LT / L2 / ZL (Gatillo Izq)";
+        case 21:
+            return "RT / R2 / ZR (Gatillo Der)";
+        default:
+            return (lang == 1) ? "(Unassigned)" : "(Sin asignar)";
+    }
 }
 
 } // extern "C"
@@ -300,16 +500,21 @@ ClassicControllerSample ReadLiveController() {
     static bool haveFallbackMousePosition = false;
     static float fallbackMouseX = 0.0f, fallbackMouseY = 0.0f;
 
+    if (TouchControls_IsMenuOpen()) {
 #if !defined(__ANDROID__)
-    if (focusedWindow) {
-        if (TouchControls_IsMenuOpen()) {
+        if (focusedWindow) {
             if (SDL_GetWindowRelativeMouseMode(focusedWindow)) {
                 SDL_SetWindowRelativeMouseMode(focusedWindow, false);
             }
             SDL_ShowCursor();
             haveFallbackMousePosition = false;
-            return sample;
         }
+#endif
+        return sample;
+    }
+
+#if !defined(__ANDROID__)
+    if (focusedWindow) {
 
         if (relativeModeWindow != focusedWindow) {
             relativeModeWindow = focusedWindow;
@@ -380,36 +585,29 @@ ClassicControllerSample ReadLiveController() {
         // The mouse controls yaw/pitch through relative deltas, not a held virtual stick.
     }
 
-    static SDL_Gamepad* pad = nullptr;
-
-    if (pad && !SDL_GamepadConnected(pad)) {
-        SDL_CloseGamepad(pad);
-        pad = nullptr;
-    }
-
-    if (!pad) {
-        int count = 0;
-        auto* ids = SDL_GetGamepads(&count);
-
-        if (ids && count)
-            pad = SDL_OpenGamepad(ids[0]);
-
-        SDL_free(ids);
-    }
+    SDL_Gamepad* pad = GetActiveGamepad();
 // MH3_MOUSE_LOOK_TUNE: sensibilidad configurable desde Opciones > Controles.
     static double mh3MouseLookRemainderX = 0.0;
     static double mh3MouseLookRemainderY = 0.0;
 const double mh3MouseLookSensitivity = mh3_mouse_look_sensitivity::GetSensitivity();
     if (focusedWindow) {
-        // SDL suma X hacia la derecha e Y hacia abajo; invertimos ambos para la camara.
-        mh3MouseLookRemainderX -= std::clamp(double(mouseDeltaX), -512.0, 512.0) * mh3MouseLookSensitivity;
-        mh3MouseLookRemainderY += std::clamp(double(mouseDeltaY), -512.0, 512.0) * mh3MouseLookSensitivity;
-        const int32_t adjustedMouseX = int32_t(std::trunc(mh3MouseLookRemainderX));
-        const int32_t adjustedMouseY = int32_t(std::trunc(mh3MouseLookRemainderY));
-        mh3MouseLookRemainderX -= double(adjustedMouseX);
-        mh3MouseLookRemainderY -= double(adjustedMouseY);
-        QueueMouseDelta(pendingMouseLookX, std::clamp<int32_t>(adjustedMouseX, -512, 512));
-        QueueMouseDelta(pendingMouseLookY, std::clamp<int32_t>(adjustedMouseY, -512, 512));
+        if (PointerControls::IsActive()) {
+            PointerControls::AddDelta(float(mouseDeltaX), float(mouseDeltaY));
+            pendingMouseLookX.store(0, std::memory_order_relaxed);
+            pendingMouseLookY.store(0, std::memory_order_relaxed);
+            mh3MouseLookRemainderX = 0.0;
+            mh3MouseLookRemainderY = 0.0;
+        } else {
+            // SDL suma X hacia la derecha e Y hacia abajo; invertimos ambos para la camara.
+            mh3MouseLookRemainderX -= std::clamp(double(mouseDeltaX), -512.0, 512.0) * mh3MouseLookSensitivity;
+            mh3MouseLookRemainderY += std::clamp(double(mouseDeltaY), -512.0, 512.0) * mh3MouseLookSensitivity;
+            const int32_t adjustedMouseX = int32_t(std::trunc(mh3MouseLookRemainderX));
+            const int32_t adjustedMouseY = int32_t(std::trunc(mh3MouseLookRemainderY));
+            mh3MouseLookRemainderX -= double(adjustedMouseX);
+            mh3MouseLookRemainderY -= double(adjustedMouseY);
+            QueueMouseDelta(pendingMouseLookX, std::clamp<int32_t>(adjustedMouseX, -512, 512));
+            QueueMouseDelta(pendingMouseLookY, std::clamp<int32_t>(adjustedMouseY, -512, 512));
+        }
     } else {
         pendingMouseLookX.store(0, std::memory_order_relaxed);
         pendingMouseLookY.store(0, std::memory_order_relaxed);
@@ -419,45 +617,47 @@ const double mh3MouseLookSensitivity = mh3_mouse_look_sensitivity::GetSensitivit
 
     if (pad) {
         Gamepad_LoadConfig();
-        const int layout = Gamepad_GetLayout();
-        const bool swapTriggers = Gamepad_GetSwapTriggers();
 
-        const uint16_t btnA = MH3_CL_A;
-        const uint16_t btnB = MH3_CL_B;
-        const uint16_t btnX = MH3_CL_X;
-        const uint16_t btnY = MH3_CL_Y;
-        const uint16_t btnL = swapTriggers ? MH3_CL_ZL : MH3_CL_L;
-        const uint16_t btnR = swapTriggers ? MH3_CL_ZR : MH3_CL_R;
-        const uint16_t triggerZL = swapTriggers ? MH3_CL_L : MH3_CL_ZL;
-        const uint16_t triggerZR = swapTriggers ? MH3_CL_R : MH3_CL_ZR;
-
-        if (layout == 1) { // Estilo Xbox / Genérico
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH)) sample.buttons |= btnA;
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST))  sample.buttons |= btnB;
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST))  sample.buttons |= btnX;
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH)) sample.buttons |= btnY;
-        } else { // Estilo Nintendo (Original Classic Controller)
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST))  sample.buttons |= btnA;
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH)) sample.buttons |= btnB;
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH)) sample.buttons |= btnX;
-            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST))  sample.buttons |= btnY;
-        }
-
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP))    sample.buttons |= MH3_CL_UP;
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN))  sample.buttons |= MH3_CL_DOWN;
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT))  sample.buttons |= MH3_CL_LEFT;
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) sample.buttons |= MH3_CL_RIGHT;
-
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER))  sample.buttons |= btnL;
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) sample.buttons |= btnR;
-
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START)) sample.buttons |= MH3_CL_PLUS;
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK))  sample.buttons |= MH3_CL_MINUS;
-        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_GUIDE)) sample.buttons |= MH3_CL_PLUS; // Guide acts as Pause/Menu
+        static const uint16_t s_actionMasks[14] = {
+            MH3_CL_A,      // 0: A
+            MH3_CL_B,      // 1: B
+            MH3_CL_X,      // 2: X
+            MH3_CL_Y,      // 3: Y
+            MH3_CL_L,      // 4: L
+            MH3_CL_R,      // 5: R
+            MH3_CL_ZL,     // 6: ZL
+            MH3_CL_ZR,     // 7: ZR
+            MH3_CL_UP,     // 8: UP
+            MH3_CL_DOWN,   // 9: DOWN
+            MH3_CL_LEFT,   // 10: LEFT
+            MH3_CL_RIGHT,  // 11: RIGHT
+            MH3_CL_MINUS,  // 12: MINUS
+            MH3_CL_PLUS,   // 13: PLUS
+        };
 
         const auto axis = [&](SDL_GamepadAxis source) {
             return std::clamp(SDL_GetGamepadAxis(pad, source) / 32767.0f, -1.0f, 1.0f);
         };
+
+        for (int i = 0; i < 14; ++i) {
+            int code = g_gamepadBindings[i];
+            if (code < 0) continue;
+            bool pressed = false;
+            if (code >= 0 && code < SDL_GAMEPAD_BUTTON_COUNT) {
+                pressed = SDL_GetGamepadButton(pad, (SDL_GamepadButton)code);
+            } else if (code == 20) {
+                pressed = (axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 0.5f);
+            } else if (code == 21) {
+                pressed = (axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 0.5f);
+            }
+            if (pressed) {
+                sample.buttons |= s_actionMasks[i];
+            }
+        }
+
+        if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_GUIDE)) {
+            sample.buttons |= MH3_CL_PLUS; // Guide acts as Pause/Menu
+        }
 
         // SDL's y axes point down; the Classic report's point up.
         if (!sample.leftX && !sample.leftY)
@@ -469,11 +669,16 @@ const double mh3MouseLookSensitivity = mh3_mouse_look_sensitivity::GetSensitivit
         const uint8_t lowerLeftTrigger = uint8_t(std::lround(std::max(0.0f, axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER)) * 255));
         const uint8_t lowerRightTrigger = uint8_t(std::lround(std::max(0.0f, axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)) * 255));
 
-        // Upper shoulders are Classic L/R; lower analog triggers become ZL/ZR.
-        if (lowerLeftTrigger > 127)
-            sample.buttons |= triggerZL;
-        if (lowerRightTrigger > 127)
-            sample.buttons |= triggerZR;
+        // Digital L/R trigger reports full analog throw
+        if (sample.buttons & MH3_CL_L)
+            sample.triggerL = 255;
+        else if (g_gamepadBindings[4] == 20 && lowerLeftTrigger > 127)
+            sample.triggerL = lowerLeftTrigger;
+
+        if (sample.buttons & MH3_CL_R)
+            sample.triggerR = 255;
+        else if (g_gamepadBindings[5] == 21 && lowerRightTrigger > 127)
+            sample.triggerR = lowerRightTrigger;
     }
 
     // Digital L/R inputs (keyboard, mouse or shoulder) report a full press.

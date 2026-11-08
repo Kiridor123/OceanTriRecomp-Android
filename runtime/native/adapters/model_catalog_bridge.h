@@ -27,6 +27,7 @@ uint64_t ReadNativeModelStructureRevision();
  * in-place producer update (WritableNativeLiveMaterialBlock) changes only the
  * node's fields and fields.generation. */
 uint64_t ReadNativeLiveMaterialRevision();
+void BumpNativeLiveMaterialRevision();
 /* A vertex producer installs this before retaining any sources/revisions.
  * Generic overwrites notify it even when no disc interval is tracked. */
 using NativeModelVertexRetireHook = void (*)(uint32_t address, uint32_t bytes);

@@ -2256,18 +2256,6 @@ template <> struct KnownPreciseNativeCpuCall<0x8028F680u> {
     static constexpr bool kKeepsNonvolatile = true;
     static void Entry(CpuContext* ctx) { MH3_HitPointSphere(ctx); }
 };
-extern "C" void MH3_LandSweepTriangleCandidateFilter(CpuContext* ctx);
-template <> struct KnownPreciseNativeCpuCall<0x80292524u> {
-    static constexpr bool kAvailable = true;
-    static constexpr bool kKeepsNonvolatile = true;
-    static void Entry(CpuContext* ctx) { MH3_LandSweepTriangleCandidateFilter(ctx); }
-};
-extern "C" void MH3_LandSweepTriangleCounts(CpuContext* ctx);
-template <> struct KnownPreciseNativeCpuCall<0x802962C4u> {
-    static constexpr bool kAvailable = true;
-    static constexpr bool kKeepsNonvolatile = true;
-    static void Entry(CpuContext* ctx) { MH3_LandSweepTriangleCounts(ctx); }
-};
 extern "C" void MH3_EnemyPartShape(CpuContext* ctx);
 template <> struct KnownPreciseNativeCpuCall<0x8029D8F8u> {
     static constexpr bool kAvailable = true;
@@ -2813,12 +2801,6 @@ template <> struct KnownPreciseNativeCpuCall<0x804EF3C0u> {
     static constexpr bool kAvailable = true;
     static constexpr bool kKeepsNonvolatile = true;
     static void Entry(CpuContext* ctx) { MH3_WPADGetInfoAsync(ctx); }
-};
-extern "C" void MH3_WPADRead(CpuContext* ctx);
-template <> struct KnownPreciseNativeCpuCall<0x804EF9D0u> {
-    static constexpr bool kAvailable = true;
-    static constexpr bool kKeepsNonvolatile = true;
-    static void Entry(CpuContext* ctx) { MH3_WPADRead(ctx); }
 };
 extern "C" void MH3_WPADControlDpd(CpuContext* ctx);
 template <> struct KnownPreciseNativeCpuCall<0x804F1B20u> {

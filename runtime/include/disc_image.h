@@ -63,6 +63,7 @@ class DiscImage {
     bool packed = false;
     std::map<uint64_t, std::vector<uint8_t>> fileOverrides;
     void ApplyFileOverrides(uint64_t offset, std::vector<uint8_t>& data) const;
+    void ApplyBuiltinFixes(const std::filesystem::path& root);
     struct NativeTexturePatch {
         uint64_t offset;
         std::array<uint8_t, 4> bytes;

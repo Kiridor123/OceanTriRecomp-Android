@@ -1,4 +1,14 @@
 #include <cstdint>
+#if defined(__ANDROID__)
+#include <android/log.h>
+#else
+#include <cstdio>
+#ifndef ANDROID_LOG_WARN
+#define ANDROID_LOG_WARN 5
+#define ANDROID_LOG_INFO 4
+#define __android_log_print(prio, tag, fmt, ...) std::fprintf(stderr, "[" tag "] " fmt "\n", ##__VA_ARGS__)
+#endif
+#endif
 #include "ppc_runtime.h"
 #include "abi_bridge.h"
 #include "memory.h"
@@ -90,6 +100,7 @@ extern "C" uint64_t func_80286E5C_ra38_1fe_18_0(CpuContext* MKW_RESTRICT ctx, ui
 
 loc_80286E5C:
 {
+    __android_log_print(ANDROID_LOG_WARN, "MH3_HAMMER", "PlHammerActions: action_id=%u plw=0x%08X", MemoryInline::FlatRead16(r3 + 12), r3);
     MemoryInline::FlatWriteRam32((r1 + -32), r1);
     r1 = (r1 + -32);
     r0 = ctx->lr;

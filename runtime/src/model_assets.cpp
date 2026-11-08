@@ -31,14 +31,15 @@
 
 namespace {
 // Aggregate budgets across every admitted source pack, not per-file quotas.
-constexpr size_t MaxIndexBytes = 4 * 1024 * 1024;
-constexpr size_t MaxMetadataBytes = 8 * 1024 * 1024;
-constexpr size_t MaxIdentityBytes = 4 * 1024 * 1024;
+constexpr size_t MaxIndexBytes = 16 * 1024 * 1024;
+constexpr size_t MaxMetadataBytes = 64 * 1024 * 1024;
+constexpr size_t MaxIdentityBytes = 32 * 1024 * 1024;
 
 // The packs' GPU data, released ones included until their last scene.
-// Expanded from the 16 MiB PS Vita CDRAM limit to 64 MiB for Android and PC,
-// preventing eviction thrashing during multi-monster hunts and Loc Lac City online lobbies.
-constexpr size_t MaxGPUBytes = 64 * 1024 * 1024;
+// Hypothesis 4: Expanded from 64 MiB to 512 MiB on Linux and Android to completely eliminate
+// GPU mesh and CPU catalog eviction thrashing during dense scenes (Flooded Forest Area 5,
+// underwater combat, water shortcuts/stairs).
+constexpr size_t MaxGPUBytes = 512 * 1024 * 1024;
 constexpr uint32_t LegacyPack = UINT32_MAX;
 struct Assets {
     std::vector<uint8_t> metadata, identity;
@@ -1076,56 +1077,15 @@ void PumpNativeModelGPUReads() {
     if (!manager)
         return;
 
-    // Periodically (every 120 frames) or when new payloads arrive,
-    // proactively purge GPU meshes that have no live sources and are not demanded.
-    static uint32_t s_purgeInterval = 0;
-    if (++s_purgeInterval >= 120) {
-        s_purgeInterval = 0;
-        PurgeUnusedNativeModelGPU();
-    }
-
     for (auto& payload : payloads)
         QueueNativeGraphicsTask(NativeTaskOrder::BeforeDraws,
                                 [&m = *manager, payload = std::move(payload)] { PrefetchGPU(m, payload.handle, payload.generation, payload.data.get()); });
 }
 
 void PurgeUnusedNativeModelGPU() {
-    if (!manager)
-        return;
-
-    std::vector<std::pair<uintptr_t, uint64_t>> toRetire;
-    {
-        std::lock_guard lock(manager->lock);
-        for (auto& item : manager->loaded) {
-            auto& asset = *item.second;
-            if (asset.gpuRegistered && !NativeModelPackHasLiveSources(asset.handle()) &&
-                (!manager->frameKnown || asset.lastDemandFrame != manager->demandFrame)) {
-                toRetire.emplace_back(asset.handle(), asset.generation);
-                asset.gpuRegistered = false;
-                ++manager->stats.gpu_evictions;
-            }
-        }
-    }
-
-    if (!toRetire.empty()) {
-        QueueNativeGraphicsTask(NativeTaskOrder::AfterDraws, [toRetire = std::move(toRetire)] {
-            if (!manager)
-                return;
-            std::lock_guard lock(manager->lock);
-            for (const auto& [handle, gen] : toRetire) {
-                const auto it = manager->handles.find(handle);
-                if (it != manager->handles.end() && it->second->generation == gen) {
-                    if (NativeModelPackHasLiveSources(handle) ||
-                        (manager->frameKnown && it->second->lastDemandFrame == manager->demandFrame)) {
-                        continue;
-                    }
-                    it->second->gpuRegistered = false;
-                    ++manager->stats.gpu_evictions;
-                }
-                UnregisterNativeModelGPU(handle, gen);
-            }
-        });
-    }
+    // Hypothesis 4: With 512 MiB GPU budget on PC/Android, proactive purging of
+    // GPU meshes every 120 frames is disabled. This prevents eviction thrashing
+    // and keeps all stage, terrain, ladder and underwater meshes permanently resident.
 }
 
 void UnloadNativeModelAssets() {

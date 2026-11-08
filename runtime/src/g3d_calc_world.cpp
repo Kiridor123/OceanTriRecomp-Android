@@ -33,6 +33,7 @@
 // node; the ports read the resource directly and call the guest only for the
 // animation, the callbacks and the rarely taken paths.
 #include "abi_bridge.h"
+#include "hunter_telemetry.h"
 #include "g3d_native.h"
 #include "guest_call.h"
 #include "guest_worker.h"
@@ -857,6 +858,7 @@ extern "C" void MH3_G3dCalcViewLc(CpuContext* ctx) {
     CalcViewLc(ctx);
     PublishNativeModelPose(position, normal, environment, count, model_reference);
     PublishSkinView(position, world, camera, count, model_reference);
+    HunterTelemetry::RecordCalcView(model_reference, count, camera, world, position);
 }
 REGISTER_NATIVE_FUNCTION_AS(0x800711FC, MH3_G3dCalcViewLc, "G3dCalcViewLc");
 
@@ -998,6 +1000,8 @@ extern "C" void MH3_G3dCalcViewPlain(CpuContext* ctx) {
     const uint32_t position = ctx->gpr[3], normal = ctx->gpr[4], environment = ctx->gpr[10];
     const uint32_t count = ctx->gpr[7], model_reference = ctx->gpr[9];
     const uint32_t world = ctx->gpr[5], camera = ctx->gpr[8];
+
+    HunterTelemetry::RecordCalcView(model_reference, count, camera, world, position);
 
     if (DeferViewPass(ctx)) {
         PublishSkinView(position, world, camera, count, model_reference);

@@ -3,6 +3,7 @@ package com.oceantri.mh3;
 import android.Manifest;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
+import android.content.ContentUris;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -11,6 +12,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Log;
@@ -36,7 +39,8 @@ import java.util.Locale;
 public class OceanTriActivity extends SDLActivity {
     private static final String TAG = "MH3";
     private static final int REQUEST_STORAGE_PERMS = 1001;
-    private static final int REQUEST_PICK_ROM = 1002;
+    private static final int REQUEST_PICK_ROM_COPY = 1002;
+    private static final int REQUEST_PICK_ROM_SELECT = 1003;
 
     private static final LinkedList<String> sLogBuffer = new LinkedList<>();
     private static String sRomPath = null;
@@ -189,28 +193,24 @@ public class OceanTriActivity extends SDLActivity {
 
             if (display != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Display.Mode[] modes = display.getSupportedModes();
-                Display.Mode bestMode = null;
-                float maxRate = 60.0f;
+                Display.Mode maxMode = null;
+                float maxRate = 0;
+
                 for (Display.Mode mode : modes) {
-                    float rate = mode.getRefreshRate();
-                    if (rate > maxRate) {
-                        maxRate = rate;
-                        bestMode = mode;
+                    if (mode.getRefreshRate() > maxRate) {
+                        maxRate = mode.getRefreshRate();
+                        maxMode = mode;
                     }
                 }
-                if (bestMode != null && maxRate > 60.0f) {
+
+                if (maxMode != null && maxRate > 60.0f) {
                     WindowManager.LayoutParams params = getWindow().getAttributes();
-                    params.preferredDisplayModeId = bestMode.getModeId();
+                    params.preferredDisplayModeId = maxMode.getModeId();
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        params.preferredRefreshRate = maxRate;
+                        params.preferredRefreshRate = maxMode.getRefreshRate();
                     }
                     getWindow().setAttributes(params);
-                    log("Requested high refresh rate mode: " + maxRate + " Hz (modeId=" + bestMode.getModeId() + ")");
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    WindowManager.LayoutParams params = getWindow().getAttributes();
-                    params.preferredRefreshRate = 120.0f;
-                    getWindow().setAttributes(params);
-                    log("Requested 120Hz display refresh rate (preferredRefreshRate = 120.0f)");
+                    log("Requested high refresh rate: " + maxRate + " Hz (modeId=" + maxMode.getModeId() + ")");
                 }
             }
         } catch (Exception e) {
@@ -226,36 +226,42 @@ public class OceanTriActivity extends SDLActivity {
         }
     }
 
+    public static List<File> getMh3Directories() {
+        List<File> list = new ArrayList<>();
+        list.add(new File("/storage/emulated/0/MH3"));
+        list.add(new File("/sdcard/MH3"));
+        try {
+            File ext = Environment.getExternalStorageDirectory();
+            if (ext != null) {
+                File dir = new File(ext, "MH3");
+                if (!list.contains(dir)) list.add(dir);
+            }
+        } catch (Exception ignored) {}
+        return list;
+    }
+
     private synchronized void checkRomAndPrepare() {
         if (mRomReady) {
             return;
         }
 
-        // 1. Check if ROM already exists in the official game directory (/storage/emulated/0/MH3/)
-        File mh3Dir = new File("/storage/emulated/0/MH3");
-        if (!mh3Dir.exists()) {
-            mh3Dir.mkdirs();
-        }
-
-        File existingMh3Rom = findRomInDir(mh3Dir);
-        if (existingMh3Rom != null) {
-            sRomPath = existingMh3Rom.getAbsolutePath();
-            mRomReady = true;
-            log("ROM already present in target directory /storage/emulated/0/MH3: " + sRomPath);
-            return;
+        // 1. Check if ROM already exists in the designated MH3 directory
+        for (File mh3Dir : getMh3Directories()) {
+            if (!mh3Dir.exists()) {
+                mh3Dir.mkdirs();
+            }
+            File existingMh3Rom = findRomInDir(mh3Dir);
+            if (existingMh3Rom != null) {
+                sRomPath = existingMh3Rom.getAbsolutePath();
+                mRomReady = true;
+                log("ROM already present in target directory " + mh3Dir.getAbsolutePath() + ": " + sRomPath);
+                return;
+            }
         }
 
         mRomCheckStarted = true;
 
-        // 2. Search for ROM in other common directories (e.g. Download)
-        final String foundOtherRom = findGameRom();
-        if (foundOtherRom != null) {
-            sRomPath = foundOtherRom;
-            mRomReady = true;
-            log("Found ROM automatically, launching: " + sRomPath);
-            return;
-        }
-
+        // 2. Si no hay ROM en /storage/emulated/0/MH3/, mostrar el diálogo de opciones
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -264,59 +270,41 @@ public class OceanTriActivity extends SDLActivity {
         });
     }
 
-    private void showRomFoundPrompt(final String detectedPath) {
-        final File file = new File(detectedPath);
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Monster Hunter Tri");
-        builder.setMessage("Se detectó tu ROM en:\n" + detectedPath + "\n\n" +
-            "¿Deseas copiarla automáticamente a /storage/emulated/0/MH3/ para iniciar?");
-        builder.setPositiveButton("Copiar a MH3 e Iniciar", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                File target = new File("/storage/emulated/0/MH3", file.getName());
-                copyFileWithProgress(file, target);
-            }
-        });
-        builder.setNeutralButton("Seleccionar otra", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                launchRomPicker();
-            }
-        });
-        builder.setNegativeButton("Usar sin copiar", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                sRomPath = detectedPath;
-                mRomReady = true;
-                log("Using ROM directly without copying: " + sRomPath);
-            }
-        });
-        builder.setCancelable(false);
-        builder.show();
-    }
-
     private void showRomSelectPrompt() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Monster Hunter Tri");
-        builder.setMessage("Por favor selecciona el archivo de la ROM (.iso, .rvz o .wia) de Monster Hunter Tri (Europeo).\n\n" +
-            "La aplicación se encargará de copiarla automáticamente a /storage/emulated/0/MH3/ para jugar.");
-        builder.setPositiveButton("Seleccionar ROM", new DialogInterface.OnClickListener() {
+        builder.setMessage(
+            "Por favor selecciona una opción para la ROM del juego (.rvz / .iso):\n\n" +
+            "• Copiar ROM: Selecciona tu archivo y la aplicación lo moverá/copiará a la carpeta /storage/emulated/0/MH3/ para iniciar siempre directamente.\n\n" +
+            "• Seleccionar ROM: Elige un archivo para jugar esta sesión sin copiarlo (te volverá a pedir la ROM al abrir el juego).\n\n" +
+            "• Salir: Cerrar el juego."
+        );
+        builder.setPositiveButton("Copiar ROM", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                launchRomPicker();
+                launchRomPicker(true);
+            }
+        });
+        builder.setNeutralButton("Seleccionar ROM", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                launchRomPicker(false);
             }
         });
         builder.setNegativeButton("Salir", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 finish();
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(0);
             }
         });
         builder.setCancelable(false);
         builder.show();
     }
 
-    private void launchRomPicker() {
+    private void launchRomPicker(boolean forCopy) {
+        int reqCode = forCopy ? REQUEST_PICK_ROM_COPY : REQUEST_PICK_ROM_SELECT;
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -327,13 +315,13 @@ public class OceanTriActivity extends SDLActivity {
                 "application/*",
                 "*/*"
             });
-            startActivityForResult(intent, REQUEST_PICK_ROM);
+            startActivityForResult(intent, reqCode);
         } catch (Exception e) {
             log("Error launching ACTION_OPEN_DOCUMENT: " + e.getMessage());
             try {
                 Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
                 intent.setType("*/*");
-                startActivityForResult(intent, REQUEST_PICK_ROM);
+                startActivityForResult(intent, reqCode);
             } catch (Exception ex) {
                 log("Error launching ACTION_GET_CONTENT: " + ex.getMessage());
             }
@@ -343,15 +331,123 @@ public class OceanTriActivity extends SDLActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_PICK_ROM) {
+        if (requestCode == REQUEST_PICK_ROM_COPY) {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                Uri uri = data.getData();
-                copyUriWithProgress(uri);
+                copyUriWithProgress(data.getData());
             } else {
-                // User cancelled file picker, ask again
+                showRomSelectPrompt();
+            }
+        } else if (requestCode == REQUEST_PICK_ROM_SELECT) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                handleRomSelectionForDirectUse(data.getData());
+            } else {
                 showRomSelectPrompt();
             }
         }
+    }
+
+    private void showInvalidRomDialog(String displayName) {
+        AlertDialog.Builder b = new AlertDialog.Builder(this);
+        b.setTitle("Archivo no compatible");
+        b.setMessage("El archivo seleccionado ('" + displayName + "') no tiene una extensión de ROM válida (.rvz, .iso, .wia, .wbfs).\n\n" +
+            "Por favor selecciona una imagen de disco válida de Monster Hunter Tri (Europeo).");
+        b.setPositiveButton("Reintentar", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                showRomSelectPrompt();
+            }
+        });
+        b.setCancelable(false);
+        b.show();
+    }
+
+    private void handleRomSelectionForDirectUse(final Uri uri) {
+        String displayName = "Monster Hunter Tri (Europe).rvz";
+        try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (nameIdx != -1) {
+                    String name = cursor.getString(nameIdx);
+                    if (name != null && !name.isEmpty()) displayName = name;
+                }
+            }
+        } catch (Exception e) {
+            log("Querying URI info: " + e.getMessage());
+        }
+
+        if (!isRomFile(displayName)) {
+            showInvalidRomDialog(displayName);
+            return;
+        }
+
+        String directPath = resolveUriToFilePath(uri);
+        if (directPath != null) {
+            File directFile = new File(directPath);
+            if (directFile.exists() && directFile.canRead()) {
+                log("Seleccionar ROM: Usando archivo directamente desde: " + directPath + " (sin copiar a MH3/)");
+                sRomPath = directPath;
+                mRomReady = true;
+                return;
+            }
+        }
+
+        log("Seleccionar ROM: No se pudo resolver ruta POSIX directa, copiando a caché de sesión temporal");
+        copyUriToSessionCache(uri, displayName);
+    }
+
+    private void copyUriToSessionCache(final Uri uri, final String displayName) {
+        final File cacheDir = getCacheDir();
+        if (!cacheDir.exists()) cacheDir.mkdirs();
+        final File sessionFile = new File(cacheDir, "session_" + displayName);
+
+        final ProgressDialog progressDialog = new ProgressDialog(this);
+        progressDialog.setTitle("Cargando ROM");
+        progressDialog.setMessage("Preparando " + displayName + " para esta sesión...\nPor favor espera, no cierres la app.");
+        progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+        progressDialog.setCancelable(false);
+        progressDialog.setCanceledOnTouchOutside(false);
+        progressDialog.show();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                InputStream in = null;
+                FileOutputStream out = null;
+                try {
+                    in = getContentResolver().openInputStream(uri);
+                    out = new FileOutputStream(sessionFile);
+                    byte[] buffer = new byte[4 * 1024 * 1024];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                    }
+                    out.flush();
+                    sessionFile.deleteOnExit();
+                    log("Session cache copy finished: " + sessionFile.getAbsolutePath());
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            progressDialog.dismiss();
+                            sRomPath = sessionFile.getAbsolutePath();
+                            mRomReady = true;
+                        }
+                    });
+                } catch (final Exception e) {
+                    log("Error copying to session cache: " + e.getMessage());
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            progressDialog.dismiss();
+                            if (sessionFile.exists()) sessionFile.delete();
+                            showRomSelectPrompt();
+                        }
+                    });
+                } finally {
+                    try { if (in != null) in.close(); } catch (Exception ignored) {}
+                    try { if (out != null) out.close(); } catch (Exception ignored) {}
+                }
+            }
+        }, "SessionRomCopyThread").start();
     }
 
     private void copyUriWithProgress(final Uri uri) {
@@ -371,6 +467,11 @@ public class OceanTriActivity extends SDLActivity {
             }
         } catch (Exception e) {
             log("Querying URI info: " + e.getMessage());
+        }
+
+        if (!isRomFile(displayName)) {
+            showInvalidRomDialog(displayName);
+            return;
         }
 
         final File targetDir = new File("/storage/emulated/0/MH3");
@@ -654,8 +755,94 @@ public class OceanTriActivity extends SDLActivity {
         return null;
     }
 
-    private boolean isRomFile(String name) {
+    private static boolean isRomFile(String name) {
+        if (name == null) return false;
         String lower = name.toLowerCase(Locale.ROOT);
-        return lower.endsWith(".rvz") || lower.endsWith(".iso") || lower.endsWith(".wia");
+        return lower.endsWith(".rvz") || lower.endsWith(".iso") || lower.endsWith(".wia") || lower.endsWith(".wbfs") || lower.endsWith(".ciso");
+    }
+
+    private String resolveUriToFilePath(Uri uri) {
+        if (uri == null) return null;
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            return uri.getPath();
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && DocumentsContract.isDocumentUri(this, uri)) {
+            String docId = DocumentsContract.getDocumentId(uri);
+            String authority = uri.getAuthority();
+
+            if ("com.android.externalstorage.documents".equals(authority)) {
+                String[] split = docId.split(":");
+                String type = split[0];
+                String relativePath = split.length > 1 ? split[1] : "";
+                if ("primary".equalsIgnoreCase(type)) {
+                    return "/storage/emulated/0/" + relativePath;
+                } else {
+                    File[] extDirs = getExternalFilesDirs(null);
+                    if (extDirs != null) {
+                        for (File ed : extDirs) {
+                            if (ed != null) {
+                                String abs = ed.getAbsolutePath();
+                                int idx = abs.indexOf("/Android/data");
+                                if (idx > 0) {
+                                    String root = abs.substring(0, idx);
+                                    File candidate = new File(root, relativePath);
+                                    if (candidate.exists()) return candidate.getAbsolutePath();
+                                }
+                            }
+                        }
+                    }
+                    File candidate = new File("/storage/" + type + "/" + relativePath);
+                    if (candidate.exists()) return candidate.getAbsolutePath();
+                }
+            } else if ("com.android.providers.downloads.documents".equals(authority)) {
+                if (docId != null && docId.startsWith("raw:")) {
+                    return docId.substring(4);
+                }
+                try {
+                    Uri contentUri = ContentUris.withAppendedId(
+                        Uri.parse("content://downloads/public_downloads"), Long.parseLong(docId));
+                    String path = getDataColumn(contentUri, null, null);
+                    if (path != null && new File(path).exists()) return path;
+                } catch (Exception ignored) {}
+            } else if ("com.android.providers.media.documents".equals(authority)) {
+                String[] split = docId.split(":");
+                String type = split[0];
+                Uri contentUri = null;
+                if ("image".equals(type)) {
+                    contentUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                } else if ("video".equals(type)) {
+                    contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+                } else if ("audio".equals(type)) {
+                    contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        contentUri = MediaStore.Files.getContentUri("external");
+                    }
+                }
+                String selection = "_id=?";
+                String[] selectionArgs = new String[] { split.length > 1 ? split[1] : docId };
+                String path = getDataColumn(contentUri, selection, selectionArgs);
+                if (path != null && new File(path).exists()) return path;
+            }
+        }
+        String path = getDataColumn(uri, null, null);
+        if (path != null && new File(path).exists()) return path;
+
+        return null;
+    }
+
+    private String getDataColumn(Uri uri, String selection, String[] selectionArgs) {
+        if (uri == null) return null;
+        final String column = "_data";
+        final String[] projection = { column };
+        try (Cursor cursor = getContentResolver().query(uri, projection, selection, selectionArgs, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                final int index = cursor.getColumnIndex(column);
+                if (index != -1) {
+                    return cursor.getString(index);
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 }

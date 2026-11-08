@@ -42,6 +42,7 @@ constexpr uint16_t kRfpPort = 8203;
 
 LocalOnlineServer::Mode g_mode = LocalOnlineServer::Mode::Community; // Por defecto Servidor de la Comunidad
 std::string g_hostIp = "mh3sp.com";
+uint16_t g_hostPort = 18080;
 bool g_configured = false;
 bool g_configLoaded = false;
 
@@ -105,41 +106,58 @@ void LoadOnlineConfig() {
     const std::string path = GetConfigPath();
     std::ifstream in(path);
     int m = 3;
+    std::string ip = "mh3sp.com";
+    uint32_t port = 18080;
     if (in >> m) {
-        if (m == 0)
+        if (m == 0) {
             g_mode = Mode::Offline;
-        else
+        } else {
             g_mode = Mode::Community;
+        }
     } else {
         g_mode = Mode::Community;
     }
     g_hostIp = "mh3sp.com";
+    g_hostPort = 18080;
 }
 
 void SaveOnlineConfig() {
     const std::string path = GetConfigPath();
-    std::ofstream out(path);
+    std::ofstream out(path, std::ios::trunc);
     if (out.is_open()) {
-        out << (g_mode == Mode::Offline ? 0 : 3) << " mh3sp.com\n";
+        out << static_cast<int>(g_mode) << " " << g_hostIp << " " << g_hostPort << "\n";
     }
 }
 
-void SetMode(Mode mode, const std::string& hostIp) {
-    if (mode == Mode::Offline) {
-        g_mode = Mode::Offline;
-    } else {
-        g_mode = Mode::Community;
+void SetMode(Mode mode, const std::string& hostIp, uint16_t port) {
+    g_mode = mode;
+    if (!hostIp.empty()) {
+        g_hostIp = hostIp;
     }
-    g_hostIp = "mh3sp.com";
+    if (port > 0) {
+        g_hostPort = port;
+    }
     SaveOnlineConfig();
 
     StopLocalServer();
 
-    if (g_mode == Mode::Community) {
+    if (g_mode == Mode::Host) {
+        StartLocalServer();
+    } else if (g_mode == Mode::Client) {
+        std::string target = g_hostIp + ":" + std::to_string(g_hostPort);
+        SetOnlineServerSetting(target);
+        SetSkipTlsSetting(true);
+        ApplyOnlinePatches();
+        std::fprintf(stderr, "[LocalOnlineServer] Conectando a servidor personalizado: %s\n", target.c_str());
+    } else if (g_mode == Mode::Community) {
         SetOnlineServerSetting("mh3sp.com");
         SetSkipTlsSetting(false);
+        ApplyOnlinePatches();
+        std::fprintf(stderr, "[LocalOnlineServer] Servidor oficial mh3sp.com configurado\n");
+    } else {
+        SetOnlineServerSetting("mh3sp.com");
+        std::fprintf(stderr, "[LocalOnlineServer] Modo Desconectado\n");
     }
-    ApplyOnlinePatches();
 }
 
 Mode GetMode() {
@@ -148,10 +166,17 @@ Mode GetMode() {
 }
 
 std::string GetConfiguredHostIp() {
-    return "mh3sp.com";
+    LoadOnlineConfig();
+    return g_hostIp;
+}
+
+uint16_t GetConfiguredHostPort() {
+    LoadOnlineConfig();
+    return g_hostPort;
 }
 
 bool StartLocalServer() {
+    StopLocalServer();
     return false;
 }
 
@@ -165,24 +190,28 @@ void StopLocalServer() {
 }
 
 bool IsLocalServerRunning() {
-    return false;
+    return NasServer::IsRunning() && mh3sp_native::IsRunning();
 }
 
 void Configure() {
     LoadOnlineConfig();
     StopLocalServer();
 
-    if (g_mode == Mode::Community) {
+    if (g_mode == Mode::Offline) {
+        SetOnlineServerSetting("mh3sp.com");
+        g_configured = true;
+        std::fprintf(stderr, "[MH3 Online] Modo Desconectado\n");
+    } else {
+        g_mode = Mode::Community;
         SetOnlineServerSetting("mh3sp.com");
         SetSkipTlsSetting(false);
+        ApplyOnlinePatches();
         g_configured = true;
         std::fprintf(stderr, "[MH3 Online] Servidor oficial de la comunidad mh3sp.com configurado\n");
-    } else {
-        std::fprintf(stderr, "[MH3 Online] Modo Desconectado\n");
     }
 }
 
 void Ensure() {
-    StopLocalServer();
+    // Modo local desactivado: conexión oficial directa con mh3sp.com
 }
 } // namespace LocalOnlineServer

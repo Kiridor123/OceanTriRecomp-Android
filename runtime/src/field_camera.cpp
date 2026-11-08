@@ -26,6 +26,7 @@
 #include "game_step.h"
 #include "guest_call.h"
 #include "port_check.h"
+#include "hunter_telemetry.h"
 #ifdef MH3_DEVELOPMENT
 #include "cheats.h"
 #include "controller_host.h"
@@ -631,6 +632,8 @@ static void BindCameraPort(CpuContext* ctx) {
     static bool placed = false; // the last tick placed the eye and target
     static BindPlace last;
 
+    const bool wasPlaced = placed;
+
     for (uint32_t i = 0; i < ticks; ++i) {
         placed = BindTick(ctx, cam, plw);
 
@@ -651,6 +654,12 @@ static void BindCameraPort(CpuContext* ctx) {
         for (uint32_t i = 0; i < sizeof(state); ++i)
             Memory::Write8(cam + kBindSteps + i, state[i]);
 
+        if (ticks == 0) {
+            placed = next;
+            if (placed)
+                last.Read(cam);
+        }
+
         if (placed && next) {
             GuestCall game{ctx};
 
@@ -663,11 +672,30 @@ static void BindCameraPort(CpuContext* ctx) {
             const uint32_t yaw = game.Call<AngleBetween>({cam + kTarget, cam + kEye});
             W32(cam + kYawTarget, yaw);
             W32(cam + kYaw, yaw);
-        } else if (placed) {
-            last.Write(cam);
         } else {
-            now.Write(cam);
+            // Neither placed nor next: hold is inactive.
+            // Do NOT overwrite cam with stale now.Write(cam), so func_802B8ED0's
+            // restored default FOV (55.0f) and player's kDistance (0x7C) are preserved.
+            placed = false;
         }
+    }
+
+    // Safety: If hold just ended (was placed on previous frame, but no longer placed),
+    // ensure FOV is restored to standard 55.0f and camera distance row is restored from Option 11
+    // so the camera never gets stuck zoomed in or too close after Rathian/monster pins.
+    if (wasPlaced && !placed) {
+        float defaultFov = Memory::Contains(0x8079C9A8u, 4) ? Memory::ReadFloat32(0x8079C9A8u) : 55.0f;
+        if (defaultFov <= 0.0f || defaultFov > 120.0f) defaultFov = 55.0f;
+        WF(cam + kFovA, defaultFov);
+        WF(cam + kFovB, defaultFov);
+
+        GuestCall game{ctx};
+        const uint8_t playerId = Memory::Read8(plw + kPlwPlayer);
+        uint32_t optDist = game.Call<OptionConfig>({playerId, 11}) & 0xFF;
+        if (optDist > 4) optDist = 2;
+        Memory::Write8(cam + kDistance, uint8_t(optDist));
+        const uint32_t rowBase = (Memory::Read8(plw + kPlwState) == 3) ? kRowsSwimming : kRows;
+        W32(cam + kRow, rowBase + optDist * 28);
     }
 }
 
@@ -780,6 +808,8 @@ REGISTER_NATIVE_FUNCTION_AS(0x802B9C68, MH3_AimCamera, "AimCamera");
 
 extern "C" void func_802B5CBC(CpuContext* ctx);
 extern "C" void MH3_FieldCameraUpdate(CpuContext* ctx) {
+    const uint32_t cam = ctx->gpr[3];
     PortCheck::Call(ctx, "FieldCameraUpdate", func_802B5CBC, FieldCameraUpdatePort);
+    HunterTelemetry::RecordCamera(cam);
 }
 REGISTER_NATIVE_FUNCTION_AS(0x802B5CBC, MH3_FieldCameraUpdate, "FieldCameraUpdate");

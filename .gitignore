@@ -58,6 +58,7 @@ Thumbs.db
 .idea/
 __pycache__/
 *.pyc
+*.keystore
 
 # Native libraries and object files
 *.o
@@ -68,6 +69,7 @@ __pycache__/
 *.pdb
 *.idb
 !packaging/android/libs/**
+!third_party/**
 
 # Broken symlinks / temporary tools
 tools/dotnet/dotnet

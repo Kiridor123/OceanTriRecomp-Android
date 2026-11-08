@@ -1887,10 +1887,10 @@ loc_804495F0:
     ctx->gpr[5] = r5;
     InvokeDirectCpu<0x80004350u>(ctx);
     r3 = ctx->gpr[3];
-    r0 = 60;
+    r0 = 30;
     MemoryInline::FlatWrite32((r13 + -20980), r0);
     r3 = MemoryInline::FlatRead32((r13 + -16588));
-    r4 = 60;
+    r4 = 30;
     r12 = MemoryInline::FlatRead32(r3);
     r12 = MemoryInline::FlatRead32((r12 + 60));
     ctr = r12;
@@ -1936,7 +1936,7 @@ loc_804495F0:
     f8 = ctx->fpr[8];
     ctr = ctx->ctr;
     r3 = MemoryInline::FlatRead32((r13 + -16588));
-    r4 = 60;
+    r4 = 30;
     r12 = MemoryInline::FlatRead32(r3);
     r12 = MemoryInline::FlatRead32((r12 + 64));
     ctr = r12;

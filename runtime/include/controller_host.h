@@ -45,4 +45,14 @@ bool Gamepad_GetSwapTriggers();
 void Gamepad_SetSwapTriggers(bool swap);
 void Gamepad_SaveConfig();
 void Gamepad_LoadConfig();
+
+// Custom Gamepad Button Remapping
+int Gamepad_GetBinding(int action);
+void Gamepad_SetBinding(int action, int inputCode);
+void Gamepad_ResetToPreset(int layout, bool swapTriggers);
+int Gamepad_DetectPressedInput();
+const char* Gamepad_GetActionName(int action, int lang);
+const char* Gamepad_GetActionDesc(int action, int lang);
+const char* Gamepad_GetInputName(int inputCode, int layout, int lang);
+bool Gamepad_IsConnected();
 }

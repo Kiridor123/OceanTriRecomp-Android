@@ -117225,6 +117225,19 @@ loc_80A04CF0:
 // RECOMP_GUEST_ABI gpr_read=0x00003FFF gpr_write=0x00001FFB gpr_return=0x00000018 fpr_read=0xE0003FFF fpr_write=0xE0003FFF fpr_return=0x00000002 cr_read=0xFF cr_write=0xFF xer_read=1 xer_write=1 fence=0
 #line 1 "func_80A04D08.cpp"
 #include <cstdint>
+#include <cmath>
+#if defined(__ANDROID__)
+#if defined(__ANDROID__)
+#include <android/log.h>
+#else
+#include <cstdio>
+#ifndef ANDROID_LOG_WARN
+#define ANDROID_LOG_WARN 5
+#define ANDROID_LOG_INFO 4
+#define __android_log_print(prio, tag, fmt, ...) std::fprintf(stderr, "[" tag "] " fmt "\n", ##__VA_ARGS__)
+#endif
+#endif
+#endif
 #include "ppc_runtime.h"
 #include "abi_bridge.h"
 #include "memory.h"
@@ -117371,6 +117384,46 @@ loc_80A04D64:
 loc_80A04D68:
 {
     if ((static_cast<int32_t>(r3) == static_cast<int32_t>(1))) {
+        // Direct mid-air impact detonation when thrown tranq bomb strikes a monster in flight
+        const uint32_t sys_table = MemoryInline::FlatRead32(0x8065AA60 + 0xA4);
+        if (sys_table != 0) {
+            const uint16_t em_count = MemoryInline::FlatRead16(sys_table + 6);
+            const uint32_t em_base = MemoryInline::FlatRead32(sys_table + 0x1C);
+            const uint8_t proj_area = MemoryInline::FlatRead8(r30 + 8);
+            const float px = MemoryInline::FlatReadFloat32(r30 + 24);
+            const float py = MemoryInline::FlatReadFloat32(r30 + 28);
+            const float pz = MemoryInline::FlatReadFloat32(r30 + 32);
+
+            for (uint32_t i = 0; i < em_count; ++i) {
+                const uint32_t em = em_base + i * 0xB18;
+                if (em != 0 && MemoryInline::FlatRead16(em) == 0x0101) {
+                    const uint8_t em_area = MemoryInline::FlatRead8(em + 481);
+                    if (em_area == proj_area) {
+                        float ex = MemoryInline::FlatReadFloat32(em + 0x188);
+                        float ey = MemoryInline::FlatReadFloat32(em + 0x18C);
+                        float ez = MemoryInline::FlatReadFloat32(em + 0x190);
+                        float s1 = MemoryInline::FlatReadFloat32(em + 0x1CC);
+                        float s2 = MemoryInline::FlatReadFloat32(em + 0x1D0);
+                        float scale = (s1 > 0.1f ? s1 : 1.0f) * (s2 > 0.1f ? s2 : 1.0f);
+                        float hit_radius = 280.0f * scale;
+                        float dx = px - ex;
+                        float dy = py - ey;
+                        float dz = pz - ez;
+                        if ((dx * dx + dy * dy + dz * dz) <= (hit_radius * hit_radius)) {
+#if defined(__ANDROID__)
+                            __android_log_print(ANDROID_LOG_INFO, "MH3",
+                                "[TRANQ BOMB MID-AIR HIT] Thrown bomb struck monster em=0x%08X (dist=%.1f, radius=%.1f) -> Detonating mid-air!",
+                                em, std::sqrt(dx * dx + dy * dy + dz * dz), hit_radius);
+#endif
+                            MemoryInline::FlatWriteFloat32(r1 + 8, 0.0f);
+                            MemoryInline::FlatWriteFloat32(r1 + 12, 1.0f);
+                            MemoryInline::FlatWriteFloat32(r1 + 16, 0.0f);
+                            goto loc_80A04EEC;
+                        }
+                    }
+                }
+            }
+        }
         goto loc_80A04EB0;
     }
 }

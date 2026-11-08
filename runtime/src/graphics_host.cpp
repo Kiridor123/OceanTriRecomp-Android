@@ -322,7 +322,7 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
     const auto cache = std::filesystem::absolute(graphicsRoot / "cache").string();
 #endif
     AuroraConfig config{};
-    config.appName = "Monster Hunter Tri";
+    config.appName = "Project Moga";
     config.userPath = user.c_str();
     config.cachePath = cache.c_str();
 #ifdef AURORA_GXM
