@@ -35,6 +35,11 @@ bool TouchControls_IsMenuOpen(void);
 void TouchControls_ToggleMenu(void);
 void TouchControls_SetMenuOpen(bool open);
 
+// Floating Damage Numbers (Modern Monster Hunter style: World/Rise/Wilds)
+void TouchControls_OnMonsterDamage(uint32_t monster, int32_t damage);
+void TouchControls_SetDamageNumbersEnabled(bool enabled);
+bool TouchControls_IsDamageNumbersEnabled(void);
+
 #ifdef __cplusplus
 }
 #endif

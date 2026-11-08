@@ -53,6 +53,8 @@ int32_t Fctiwz(double v) {
 
 } // namespace
 
+extern "C" void TouchControls_OnMonsterDamage(uint32_t monster, int32_t damage);
+
 // 0x8011E6BC (monster, s32 change, s32 max): health += change, within 0 and
 // max (at least the health it had), and not below the floor (the maximum
 // times +0x7B0). The codes (all US 0x8011E6xx, EU +0x64):
@@ -66,6 +68,10 @@ extern "C" void MH3_MonsterHealthAdd(CpuContext* ctx) {
     const int32_t change = int32_t(ctx->gpr[4]);
     int32_t max = int32_t(ctx->gpr[5]);
     const int32_t health = int32_t(Memory::Read32(monster + kHealth));
+
+    if (change < 0 && monster != 0) {
+        TouchControls_OnMonsterDamage(monster, -change);
+    }
 
     if (max < health)
         max = health;

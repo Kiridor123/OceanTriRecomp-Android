@@ -24,7 +24,9 @@
 #include <filesystem>
 #include <chrono>
 #include <atomic>
+#include <mutex>
 #include <functional>
+#include "cheats.h"
 #include <unordered_map>
 #include <cstdio>
 #include <cstring>
@@ -143,6 +145,20 @@ struct HitZone {
     std::function<void()> onClick;
 };
 
+struct DamagePopup {
+    float worldX = 0.0f;
+    float worldY = 0.0f;
+    float worldZ = 0.0f;
+    int damage = 0;
+    float timer = 0.0f;
+    float lifetime = 0.95f;
+    bool isWeakspot = false;
+    bool isMassive = false;
+    float floatSpeedY = 65.0f;
+    float driftX = 0.0f;
+    float driftZ = 0.0f;
+};
+
 struct UIVertex {
     float x, y;
     float u, v;          // Local offset in pixels [-halfW, halfW] for SDF, or UV for texture
@@ -197,6 +213,12 @@ public:
 
     void SetEnabled(bool enabled) { m_enabled = enabled; }
     bool IsEnabled() const { return m_enabled; }
+
+    void SetDamageNumbersEnabled(bool enabled) {
+        m_damageNumbersEnabled = enabled;
+        SaveLayoutConfig();
+    }
+    bool IsDamageNumbersEnabled() const { return m_damageNumbersEnabled; }
 
     bool IsMenuOpen() const { return m_menuOpen || m_langSubmenuOpen; }
     void ToggleMenu() { SetMenuOpen(!m_menuOpen); }
@@ -860,6 +882,212 @@ public:
     }
 
     // -------------------------------------------------------------
+    // Damage Numbers (World / Rise Style Floating Numbers)
+    // -------------------------------------------------------------
+    void OnMonsterDamage(uint32_t monster, int32_t damage) {
+        if (!m_damageNumbersEnabled || damage <= 0 || monster == 0) return;
+        if (!Memory::Contains(monster, 0x800)) return;
+
+        float mx = Memory::ReadFloat32(monster + 0x188);
+        float my = Memory::ReadFloat32(monster + 0x188 + 4);
+        float mz = Memory::ReadFloat32(monster + 0x188 + 8);
+
+        if (!std::isfinite(mx) || !std::isfinite(my) || !std::isfinite(mz)) return;
+
+        float s1 = Memory::ReadFloat32(monster + 0x1CC);
+        float s2 = Memory::ReadFloat32(monster + 0x1D0);
+        float scale = (s1 > 0.0f && s2 > 0.0f && std::isfinite(s1) && std::isfinite(s2)) ? (s1 * s2) : 1.0f;
+        if (scale < 0.2f || scale > 8.0f) scale = 1.0f;
+
+        int32_t maxHp = int32_t(Memory::Read32(monster + 0x7A4));
+        bool isLarge = (maxHp >= 400);
+        bool isWeakspot = isLarge ? (damage >= 35) : (damage >= 22);
+        bool isMassive = isLarge ? (damage >= 70) : (damage >= 45);
+
+        float spawnX = mx;
+        float spawnY = my + 130.0f * scale;
+        float spawnZ = mz;
+
+        uint32_t plw = Cheats::LocalPlayer();
+        if (plw != 0 && Memory::Contains(plw, 0x100)) {
+            float hx = Memory::ReadFloat32(plw + 0x3C);
+            float hy = Memory::ReadFloat32(plw + 0x3C + 4);
+            float hz = Memory::ReadFloat32(plw + 0x3C + 8);
+            if (std::isfinite(hx) && std::isfinite(hy) && std::isfinite(hz)) {
+                float dx = hx - mx;
+                float dz = hz - mz;
+                float distXZ = std::sqrt(dx * dx + dz * dz);
+                if (distXZ > 1.0f) {
+                    float shift = std::min(distXZ * 0.35f, 150.0f * scale);
+                    spawnX += (dx / distXZ) * shift;
+                    spawnZ += (dz / distXZ) * shift;
+                }
+                float targetY = std::max(my + 110.0f * scale, hy + 60.0f);
+                spawnY = std::min(targetY, my + 300.0f * scale);
+            }
+        }
+
+        static std::atomic<unsigned> s_seed{1337};
+        unsigned s = s_seed.fetch_add(12345, std::memory_order_relaxed);
+        s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+        float jx = float(int(s % 51) - 25) * 1.4f;
+        float jz = float(int((s >> 8) % 51) - 25) * 1.4f;
+        float jy = float(int((s >> 16) % 31) - 15) * 0.9f;
+
+        spawnX += jx;
+        spawnZ += jz;
+        spawnY += jy;
+
+        DamagePopup pop;
+        pop.worldX = spawnX;
+        pop.worldY = spawnY;
+        pop.worldZ = spawnZ;
+        pop.damage = damage;
+        pop.timer = 0.0f;
+        pop.lifetime = 0.95f;
+        pop.isWeakspot = isWeakspot;
+        pop.isMassive = isMassive;
+        pop.floatSpeedY = 65.0f + float(s % 25);
+        pop.driftX = jx * 0.35f;
+        pop.driftZ = jz * 0.35f;
+
+        std::lock_guard<std::mutex> lock(m_damageMutex);
+        if (m_damagePopups.size() >= 48) {
+            m_damagePopups.erase(m_damagePopups.begin());
+        }
+        m_damagePopups.push_back(pop);
+    }
+
+    bool ProjectWorldToScreen(float wx, float wy, float wz, float& outX, float& outY, float& outDist,
+                              float vpX, float vpY, float vpW, float vpH, int winH) {
+        if (!Memory::Contains(0x80688D94, 0x1A00)) {
+            return false;
+        }
+
+        uint16_t cur = Memory::Read16(0x80688D94 + 2);
+        if (cur >= 32) cur = 0;
+
+        uint32_t viewAddr = 0x80688D94 + 0x34 + cur * 48;
+        uint32_t projAddr = 0x80688D94 + 0x634 + cur * 64;
+
+        float p0 = Memory::ReadFloat32(projAddr + 0);
+        float p5 = Memory::ReadFloat32(projAddr + 20);
+        float p2 = Memory::ReadFloat32(projAddr + 8);
+        float p6 = Memory::ReadFloat32(projAddr + 24);
+
+        if (p0 <= 0.0f || p5 <= 0.0f || !std::isfinite(p0) || !std::isfinite(p5)) {
+            return false;
+        }
+
+        float v00 = Memory::ReadFloat32(viewAddr + 0);
+        float v01 = Memory::ReadFloat32(viewAddr + 4);
+        float v02 = Memory::ReadFloat32(viewAddr + 8);
+        float v03 = Memory::ReadFloat32(viewAddr + 12);
+
+        float v10 = Memory::ReadFloat32(viewAddr + 16);
+        float v11 = Memory::ReadFloat32(viewAddr + 20);
+        float v12 = Memory::ReadFloat32(viewAddr + 24);
+        float v13 = Memory::ReadFloat32(viewAddr + 28);
+
+        float v20 = Memory::ReadFloat32(viewAddr + 32);
+        float v21 = Memory::ReadFloat32(viewAddr + 36);
+        float v22 = Memory::ReadFloat32(viewAddr + 40);
+        float v23 = Memory::ReadFloat32(viewAddr + 44);
+
+        float vx = v00 * wx + v01 * wy + v02 * wz + v03;
+        float vy = v10 * wx + v11 * wy + v12 * wz + v13;
+        float vz = v20 * wx + v21 * wy + v22 * wz + v23;
+
+        float w = -vz;
+        if (w <= 20.0f) {
+            return false; // Behind camera or closer than 20cm
+        }
+
+        float px = vx * p0 + vz * p2;
+        float py = vy * p5 + vz * p6;
+
+        float ndcX = px / w;
+        float ndcY = py / w;
+
+        if (ndcX < -1.4f || ndcX > 1.4f || ndcY < -1.4f || ndcY > 1.4f) {
+            return false;
+        }
+
+        outX = vpX + (0.5f + 0.5f * ndcX) * vpW;
+        float topOffset = float(winH) - (vpY + vpH);
+        outY = topOffset + (0.5f - 0.5f * ndcY) * vpH;
+        outDist = w;
+        return true;
+    }
+
+    void RenderDamageNumbers(const int lastViewport[4]) {
+        if (!m_damageNumbersEnabled) return;
+
+        static auto s_lastTime = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - s_lastTime).count();
+        s_lastTime = now;
+        if (dt <= 0.0f || dt > 0.1f) dt = 0.01666f;
+
+        std::vector<DamagePopup> active;
+        {
+            std::lock_guard<std::mutex> lock(m_damageMutex);
+            for (auto& p : m_damagePopups) {
+                p.timer += dt;
+                p.worldY += p.floatSpeedY * dt;
+                p.worldX += p.driftX * dt;
+                p.worldZ += p.driftZ * dt;
+                if (p.timer < p.lifetime) {
+                    active.push_back(p);
+                }
+            }
+            m_damagePopups = active;
+        }
+
+        if (active.empty()) return;
+
+        float vpX = 0.0f, vpY = 0.0f, vpW = float(m_width), vpH = float(m_height);
+        if (lastViewport[2] > 0 && lastViewport[3] > 0) {
+            vpX = float(lastViewport[0]);
+            vpY = float(lastViewport[1]);
+            vpW = float(lastViewport[2]);
+            vpH = float(lastViewport[3]);
+        }
+
+        const float S = UiScale();
+        for (const auto& p : active) {
+            float screenX = 0.0f, screenY = 0.0f, dist = 0.0f;
+            if (!ProjectWorldToScreen(p.worldX, p.worldY, p.worldZ, screenX, screenY, dist, vpX, vpY, vpW, vpH, m_height)) {
+                continue;
+            }
+
+            float popScale = 1.0f;
+            if (p.timer < 0.12f) {
+                float tNorm = p.timer / 0.12f;
+                popScale = 0.55f + 0.80f * std::sin(tNorm * 3.14159f * 0.70f);
+            }
+
+            float distScale = std::clamp(650.0f / dist, 0.65f, 1.40f);
+            float baseSize = p.isMassive ? 34.0f : (p.isWeakspot ? 29.0f : 24.0f);
+            float finalSize = baseSize * popScale * distScale * S;
+
+            float alpha = 1.0f;
+            if (p.timer > 0.65f) {
+                alpha = std::clamp(1.0f - (p.timer - 0.65f) / (p.lifetime - 0.65f), 0.0f, 1.0f);
+            }
+
+            float extraFloatY = (p.timer / p.lifetime) * (20.0f * S);
+            float drawX = screenX;
+            float drawY = screenY - extraFloatY;
+
+            char numStr[16];
+            std::snprintf(numStr, sizeof(numStr), "%d", p.damage);
+
+            DrawDamageNumberLabel(drawX, drawY, numStr, finalSize, p.isWeakspot, p.isMassive, alpha);
+        }
+    }
+
+    // -------------------------------------------------------------
     // OpenGL ES Rendering
     // -------------------------------------------------------------
     void RenderGL(int windowWidth, int windowHeight) {
@@ -953,6 +1181,8 @@ public:
         } else if (AndroidKeyboard_IsImeShowing()) {
             RenderFpsHud();
         } else {
+            RenderDamageNumbers(lastViewport);
+
             if (m_touchVisible) {
                 RenderGameplayOverlay();
             } else {
@@ -1352,6 +1582,80 @@ private:
                 DrawQuadTextured(gx, gy, gw, gh, g->u0, g->v0, g->u1, g->v1, col);
             }
             curX += (g ? g->advance : (BASE_FONT_SIZE * 0.5f)) * scale;
+        }
+    }
+
+    void DrawTextRaw(float x, float y, const char* text, float size, Color col) {
+        if (!text || col.a <= 0.001f) return;
+        float scale = size / BASE_FONT_SIZE;
+        float baseOffset = -14.5f * scale;
+        const char* p = text;
+        float curX = x;
+        while (*p) {
+            uint32_t cp = DecodeUtf8(p);
+            const auto* g = FindFontGlyph(cp);
+            if (g && g->w > 0 && g->h > 0) {
+                float gx = curX + g->offX * scale;
+                float gy = y + baseOffset + g->offY * scale;
+                float gw = g->w * scale;
+                float gh = g->h * scale;
+                DrawQuadTextured(gx, gy, gw, gh, g->u0, g->v0, g->u1, g->v1, col);
+            }
+            curX += (g ? g->advance : (BASE_FONT_SIZE * 0.5f)) * scale;
+        }
+    }
+
+    void DrawDamageNumberLabel(float cx, float cy, const char* text, float size, bool isWeakspot, bool isMassive, float alpha) {
+        if (!text || size <= 0.0f || alpha <= 0.001f) return;
+
+        float totalW = MeasureText(text, size);
+        float x = cx - totalW * 0.5f;
+        float y = cy;
+
+        float outlineDist = std::max(1.8f, size * 0.065f);
+        Color outlineCol = { 0.02f, 0.02f, 0.02f, alpha * 0.95f };
+
+        // 8-direction thick outline for crisp contrast against any terrain
+        const float offsets[8][2] = {
+            { -outlineDist, 0.0f },
+            {  outlineDist, 0.0f },
+            { 0.0f, -outlineDist },
+            { 0.0f,  outlineDist },
+            { -outlineDist * 0.707f, -outlineDist * 0.707f },
+            {  outlineDist * 0.707f, -outlineDist * 0.707f },
+            { -outlineDist * 0.707f,  outlineDist * 0.707f },
+            {  outlineDist * 0.707f,  outlineDist * 0.707f }
+        };
+
+        for (int i = 0; i < 8; ++i) {
+            DrawTextRaw(x + offsets[i][0], y + offsets[i][1], text, size, outlineCol);
+        }
+
+        // Secondary drop shadow for depth
+        float shadowOffset = outlineDist * 1.5f;
+        Color deepShadow = { 0.0f, 0.0f, 0.0f, alpha * 0.70f };
+        DrawTextRaw(x + shadowOffset, y + shadowOffset, text, size, deepShadow);
+
+        // Core fill color
+        Color mainCol;
+        if (isMassive) {
+            mainCol = { 1.0f, 0.84f, 0.18f, alpha }; // Radiant amber-gold
+        } else if (isWeakspot) {
+            mainCol = { 1.0f, 0.68f, 0.08f, alpha }; // Iconic MHW/Rise Orange-Gold
+        } else {
+            mainCol = { 1.0f, 1.0f, 1.0f, alpha }; // Crisp Pure White
+        }
+
+        DrawTextRaw(x, y, text, size, mainCol);
+
+        // Top specular highlight core for weakspots and massive hits
+        if (isWeakspot || isMassive) {
+            Color highlightCol = { 1.0f, 0.96f, 0.65f, alpha * 0.70f };
+            float innerSize = size * 0.90f;
+            float innerW = MeasureText(text, innerSize);
+            float innerX = cx - innerW * 0.5f;
+            float innerY = cy - (size - innerSize) * 0.35f;
+            DrawTextRaw(innerX, innerY, text, innerSize, highlightCol);
         }
     }
 
@@ -1900,7 +2204,29 @@ private:
         DrawText(x + 24.0f * S, curY + 136.0f * S, statStr.c_str(), 14.5f * S, COL_CYAN);
         curY += c2H + gap;
 
-        // Card 3: Restart Action Card
+        // Card 3: Floating Damage Numbers (Modern MH style: World / Rise / Wilds)
+        float cDmgH = 138.0f * S;
+        DrawModernCard(x, curY, w, cDmgH, S,
+                       Tr("Números de daño en combate", "In-Combat Damage Numbers"),
+                       Tr("Muestra números de daño flotantes sobre los monstruos al golpearlos (estilo MHW / Rise).",
+                          "Shows floating damage numbers above monsters upon landing hits (MHW / Rise style)."));
+
+        float dmgHalfW = (w - 48.0f * S - 14.0f * S) / 2.0f;
+        DrawInteractiveButton(x + 24.0f * S, curY + 74.0f * S, dmgHalfW, btnH, S,
+                              Tr("Números de daño: ACTIVADOS", "Damage numbers: ENABLED"),
+                              m_damageNumbersEnabled, [this]() {
+            m_damageNumbersEnabled = true;
+            SaveLayoutConfig();
+        });
+        DrawInteractiveButton(x + 24.0f * S + dmgHalfW + 14.0f * S, curY + 74.0f * S, dmgHalfW, btnH, S,
+                              Tr("Números de daño: DESACTIVADOS", "Damage numbers: DISABLED"),
+                              !m_damageNumbersEnabled, [this]() {
+            m_damageNumbersEnabled = false;
+            SaveLayoutConfig();
+        });
+        curY += cDmgH + gap;
+
+        // Card 4: Restart Action Card
         float c3H = 140.0f * S;
         DrawModernCard(x, curY, w, c3H, S,
                        Tr("Reiniciar el juego", "Restart Game"),
@@ -3576,6 +3902,7 @@ private:
 
         out << "VERSION 1\n";
         out << "TOUCH_VISIBLE " << (m_touchVisible ? 1 : 0) << '\n';
+        out << "DAMAGE_NUMBERS " << (m_damageNumbersEnabled ? 1 : 0) << '\n';
         out << "OPACITY " << m_buttonOpacity << '\n';
         out << "GEAR_AUTOHIDE " << m_gearAutoHideSec << '\n';
         out << "MACRO1 " << (m_macro1Enabled ? 1 : 0) << '\n';
@@ -3609,6 +3936,7 @@ private:
             std::string tag;
             if (!(iss >> tag)) continue;
             if (tag == "TOUCH_VISIBLE") { int v; iss >> v; m_touchVisible = (v != 0); }
+            else if (tag == "DAMAGE_NUMBERS") { int v; iss >> v; m_damageNumbersEnabled = (v != 0); }
             else if (tag == "OPACITY") { iss >> m_buttonOpacity; m_buttonOpacity = std::clamp(m_buttonOpacity, 0.10f, 1.0f); }
             else if (tag == "GEAR_AUTOHIDE") { int v = 0; iss >> v; m_gearAutoHideSec = std::clamp(v, 0, 60); }
             else if (tag == "MACRO1") { int v; iss >> v; m_macro1Enabled = (v != 0); }
@@ -4072,6 +4400,9 @@ private:
     bool m_asyncShaders = true;
     int m_bloomLevel = 2; // 0: Desactivado, 1: Suave, 2: Original (Wii), 3: Intenso
     bool m_touchVisible = true;
+    bool m_damageNumbersEnabled = true;
+    std::vector<DamagePopup> m_damagePopups;
+    std::mutex m_damageMutex;
     float m_buttonOpacity = 1.0f;
     int m_gearAutoHideSec = 0;
     std::atomic<int64_t> m_lastTouchMs{0};
@@ -4292,6 +4623,18 @@ void TouchControls_ToggleMenu(void) {
 
 void TouchControls_SetMenuOpen(bool open) {
     g_touchSettingsEngine.SetMenuOpen(open);
+}
+
+void TouchControls_OnMonsterDamage(uint32_t monster, int32_t damage) {
+    g_touchSettingsEngine.OnMonsterDamage(monster, damage);
+}
+
+void TouchControls_SetDamageNumbersEnabled(bool enabled) {
+    g_touchSettingsEngine.SetDamageNumbersEnabled(enabled);
+}
+
+bool TouchControls_IsDamageNumbersEnabled(void) {
+    return g_touchSettingsEngine.IsDamageNumbersEnabled();
 }
 
 } // extern "C"
