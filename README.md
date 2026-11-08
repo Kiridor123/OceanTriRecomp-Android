@@ -56,7 +56,7 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 ## 📲 Instalación
 
 1. Dirígete a la sección de **[Releases](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)**.
-2. Descarga el archivo `OceanTriRecomp-Android-v1.4.5-arm64.apk`.
+2. Descarga el archivo `OceanTriRecomp-Android-v1.6-arm64.apk`.
 3. Instálalo en tu dispositivo Android (permite fuentes desconocidas si tu navegador lo solicita).
 4. Abre **Monster Hunter Tri**. En la pantalla de bienvenida, selecciona tu copia legal de Monster Hunter Tri (`.iso` o `.rvz`, versión europea recomendada `RMHP08`).
 5. ¡A cazar!
