@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%20ARM64-green.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android)
-[![Latest Release](https://img.shields.io/badge/Release-v1.5-brightgreen.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
+[![Latest Release](https://img.shields.io/badge/Release-v1.6-brightgreen.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
 
 Port nativo para **Android** de **Monster Hunter Tri** mediante recompilación estática de código (AOT - *Ahead-of-Time*), logrando rendimiento nativo en hardware ARM64 sin necesidad de emulación pesada.
 
