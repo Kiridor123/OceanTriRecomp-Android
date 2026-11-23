@@ -327,7 +327,9 @@ static void MHcharRootMotionPort(CpuContext* ctx) {
     }
 
     if (const uint8_t pause = Memory::Read8(self + kPauseSteps)) {
-        Memory::Write8(self + kPauseSteps, pause - 1);
+        const uint32_t ticks = GameStep::Ticks();
+        if (ticks > 0)
+            Memory::Write8(self + kPauseSteps, uint8_t(pause > ticks ? pause - ticks : 0));
         *ctx = saved;
         return;
     }
@@ -415,7 +417,9 @@ static void MHcharRootMotionPort(CpuContext* ctx) {
     }
 
     if (const uint8_t hold = Memory::Read8(self + kHoldSteps)) {
-        Memory::Write8(self + kHoldSteps, hold - 1);
+        const uint32_t ticks = GameStep::Ticks();
+        if (ticks > 0)
+            Memory::Write8(self + kHoldSteps, uint8_t(hold > ticks ? hold - ticks : 0));
         *ctx = saved;
         return;
     }
@@ -570,8 +574,12 @@ uint32_t FrameCheck(uint32_t self, uint32_t mode, bool ahead, double frame, doub
             return reached >= frame;
         if (frame == end)
             return (from < frame && reached >= frame) || (reached >= frame && reached <= end);
+        if (GameStep::Variable() && frame < end)
+            return reached >= frame && (reached <= end || from < end);
         return reached >= frame && reached <= end;
     case 4:
+        if (GameStep::Variable() && frame < end)
+            return reached > frame && (reached <= end || from < end);
         return reached > frame && reached <= end;
     case 5:
         return reached >= frame && reached < end;

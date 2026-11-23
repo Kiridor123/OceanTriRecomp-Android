@@ -2167,7 +2167,7 @@ const BulkTranslatedFunctionRecord kRecords[] = {
     {0x802DCA78u, "func_802DCA78", &func_802DCA78, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, false},
     {0x802DE99Cu, "func_802DE99C", &func_802DE99C, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, false},
     {0x802DEB4Cu, "func_802DEB4C", &func_802DEB4C, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, false},
-    {0x802DEC7Cu, "func_802DEC7C", &func_802DEC7C, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, false},
+    {0x802DEC7Cu, "func_802DEC7C", &func_802DEC7C, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, true},
     {0x802E0910u, "func_802E0910", &func_802E0910, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, false},
     {0x802E0A00u, "func_802E0A00", &func_802E0A00, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, false},
     {0x802E0E20u, "func_802E0E20", &func_802E0E20, FunctionKind::BaseTranslated, true, 0x00000000u, 0u, 0ull, false},

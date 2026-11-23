@@ -69,7 +69,7 @@ extern "C" void MH3_MonsterHealthAdd(CpuContext* ctx) {
     int32_t max = int32_t(ctx->gpr[5]);
     const int32_t health = int32_t(Memory::Read32(monster + kHealth));
 
-    if (change < 0 && monster != 0) {
+    if (change < 0 && monster != 0 && Memory::Read8(monster + 0x46A) == 0) {
         TouchControls_OnMonsterDamage(monster, -change);
     }
 
@@ -102,6 +102,27 @@ extern "C" void MH3_MonsterHealthAdd(CpuContext* ctx) {
 }
 
 REGISTER_NATIVE_FUNCTION_AS(0x8011E6BC, MH3_MonsterHealthAdd, "MonsterHealthAdd");
+
+// 0x8011EF88 (monster, part, s16 raw_damage, u8 hit_flags, f1 scale):
+// per-hit monster damage handler called by weapon/projectile collision
+// (0x8029B97C) on BOTH the area host and non-host clients in online
+// multiplayer. In online play, when a non-host player hits a monster whose
+// authority belongs to another player (monster + 0x46A != 0), the local
+// monster's 0x8011F6B8 -> 0x8011E748 -> 0x8011E6BC health drain is skipped
+// (0x80138784) because the area host owns health ticks, so we emit the
+// floating damage popup here whenever monster + 0x46A != 0.
+extern "C" void func_8011EF88(CpuContext* ctx);
+
+extern "C" void MH3_MonsterPartHitDamage(CpuContext* ctx) {
+    const uint32_t monster = ctx->gpr[3];
+    func_8011EF88(ctx);
+    const int32_t dealt = int32_t(int16_t(ctx->gpr[3]));
+    if (dealt > 0 && monster != 0 && Memory::Read8(monster + 0x46A) != 0) {
+        TouchControls_OnMonsterDamage(monster, dealt);
+    }
+}
+
+REGISTER_NATIVE_FUNCTION_AS(0x8011EF88, MH3_MonsterPartHitDamage, "MonsterPartHitDamage");
 
 // 0x80132004 (monster, s32 health): the maximum health, health times the
 // quest's factor (0x801260A8), and again for multiplayer (0x803B4F2C,

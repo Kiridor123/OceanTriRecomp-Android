@@ -40,6 +40,7 @@ namespace aurora::gfx {
 uint32_t current_frame() noexcept;
 }
 
+extern "C" void TouchControls_SetPresentRect(int x, int y, int width, int height, int drawableWidth, int drawableHeight);
 extern "C" void TouchControls_RenderGL(int windowWidth, int windowHeight);
 
 #ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
@@ -1496,6 +1497,7 @@ void present(const TexturePtr& source, int32_t x, int32_t y, int32_t width, int3
 
   int winW = 0, winH = 0;
   SDL_GetWindowSizeInPixels(g_context->window, &winW, &winH);
+  TouchControls_SetPresentRect(x, y, width, height, static_cast<int>(drawableWidth), static_cast<int>(drawableHeight));
   TouchControls_RenderGL(winW, winH);
   invalidate_state();
 

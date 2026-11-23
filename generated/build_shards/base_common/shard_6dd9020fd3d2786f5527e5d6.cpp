@@ -1,6 +1,6 @@
 // Translator-owned content-addressed aggregate shard; do not edit.
 #include "abi_bridge.h"
-#include "shard_b98ba95eb430000c1451e045_traits.h"
+#include "shard_6dd9020fd3d2786f5527e5d6_traits.h"
 #define MKW_STATIC_TRANSLATED_CALL(Target, Entry, Context) do { ApplyRuntimeCallOptions(Target, Context); Entry(Context); } while (false)
 #line 1 "func_80113990.cpp"
 #include <cstdint>
@@ -14742,7 +14742,7 @@ loc_801165BC:
         ctx->fpr[6] = f6;
         ctx->fpr[7] = f7;
         ctx->fpr[8] = f8;
-        MKW_STATIC_TRANSLATED_CALL(0x80116680u, func_80116680, ctx);
+        InvokeDirectCpu<0x80116680u>(ctx);
         r0 = ctx->gpr[0];
         r3 = ctx->gpr[3];
         r4 = ctx->gpr[4];
@@ -15089,7 +15089,7 @@ loc_80116620:
         ctx->fpr[6] = f6;
         ctx->fpr[7] = f7;
         ctx->fpr[8] = f8;
-        MKW_STATIC_TRANSLATED_CALL(0x80116680u, func_80116680, ctx);
+        InvokeDirectCpu<0x80116680u>(ctx);
         r0 = ctx->gpr[0];
         r1 = ctx->gpr[1];
         r3 = ctx->gpr[3];
@@ -15527,7 +15527,7 @@ loc_80116768:
         ctx->gpr[1] = r1;
         ctx->gpr[3] = r3;
         ctx->fpr[1] = f1;
-        MKW_STATIC_TRANSLATED_CALL(0x80059484u, func_80059484, ctx);
+        InvokeDirectCpu<0x80059484u>(ctx);
         r0 = ctx->gpr[0];
         r3 = ctx->gpr[3];
         f1 = ctx->fpr[1];
@@ -15575,7 +15575,7 @@ loc_801167A4:
         ctx->gpr[1] = r1;
         ctx->gpr[3] = r3;
         ctx->fpr[1] = f1;
-        MKW_STATIC_TRANSLATED_CALL(0x80059484u, func_80059484, ctx);
+        InvokeDirectCpu<0x80059484u>(ctx);
         r0 = ctx->gpr[0];
         r3 = ctx->gpr[3];
         f1 = ctx->fpr[1];

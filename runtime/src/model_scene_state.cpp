@@ -130,9 +130,10 @@ extern "C" void MH3_CameraProject(CpuContext* cpu) {
     auto camera = Camera(resource);
     const uint32_t flags = camera.flags;
     const mh3_vec3 point{{Memory::ReadFloat32(cpu->gpr[5]), Memory::ReadFloat32(cpu->gpr[5] + 4), Memory::ReadFloat32(cpu->gpr[5] + 8)}};
-    mh3_vec3 result{};
-    Checked(mh3_camera_project(&camera, &point, &result));
-    StorePreparedCamera(resource, camera, flags);
+    mh3_vec3 result{{-10000.0f, -10000.0f, 1.0f}};
+    if (mh3_camera_project(&camera, &point, &result) == MH3_RES_OK) {
+        StorePreparedCamera(resource, camera, flags);
+    }
     StoreFloats(cpu->gpr[4], result.v, 3);
 }
 REGISTER_NATIVE_FUNCTION_AS(0x800752BC, MH3_CameraProject, "CameraProject");

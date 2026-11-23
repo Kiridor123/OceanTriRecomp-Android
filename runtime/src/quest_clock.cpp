@@ -19,7 +19,10 @@
 #include "guest_call.h"
 #include "port_check.h"
 
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 
 namespace {
 
@@ -44,8 +47,10 @@ double ReadF64(uint32_t a) {
     return Memory::ReadFloat64(a);
 }
 
-// 0x803A9014(running): counts the time limit down; `running` 0 holds it.
-void QuestClockTick(CpuContext* ctx) {
+// 0x803A9014(running) and 0x803B83CC(running): count the time limit down;
+// `running` 0 holds it. 0x803A9014 (online/arena quest step 0x803B0228) skips
+// 99-minute no-limit quests; 0x803B83CC (offline field 0x803B8718) does not.
+void TickQuestClock(CpuContext* ctx, bool checkNoLimit, const char* tag) {
     const int32_t running = int32_t(ctx->gpr[3]);
     GuestFrame frame(ctx, 0x20);
     GuestCall game{ctx};
@@ -53,11 +58,14 @@ void QuestClockTick(CpuContext* ctx) {
 
     if (!work)
         return;
-    // 99 minutes or more: no time limit.
-    const float left = float(int32_t(Memory::Read32(work + kTimeLeft)));
 
-    if (left >= kNoLimitMinutes * (60.0f * Memory::ReadFloat32(kFrameRate)))
-        return;
+    if (checkNoLimit) {
+        // 99 minutes or more: no time limit.
+        const float left = float(int32_t(Memory::Read32(work + kTimeLeft)));
+
+        if (left >= kNoLimitMinutes * (60.0f * Memory::ReadFloat32(kFrameRate)))
+            return;
+    }
 
     if (Cheats::On(Cheats::Id::InfiniteTime)) {
         if (Cheats::QuestEndPressed()) {
@@ -103,6 +111,50 @@ void QuestClockTick(CpuContext* ctx) {
 
         Memory::Write32(work + kTimeLeft, uint32_t(frames));
     }
+
+    static const bool traceClock = [] {
+        const char* v = std::getenv("MH3_TRACE_CLOCK");
+        return v && v[0] != '\0' && v[0] != '0';
+    }();
+    if (traceClock) {
+        using Clock = std::chrono::steady_clock;
+        static bool hasBase = false;
+        static Clock::time_point baseWall{};
+        static Clock::time_point lastLog{};
+        static double baseQuestFrames = 0.0;
+        static uint64_t calls = 0;
+        const auto wallNow = Clock::now();
+        const double exact = ReadF64(work + kTimeLeftExact);
+        ++calls;
+        if (!hasBase) {
+            hasBase = true;
+            baseWall = wallNow;
+            lastLog = wallNow;
+            baseQuestFrames = exact;
+            std::fprintf(stderr, "[QuestClock:%s] start running=%d timeLeft=%d exact=%.2f scale=%.4f fps_est=%.1f\n",
+                         tag, running, int32_t(Memory::Read32(work + kTimeLeft)), exact,
+                         GameStep::Scale(), GameStep::Scale() > 0.0 ? 30.0 / GameStep::Scale() : 0.0);
+            std::fflush(stderr);
+        } else if (std::chrono::duration<double>(wallNow - lastLog).count() >= 10.0) {
+            const double wallSec = std::chrono::duration<double>(wallNow - baseWall).count();
+            const double questElapsedSec = (baseQuestFrames - exact) / 30.0;
+            const double ratio = wallSec > 0.0 ? questElapsedSec / wallSec : 0.0;
+            const double avgFps = wallSec > 0.0 ? double(calls) / wallSec : 0.0;
+            std::fprintf(stderr,
+                         "[QuestClock:%s] wall=%.2fs questElapsed=%.2fs ratio=%.4fx left=%.2fs avgFps=%.1f scale=%.4f\n",
+                         tag, wallSec, questElapsedSec, ratio, exact / 30.0, avgFps, GameStep::Scale());
+            std::fflush(stderr);
+            lastLog = wallNow;
+        }
+    }
+}
+
+void QuestClockTick(CpuContext* ctx) {
+    TickQuestClock(ctx, true, "803A9014");
+}
+
+void QuestClockTickOffline(CpuContext* ctx) {
+    TickQuestClock(ctx, false, "803B83CC");
 }
 
 } // namespace
@@ -113,3 +165,10 @@ extern "C" void MH3_QuestClockTick(CpuContext* ctx) {
     PortCheck::Call(ctx, "QuestClockTick", func_803A9014, QuestClockTick);
 }
 REGISTER_NATIVE_FUNCTION_AS(0x803A9014, MH3_QuestClockTick, "QuestClockTick");
+
+extern "C" void func_803B83CC(CpuContext* ctx);
+
+extern "C" void MH3_QuestClockTickOffline(CpuContext* ctx) {
+    PortCheck::Call(ctx, "QuestClockTickOffline", func_803B83CC, QuestClockTickOffline);
+}
+REGISTER_NATIVE_FUNCTION_AS(0x803B83CC, MH3_QuestClockTickOffline, "QuestClockTickOffline");

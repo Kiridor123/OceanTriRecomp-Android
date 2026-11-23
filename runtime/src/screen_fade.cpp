@@ -19,6 +19,8 @@
 #include "memory.h"
 #include "port_check.h"
 
+#include <algorithm>
+
 namespace {
 
 constexpr uint32_t kResetting = 0x8065AA65; // u8: soft reset in progress (reset_fade.cpp)
@@ -80,3 +82,107 @@ extern "C" void MH3_TickFades(CpuContext* ctx) {
     PortCheck::Call(ctx, "TickFades", func_800581A4, TickFadesPort);
 }
 REGISTER_NATIVE_FUNCTION_AS(0x800581A4, MH3_TickFades, "TickFades");
+
+// 0x80059484: decays the scene whiteout/flash intensity (0x8066D178 + 324)
+// each step by a mode-dependent constant from sdata2. Scaling the decrement
+// by GameStep::Scale() keeps flash bomb whiteouts at 1.0x real-time speed.
+static void SceneFlashDecayPort(CpuContext* ctx) {
+    constexpr uint32_t kSceneEffects = 0x8066D178u;
+    const uint32_t r2 = ctx->gpr[2];
+    const uint8_t mode = Memory::Read8(kSceneEffects + 316);
+    const float intensity = Memory::ReadFloat32(kSceneEffects + 324);
+    const float zero = Memory::ReadFloat32(r2 - 32300u);
+
+    if (intensity > zero) {
+        int32_t stepOffset = -32296;
+        if (mode == 1)
+            stepOffset = -32272;
+        else if (mode == 2)
+            stepOffset = -32268;
+        else if (mode == 3)
+            stepOffset = -32264;
+
+        const float step = Memory::ReadFloat32(uint32_t(int32_t(r2) + stepOffset));
+        Memory::WriteFloat32(kSceneEffects + 324, intensity - step * float(GameStep::Scale()));
+    }
+
+    ctx->gpr[3] = kSceneEffects;
+}
+
+extern "C" void func_80059484(CpuContext* ctx);
+extern "C" void MH3_SceneFlashDecay(CpuContext* ctx) {
+    PortCheck::Call(ctx, "SceneFlashDecay", func_80059484, SceneFlashDecayPort);
+}
+REGISTER_NATIVE_FUNCTION_AS(0x80059484, MH3_SceneFlashDecay, "SceneFlashDecay");
+
+// 0x80116680: flash bomb screen-flash effect object. In sub-state 3 (+7 == 3)
+// it decrements its life (+12) by 1 per step while calling 0x80059484.
+extern "C" void func_80116680(CpuContext* ctx);
+extern "C" void MH3_FlashBombEffectStep(CpuContext* ctx) {
+    const uint32_t ticks = GameStep::Ticks();
+    if (ticks != 1) {
+        const uint32_t self = ctx->gpr[3];
+        if (Memory::Read8(self + 7) == 3) {
+            const int32_t life = int32_t(Memory::Read32(self + 12));
+            if (life > 0) {
+                if (ticks == 0)
+                    Memory::Write32(self + 12, uint32_t(life + 1));
+                else
+                    Memory::Write32(self + 12, uint32_t(std::max<int32_t>(1, life - int32_t(ticks) + 1)));
+            }
+        }
+    }
+    func_80116680(ctx);
+}
+REGISTER_NATIVE_FUNCTION_AS(0x80116680, MH3_FlashBombEffectStep, "FlashBombEffectStep");
+
+// 0x802DEC7C: supply/item box menu step. Scales its per-step wait (+0),
+// open/close slide (+302) and item-pickup hold (+7) to 30 Hz logical ticks.
+extern "C" void func_802DEC7C(CpuContext* ctx);
+extern "C" void MH3_SupplyBoxMenuStep(CpuContext* ctx) {
+    const uint32_t ticks = GameStep::Ticks();
+    if (ticks == 1) {
+        func_802DEC7C(ctx);
+        return;
+    }
+
+    const uint32_t self = (0x806C0000u - 296u) + (ctx->gpr[3] & 0xFFu) * 304u;
+    const uint8_t state = Memory::Read8(self + 4);
+    if (state == 0) {
+        const int16_t wait = int16_t(Memory::Read16(self));
+        if (wait > 0) {
+            if (ticks == 0) {
+                ctx->gpr[3] = 0;
+                return;
+            }
+            Memory::Write16(self, uint16_t(std::max<int32_t>(1, int32_t(wait) - int32_t(ticks) + 1)));
+        }
+        func_802DEC7C(ctx);
+        return;
+    }
+
+    const uint8_t slideBefore = Memory::Read8(self + 302);
+    const bool closing = (state == 4);
+    if (state == 2) {
+        const uint8_t hold = Memory::Read8(self + 7);
+        if (hold > 0) {
+            if (ticks == 0)
+                Memory::Write8(self + 7, uint8_t(hold + 1));
+            else
+                Memory::Write8(self + 7, uint8_t(std::max<int32_t>(1, int32_t(hold) - int32_t(ticks) + 1)));
+        }
+    }
+
+    func_802DEC7C(ctx);
+
+    if (closing) {
+        if (slideBefore > 0) {
+            const int32_t next = std::max<int32_t>(0, int32_t(slideBefore) - int32_t(ticks));
+            Memory::Write8(self + 302, uint8_t(next));
+        }
+    } else if (slideBefore < 3) {
+        const int32_t next = std::min<int32_t>(3, int32_t(slideBefore) + int32_t(ticks));
+        Memory::Write8(self + 302, uint8_t(next));
+    }
+}
+REGISTER_NATIVE_FUNCTION_AS(0x802DEC7C, MH3_SupplyBoxMenuStep, "SupplyBoxMenuStep");

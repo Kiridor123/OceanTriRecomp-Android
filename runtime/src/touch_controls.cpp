@@ -191,6 +191,7 @@ public:
         LoadSettings();
         LoadLayoutConfig();
         LoadSkinConfig();
+        LoadAchievements();
         NoteTouchActivity();
     }
 
@@ -958,14 +959,72 @@ public:
         m_damagePopups.push_back(pop);
     }
 
+    void SetPresentRect(int x, int y, int width, int height, int drawableWidth, int drawableHeight) {
+        m_presentX = x;
+        m_presentY = y;
+        m_presentW = width;
+        m_presentH = height;
+        m_presentDrawableW = drawableWidth;
+        m_presentDrawableH = drawableHeight;
+    }
+
     bool ProjectWorldToScreen(float wx, float wy, float wz, float& outX, float& outY, float& outDist,
-                              float vpX, float vpY, float vpW, float vpH, int winH) {
+                              float vpX, float vpY, float vpW, float vpH) {
         if (!Memory::Contains(0x80688D94, 0x1A00)) {
             return false;
         }
 
+        auto isPerspectiveSlot = [](uint16_t slot) -> bool {
+            if (slot >= 32) return false;
+            const uint32_t pAddr = 0x80688D94 + 0x634 + slot * 64;
+            const float p0  = Memory::ReadFloat32(pAddr + 0);
+            const float p5  = Memory::ReadFloat32(pAddr + 20);
+            const float p14 = Memory::ReadFloat32(pAddr + 56);
+            const float p15 = Memory::ReadFloat32(pAddr + 60);
+            return std::isfinite(p0) && std::isfinite(p5) && p0 > 0.0f && p5 > 0.0f &&
+                   std::isfinite(p14) && std::fabs(p14 + 1.0f) < 0.05f &&
+                   std::isfinite(p15) && std::fabs(p15) < 0.05f;
+        };
+
         uint16_t cur = Memory::Read16(0x80688D94 + 2);
-        if (cur >= 32) cur = 0;
+        if (cur >= 32 || !isPerspectiveSlot(cur)) {
+            bool found = false;
+            // Check split-screen / local player camera table first (0x8065B50C + MyPlayerIndex)
+            if (Memory::Contains(0x8065AA87, 1) && Memory::Contains(0x8065B50C, 4)) {
+                const int8_t myIdx = static_cast<int8_t>(Memory::Read8(0x8065AA87));
+                if (myIdx >= 0 && myIdx < 4) {
+                    const uint16_t playerCam = Memory::Read8(0x8065B50C + uint32_t(myIdx));
+                    if (isPerspectiveSlot(playerCam)) {
+                        cur = playerCam;
+                        found = true;
+                    }
+                }
+            }
+            // Next check ScnRoot's current camera index (+0xF4)
+            if (!found && Memory::Contains(0x80796E34, 4)) {
+                const uint32_t scene = Memory::Read32(0x80796E34);
+                if (scene != 0 && Memory::Contains(scene, 0x100)) {
+                    const uint16_t rootCam = Memory::Read8(scene + 0xF4);
+                    if (isPerspectiveSlot(rootCam)) {
+                        cur = rootCam;
+                        found = true;
+                    }
+                }
+            }
+            // Fallback: scan all 32 G3D camera slots for the active 3D perspective camera
+            if (!found) {
+                for (uint16_t s = 0; s < 32; ++s) {
+                    if (isPerspectiveSlot(s)) {
+                        cur = s;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found) {
+                return false;
+            }
+        }
 
         uint32_t viewAddr = 0x80688D94 + 0x34 + cur * 48;
         uint32_t projAddr = 0x80688D94 + 0x634 + cur * 64;
@@ -1014,13 +1073,12 @@ public:
         }
 
         outX = vpX + (0.5f + 0.5f * ndcX) * vpW;
-        float topOffset = float(winH) - (vpY + vpH);
-        outY = topOffset + (0.5f - 0.5f * ndcY) * vpH;
+        outY = vpY + (0.5f - 0.5f * ndcY) * vpH;
         outDist = w;
         return true;
     }
 
-    void RenderDamageNumbers(const int lastViewport[4]) {
+    void RenderDamageNumbers() {
         if (!m_damageNumbersEnabled) return;
 
         static auto s_lastTime = std::chrono::steady_clock::now();
@@ -1047,17 +1105,19 @@ public:
         if (active.empty()) return;
 
         float vpX = 0.0f, vpY = 0.0f, vpW = float(m_width), vpH = float(m_height);
-        if (lastViewport[2] > 0 && lastViewport[3] > 0) {
-            vpX = float(lastViewport[0]);
-            vpY = float(lastViewport[1]);
-            vpW = float(lastViewport[2]);
-            vpH = float(lastViewport[3]);
+        if (m_presentW > 0 && m_presentH > 0) {
+            const float scaleX = (m_presentDrawableW > 0) ? (float(m_width) / float(m_presentDrawableW)) : 1.0f;
+            const float scaleY = (m_presentDrawableH > 0) ? (float(m_height) / float(m_presentDrawableH)) : 1.0f;
+            vpX = float(m_presentX) * scaleX;
+            vpY = float(m_presentY) * scaleY;
+            vpW = float(m_presentW) * scaleX;
+            vpH = float(m_presentH) * scaleY;
         }
 
         const float S = UiScale();
         for (const auto& p : active) {
             float screenX = 0.0f, screenY = 0.0f, dist = 0.0f;
-            if (!ProjectWorldToScreen(p.worldX, p.worldY, p.worldZ, screenX, screenY, dist, vpX, vpY, vpW, vpH, m_height)) {
+            if (!ProjectWorldToScreen(p.worldX, p.worldY, p.worldZ, screenX, screenY, dist, vpX, vpY, vpW, vpH)) {
                 continue;
             }
 
@@ -1108,8 +1168,15 @@ public:
         InitGL();
         if (!m_shaderProgram) return;
 
-        // Compute Live FPS
+        // Compute Live FPS & frame delta for Achievement Toasts
         const auto now = std::chrono::steady_clock::now();
+        static auto lastFrameTime = now;
+        float frameDt = std::chrono::duration<float>(now - lastFrameTime).count();
+        lastFrameTime = now;
+        if (frameDt < 0.0f || frameDt > 0.25f) frameDt = 1.0f / 60.0f;
+
+        UpdateAchievements(frameDt);
+
         static uint64_t lastCount = MH3FrameRateControl::LogicalFrameCount();
         static auto lastStamp = now;
         const double elapsed = std::chrono::duration<double>(now - lastStamp).count();
@@ -1181,7 +1248,7 @@ public:
         } else if (AndroidKeyboard_IsImeShowing()) {
             RenderFpsHud();
         } else {
-            RenderDamageNumbers(lastViewport);
+            RenderDamageNumbers();
 
             if (m_touchVisible) {
                 RenderGameplayOverlay();
@@ -1204,6 +1271,7 @@ public:
         }
 
         RenderTitleLanguageOption();
+        RenderAchievementToast();
 
         FlushVerts();
 
@@ -1905,8 +1973,8 @@ private:
         DrawRoundedRect(padX, padY, panW, panH, 18.0f * S, COL_BG_DARK, COL_PANEL_BORDER);
 
         // Header Title & Subtitle
-        const char* titles_es[] = { "Gráficos", "Sistema", "Guardados", "Controles", "Online" };
-        const char* titles_en[] = { "Graphics", "System", "Saves", "Controls", "Online" };
+        const char* titles_es[] = { "Gráficos", "Sistema", "Guardados", "Controles", "Online", "Logros" };
+        const char* titles_en[] = { "Graphics", "System", "Saves", "Controls", "Online", "Trophies" };
         const char* const* titles = (m_menuLang == 1) ? titles_en : titles_es;
 
         const char* subtitles_es[] = {
@@ -1914,14 +1982,16 @@ private:
             "Idioma del menú, idioma del juego y reinicio rápido",
             "Gestor de partidas guardadas (Dolphin / Wii NAND)",
             "Controles táctiles, diseño de botones (.PNG), mando y macros",
-            "Multijugador online en servidores comunitarios MH3SP"
+            "Multijugador online en servidores comunitarios MH3SP",
+            "Sistema de logros de caza, historia, rango del gremio y colección"
         };
         const char* subtitles_en[] = {
             "Display, resolution, framerate and lighting",
             "Menu language, game language and quick restart",
             "Save file manager (Dolphin / Wii NAND)",
             "Touch controls, custom button skins (.PNG), gamepad and macros",
-            "Online multiplayer on MH3SP community servers"
+            "Online multiplayer on MH3SP community servers",
+            "Hunting, story, guild rank and mastery achievement system"
         };
         const char* const* subtitles = (m_menuLang == 1) ? subtitles_en : subtitles_es;
 
@@ -1952,10 +2022,10 @@ private:
 
         // Tab Navigation Bar
         float tabY = divY + 10.0f * S;
-        float tabGap = 10.0f * S;
-        float tabW = (panW - 44.0f * S - tabGap * 4.0f) / 5.0f;
+        float tabGap = 8.0f * S;
+        float tabW = (panW - 44.0f * S - tabGap * 5.0f) / 6.0f;
         float tabH = 50.0f * S;
-        for (int i = 0; i < 5; ++i) {
+        for (int i = 0; i < 6; ++i) {
             float tx = padX + 22.0f * S + float(i) * (tabW + tabGap);
             bool active = (m_menuTab == i);
             DrawInteractiveButton(tx, tabY, tabW, tabH, S, titles[i], active, [this, i]() {
@@ -1965,9 +2035,11 @@ private:
                     if (m_menuTab == 4) {
                         LanBeacon::StartScanner();
                         LanBeacon::TriggerScan();
+                    } else if (m_menuTab == 5) {
+                        PollSaveAchievements(true);
                     }
                 }
-            }, 17.5f * S);
+            }, 16.5f * S);
         }
 
         // Scrollable Tab Content Area
@@ -1993,6 +2065,7 @@ private:
         else if (m_menuTab == 2) totalContentH = RenderTabSaves(contentX, startY, contentW, S);
         else if (m_menuTab == 3) totalContentH = RenderTabControls(contentX, startY, contentW, S);
         else if (m_menuTab == 4) totalContentH = RenderTabOnline(contentX, startY, contentW, S);
+        else if (m_menuTab == 5) totalContentH = RenderTabAchievements(contentX, startY, contentW, S);
 
         ClearScissorClip();
 
@@ -2563,6 +2636,718 @@ private:
         DrawText(x + 24.0f * S, curY + 17.0f * S, Tr("Estado:", "Status:"), 15.5f * S, COL_CYAN);
         DrawText(x + 95.0f * S, curY + 17.0f * S, m_onlineStatusMsg.c_str(), 15.5f * S, COL_WHITE);
         curY += bannerH;
+
+        return curY - y;
+    }
+
+    // -------------------------------------------------------------
+    // Sistema de Logros (RetroAchievements: 57 Aldea + 141 Loc Lac = 198)
+    // -------------------------------------------------------------
+    static constexpr int kAchievementCount = 198;
+    static constexpr int kVillageAchievementCount = 57;
+    static constexpr int kLocLacAchievementCount = 141;
+
+    enum AchCondType : int {
+        ACH_QUEST = 0,
+        ACH_QUEST_STAR_GROUP = 1,
+        ACH_AWARD = 2,
+        ACH_HUNT_COUNT = 3,
+        ACH_CROWN_SILVER = 4,
+        ACH_CROWN_BOTH = 5,
+        ACH_HR = 6,
+        ACH_MONSTER_LIST_TOME = 7,
+        ACH_ARENA_QUEST = 8,
+        ACH_VILLAGE_MILESTONE = 9,
+    };
+
+    struct AchievementDef {
+        int id;
+        int category; // 0: Aldea de Moga (57), 1: Ciudad Loc Lac (141)
+        int tier;     // 0: Bronce, 1: Plata, 2: Oro, 3: Platino
+        int points;
+        AchCondType cond;
+        int param1;
+        int target;
+        const char* title_es;
+        const char* title_en;
+        const char* desc_es;
+        const char* desc_en;
+    };
+
+    struct AchievementToastItem {
+        std::string header_es;
+        std::string header_en;
+        std::string title_es;
+        std::string title_en;
+        std::string desc_es;
+        std::string desc_en;
+        int tier = 2;
+        int points = 25;
+        float timer = 0.0f;
+        float duration = 4.6f;
+    };
+
+    static const AchievementDef* GetAchievementDefs() {
+        static const AchievementDef kDefs[kAchievementCount] = {
+#include "achievements_table.inc"
+        };
+        return kDefs;
+    }
+
+    void LoadAchievements() {
+        const char* user = std::getenv("MH3_USER_DIR");
+        std::string dir = (user && *user) ? user : "/storage/emulated/0/MH3";
+        std::string path = dir + "/MH3UI.achievements";
+
+        std::fill(std::begin(m_achievementUnlocked), std::end(m_achievementUnlocked), false);
+        std::fill(std::begin(m_achievementProgress), std::end(m_achievementProgress), 0);
+
+        std::ifstream in(path);
+        if (!in) return;
+
+        std::string tag;
+        int version = 0;
+        if (in >> tag >> version && tag == "VERSION" && version == 2) {
+            while (in >> tag) {
+                if (tag == "ACH") {
+                    int id = -1, unlocked = 0, prog = 0;
+                    if (in >> id >> unlocked >> prog) {
+                        if (id >= 0 && id < kAchievementCount) {
+                            m_achievementUnlocked[id] = (unlocked != 0);
+                            m_achievementProgress[id] = prog;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void SaveAchievements() const {
+        const char* user = std::getenv("MH3_USER_DIR");
+        std::string dir = (user && *user) ? user : "/storage/emulated/0/MH3";
+        std::string path = dir + "/MH3UI.achievements";
+
+        std::ofstream out(path, std::ios::trunc);
+        if (!out) return;
+
+        out << "VERSION 2\n";
+        for (int i = 0; i < kAchievementCount; ++i) {
+            out << "ACH " << i << ' ' << (m_achievementUnlocked[i] ? 1 : 0) << ' ' << m_achievementProgress[i] << '\n';
+        }
+    }
+
+    void QueueAchievementToast(const AchievementDef& def) {
+        AchievementToastItem item;
+        char hdrEs[96], hdrEn[96];
+        const char* tierEs = (def.tier == 3) ? "PLATINO" : (def.tier == 2) ? "ORO" : (def.tier == 1) ? "PLATA" : "BRONCE";
+        const char* tierEn = (def.tier == 3) ? "PLATINUM" : (def.tier == 2) ? "GOLD" : (def.tier == 1) ? "SILVER" : "BRONZE";
+        const char* areaEs = (def.category == 1) ? "LOC LAC" : "ALDEA";
+        const char* areaEn = (def.category == 1) ? "LOC LAC" : "VILLAGE";
+        std::snprintf(hdrEs, sizeof(hdrEs), "¡LOGRO DESBLOQUEADO! [%s]  •  %s (+%d PTS)", areaEs, tierEs, def.points);
+        std::snprintf(hdrEn, sizeof(hdrEn), "ACHIEVEMENT UNLOCKED! [%s]  •  %s (+%d PTS)", areaEn, tierEn, def.points);
+        item.header_es = hdrEs;
+        item.header_en = hdrEn;
+        item.title_es = def.title_es;
+        item.title_en = def.title_en;
+        item.desc_es = def.desc_es;
+        item.desc_en = def.desc_en;
+        item.tier = def.tier;
+        item.points = def.points;
+        item.timer = 0.0f;
+        item.duration = 4.6f;
+        m_toastQueue.push_back(std::move(item));
+    }
+
+    static bool IsQuestClearedInSave(uint32_t user, uint16_t questId) {
+        if (!Memory::Contains(0x80581940u, 322u)) return false;
+        for (uint32_t idx = 0; idx < 160u; ++idx) {
+            const uint16_t id = Memory::Read16(0x80581940u + idx * 2u);
+            if (id == 0xFFFFu) return false;
+            if (id == questId) {
+                const uint32_t word = Memory::Read32(user + 0x512Cu + (idx >> 5) * 4u);
+                return (word & (1u << (idx & 31u))) != 0u;
+            }
+        }
+        return false;
+    }
+
+    static int CountQuestStarGroupCleared(uint32_t user, int group) {
+        static constexpr uint16_t kV1[] = { 1000, 1001, 1002, 1003, 1004, 1005 };
+        static constexpr uint16_t kV2[] = { 1010, 1011, 1012, 1013, 1014, 2000 };
+        static constexpr uint16_t kV3[] = { 1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 2001 };
+        static constexpr uint16_t kV4[] = { 1030, 1031, 1032, 1033, 1034, 1035, 1036, 1037, 1038, 1039, 2002 };
+        static constexpr uint16_t kV5[] = { 1040, 1041, 1042, 1043, 1044, 1045, 1046, 1047, 1048, 1049, 1050, 2003, 2004, 2005 };
+        static constexpr uint16_t kC1[] = { 10000, 10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012, 10013 };
+        static constexpr uint16_t kC2[] = { 10050, 10051, 10052, 10053, 10054, 10055, 10056, 10057, 10058, 10059, 10060, 10061, 10062, 10063, 10064, 14000 };
+        static constexpr uint16_t kC3[] = { 10100, 10101, 10102, 10103, 10104, 10105, 10106, 10107, 10108, 10109, 10110, 10111, 10112, 10113, 10114, 10115, 10116, 14001, 14002 };
+        static constexpr uint16_t kC4[] = { 15000, 15001, 15002, 15003, 15004, 15005, 15006, 15007, 15008, 15009, 15010, 15011, 15012, 15013, 15014, 15015, 15016, 15017, 15018 };
+        static constexpr uint16_t kC5[] = { 15050, 15051, 15052, 15053, 15054, 15055, 15056, 15057, 15058, 15059, 15060, 15061, 15062, 15063, 15064, 15065, 15066, 15067, 19000 };
+        static constexpr uint16_t kC6[] = { 15100, 15101, 15102, 15103, 15105, 15106, 15107, 15108, 19001 };
+
+        const uint16_t* list = nullptr;
+        size_t len = 0;
+        switch (group) {
+        case 0: list = kV1; len = sizeof(kV1) / sizeof(kV1[0]); break;
+        case 1: list = kV2; len = sizeof(kV2) / sizeof(kV2[0]); break;
+        case 2: list = kV3; len = sizeof(kV3) / sizeof(kV3[0]); break;
+        case 3: list = kV4; len = sizeof(kV4) / sizeof(kV4[0]); break;
+        case 4: list = kV5; len = sizeof(kV5) / sizeof(kV5[0]); break;
+        case 5: list = kC1; len = sizeof(kC1) / sizeof(kC1[0]); break;
+        case 6: list = kC2; len = sizeof(kC2) / sizeof(kC2[0]); break;
+        case 7: list = kC3; len = sizeof(kC3) / sizeof(kC3[0]); break;
+        case 8: list = kC4; len = sizeof(kC4) / sizeof(kC4[0]); break;
+        case 9: list = kC5; len = sizeof(kC5) / sizeof(kC5[0]); break;
+        case 10: list = kC6; len = sizeof(kC6) / sizeof(kC6[0]); break;
+        default: return 0;
+        }
+        int count = 0;
+        for (size_t i = 0; i < len; ++i) {
+            if (IsQuestClearedInSave(user, list[i])) ++count;
+        }
+        return count;
+    }
+
+    void PollSaveAchievements(bool silentIfBulk = false) {
+        const uint32_t user = Cheats::UserData();
+        if (user < 0x80000000u || !Memory::Contains(user, 0x5500)) {
+            return;
+        }
+
+        // Verify valid printable character name at user + 3
+        char nameBuf[20]{};
+        for (int i = 0; i < 16; ++i) {
+            uint8_t c = Memory::Read8(user + 3 + i);
+            if (c == 0) break;
+            if (c < 32 || c > 126) return;
+            nameBuf[i] = char(c);
+        }
+        if (nameBuf[0] == '\0') return;
+
+        const uint32_t zenny = Memory::Read32(user + 0x18);
+        const uint16_t hr = Memory::Read16(user + 0x3DE4);
+        if (zenny > 99999999u || hr > 999u) return;
+        if (zenny == 0 && hr == 0 && Cheats::LocalPlayer() == 0) return;
+
+        const bool isNewCharLoad = (m_activeHunterName != nameBuf);
+        m_activeHunterName = nameBuf;
+
+        const uint16_t villageAwards = Memory::Read16(user + 0x40F8);
+        const uint16_t cityAwards    = Memory::Read16(user + 0x40FA);
+        const uint16_t arenaMask     = Memory::Read16(user + 0x52E2) & 0x03FFu;
+
+        auto getMonsterHunted = [&](uint8_t m) -> int {
+            uint16_t s1 = Memory::Read16(user + 0x39C0 + uint32_t(m) * 2u);
+            uint16_t s2 = Memory::Read16(user + 0x48DA + uint32_t(m) * 2u);
+            uint16_t s = std::max(s1, s2);
+            uint16_t c = Memory::Read16(user + 0x3AC0 + uint32_t(m) * 2u);
+            if (s > 9999u) s = 0;
+            if (c > 9999u) c = 0;
+            return int(s) + int(c);
+        };
+        auto getMonsterMinSize = [&](uint8_t m) -> int {
+            return int(Memory::Read16(user + 0x3BC0 + uint32_t(m) * 4u));
+        };
+        auto getMonsterMaxSize = [&](uint8_t m) -> int {
+            return int(Memory::Read16(user + 0x3BC0 + uint32_t(m) * 4u + 2u));
+        };
+
+        static constexpr uint8_t kVillageBigIds[15] = { 1, 2, 3, 4, 5, 6, 8, 9, 12, 14, 15, 16, 18, 19, 20 };
+        static constexpr uint8_t kLocLacBigIds[3]   = { 7, 24, 25 };
+        static constexpr uint8_t kSmallMonsterIds[12] = { 10, 11, 13, 17, 21, 22, 23, 26, 27, 28, 29, 30 };
+
+        int villageBigSeen = 0;
+        for (uint8_t m : kVillageBigIds) if (getMonsterHunted(m) > 0) ++villageBigSeen;
+        int locLacBigSeen = 0;
+        for (uint8_t m : kLocLacBigIds) if (getMonsterHunted(m) > 0) ++locLacBigSeen;
+        int smallSeen = 0;
+        for (uint8_t m : kSmallMonsterIds) if (getMonsterHunted(m) > 0) ++smallSeen;
+        if (cityAwards & (1u << 7)) { // Tome of Legend award implies all monsters registered
+            smallSeen = 12;
+            villageBigSeen = 15;
+            locLacBigSeen = 3;
+        }
+
+        const AchievementDef* defs = GetAchievementDefs();
+        std::vector<int> newlyUnlocked;
+        bool anyProgressChanged = false;
+
+        for (int i = 0; i < kAchievementCount; ++i) {
+            const auto& def = defs[i];
+            int val = 0;
+
+            switch (def.cond) {
+            case ACH_QUEST:
+                val = IsQuestClearedInSave(user, uint16_t(def.param1)) ? 1 : 0;
+                break;
+            case ACH_QUEST_STAR_GROUP:
+                val = CountQuestStarGroupCleared(user, def.param1);
+                if (def.param1 == 10 && val >= 9) val = def.target; // 6-star city has 9 tracked slots in 0x80581940
+                if (def.param1 == 0 && (villageAwards & (1u << 0))) val = def.target;
+                if (def.param1 == 1 && (villageAwards & (1u << 0))) val = def.target;
+                if (def.param1 == 2 && (villageAwards & (1u << 0))) val = def.target;
+                if (def.param1 == 3 && (villageAwards & (1u << 1))) val = def.target;
+                if (def.param1 == 4 && (villageAwards & (1u << 2))) val = def.target;
+                if (def.param1 == 5 && (cityAwards & (1u << 0))) val = def.target;
+                if (def.param1 == 6 && (cityAwards & (1u << 0))) val = def.target;
+                if (def.param1 == 7 && (cityAwards & (1u << 1))) val = def.target;
+                if (def.param1 == 8 && (cityAwards & (1u << 1))) val = def.target;
+                if (def.param1 == 9 && (cityAwards & (1u << 2))) val = def.target;
+                if (def.param1 == 10 && (cityAwards & (1u << 2))) val = def.target;
+                break;
+            case ACH_AWARD:
+                if (def.param1 < 12) {
+                    val = (villageAwards & (1u << def.param1)) ? 1 : 0;
+                } else {
+                    val = (cityAwards & (1u << (def.param1 - 12))) ? 1 : 0;
+                }
+                break;
+            case ACH_HUNT_COUNT:
+                val = getMonsterHunted(uint8_t(def.param1));
+                break;
+            case ACH_CROWN_SILVER:
+                val = (getMonsterMaxSize(uint8_t(def.param1)) >= 115) ? 1 : 0;
+                break;
+            case ACH_CROWN_BOTH: {
+                int mn = getMonsterMinSize(uint8_t(def.param1));
+                int mx = getMonsterMaxSize(uint8_t(def.param1));
+                val = ((mx >= 123) ? 1 : 0) + ((mn > 0 && mn <= 88) ? 1 : 0);
+                break;
+            }
+            case ACH_HR:
+                val = int(hr);
+                break;
+            case ACH_MONSTER_LIST_TOME:
+                if (def.param1 == 1) val = smallSeen;
+                else if (def.param1 == 2) val = villageBigSeen;
+                else val = locLacBigSeen;
+                break;
+            case ACH_ARENA_QUEST:
+                if (cityAwards & (1u << 3)) {
+                    val = 1; // Arena Trophy award
+                } else if (def.param1 < 10) {
+                    val = ((arenaMask & (1u << def.param1)) != 0u || IsQuestClearedInSave(user, uint16_t(9000 + def.param1))) ? 1 : 0;
+                } else {
+                    val = (arenaMask == 0x03FFu) ? 1 : 0;
+                }
+                break;
+            case ACH_VILLAGE_MILESTONE:
+                switch (def.param1) {
+                case 0: // Guild Certified
+                    val = (CountQuestStarGroupCleared(user, 0) > 0 || villageBigSeen > 0 || hr >= 1) ? 1 : 0;
+                    break;
+                case 1: // Ancient Mask
+                    val = (IsQuestClearedInSave(user, 2004) || (villageAwards & (1u << 3)) || IsQuestClearedInSave(user, 2005)) ? 1 : 0;
+                    break;
+                case 2: // One Chance
+                    val = (IsQuestClearedInSave(user, 2005) || (villageAwards & (1u << 4))) ? 1 : 0;
+                    break;
+                case 3: // Magazine of Porcine Fashion
+                    val = (villageAwards & (1u << 10)) ? 1 : 0;
+                    break;
+                case 4: // Imported Weaponry
+                    val = (villageAwards & (1u << 7)) ? 1 : 0;
+                    break;
+                case 5: // Master of the Ooga-Booga
+                    val = ((villageAwards & (1u << 8)) && (villageAwards & (1u << 9))) ? 1 : 0;
+                    break;
+                case 6: // Cozy Hunting (Lv2 Guest House)
+                    val = (hr >= 18) ? 1 : 0;
+                    break;
+                case 7: // Presidential Suite (Lv3 Guest House)
+                    val = (hr >= 31) ? 1 : 0;
+                    break;
+                case 8: // Sweet Fit (Black Honey Poogie)
+                    val = (hr >= 31 && (cityAwards & (1u << 1))) ? 1 : 0;
+                    break;
+                case 9: // Oddity Hunter
+                    val = ((cityAwards & (1u << 8)) && (cityAwards & (1u << 9))) ? 1 : 0;
+                    break;
+                default:
+                    val = 0;
+                    break;
+                }
+                break;
+            }
+
+            int clamped = std::clamp(val, 0, def.target);
+            if (clamped > m_achievementProgress[i]) {
+                m_achievementProgress[i] = clamped;
+                anyProgressChanged = true;
+            }
+            if (!m_achievementUnlocked[i] && m_achievementProgress[i] >= def.target) {
+                m_achievementUnlocked[i] = true;
+                newlyUnlocked.push_back(i);
+                anyProgressChanged = true;
+            }
+        }
+
+        if (anyProgressChanged) {
+            SaveAchievements();
+        }
+
+        if (!newlyUnlocked.empty()) {
+            if ((isNewCharLoad || silentIfBulk) && newlyUnlocked.size() > 3) {
+                int gainedPts = 0;
+                for (int id : newlyUnlocked) gainedPts += defs[id].points;
+                AchievementToastItem syncToast;
+                char hEs[96], hEn[96], tEs[96], tEn[96], dEs[128], dEn[128];
+                std::snprintf(hEs, sizeof(hEs), "¡PARTIDA SINCRONIZADA!  •  +%d PTS", gainedPts);
+                std::snprintf(hEn, sizeof(hEn), "SAVE FILE SYNCED!  •  +%d PTS", gainedPts);
+                std::snprintf(tEs, sizeof(tEs), "%zu Logros Desbloqueados (%s)", newlyUnlocked.size(), nameBuf);
+                std::snprintf(tEn, sizeof(tEn), "%zu Achievements Unlocked (%s)", newlyUnlocked.size(), nameBuf);
+                std::snprintf(dEs, sizeof(dEs), "Progreso de Aldea (57) y Loc Lac (141) registrado en Logros.");
+                std::snprintf(dEn, sizeof(dEn), "Village (57) and Loc Lac (141) progress synced in Trophies.");
+                syncToast.header_es = hEs;
+                syncToast.header_en = hEn;
+                syncToast.title_es = tEs;
+                syncToast.title_en = tEn;
+                syncToast.desc_es = dEs;
+                syncToast.desc_en = dEn;
+                syncToast.tier = 2;
+                syncToast.points = gainedPts;
+                syncToast.duration = 5.0f;
+                m_toastQueue.push_back(std::move(syncToast));
+            } else {
+                for (int id : newlyUnlocked) {
+                    QueueAchievementToast(defs[id]);
+                }
+            }
+        }
+    }
+
+    void UpdateAchievements(float dt) {
+        m_achievementPollTimer += dt;
+        if (m_achievementPollTimer >= 1.0f) {
+            m_achievementPollTimer = 0.0f;
+            PollSaveAchievements(false);
+        }
+
+        if (!m_toastQueue.empty()) {
+            m_toastQueue.front().timer += dt;
+            if (m_toastQueue.front().timer >= m_toastQueue.front().duration) {
+                m_toastQueue.erase(m_toastQueue.begin());
+            }
+        }
+    }
+
+    static void GetTierColors(int tier, bool unlocked, float alpha, Color& outFill, Color& outBorder, Color& outBadgeBg) {
+        if (!unlocked) {
+            outFill    = { 0.30f, 0.42f, 0.48f, 0.70f * alpha };
+            outBorder  = { 0.22f, 0.34f, 0.40f, 0.85f * alpha };
+            outBadgeBg = { 0.05f, 0.12f, 0.16f, 0.90f * alpha };
+            return;
+        }
+        switch (tier) {
+        case 0: // Bronce
+            outFill    = { 0.85f, 0.54f, 0.28f, alpha };
+            outBorder  = { 0.98f, 0.72f, 0.46f, alpha };
+            outBadgeBg = { 0.22f, 0.13f, 0.07f, 0.95f * alpha };
+            break;
+        case 1: // Plata
+            outFill    = { 0.75f, 0.84f, 0.92f, alpha };
+            outBorder  = { 0.94f, 0.98f, 1.00f, alpha };
+            outBadgeBg = { 0.12f, 0.20f, 0.28f, 0.95f * alpha };
+            break;
+        case 2: // Oro
+            outFill    = { 0.98f, 0.78f, 0.16f, alpha };
+            outBorder  = { 1.00f, 0.94f, 0.52f, alpha };
+            outBadgeBg = { 0.24f, 0.18f, 0.04f, 0.95f * alpha };
+            break;
+        default: // Platino
+            outFill    = { 0.22f, 0.92f, 1.00f, alpha };
+            outBorder  = { 0.82f, 0.98f, 1.00f, alpha };
+            outBadgeBg = { 0.06f, 0.24f, 0.32f, 0.95f * alpha };
+            break;
+        }
+    }
+
+    void DrawTrophyIcon(float cx, float cy, float r, int tier, bool unlocked, float alpha = 1.0f) {
+        Color cupCol, cupBorder, badgeBg;
+        GetTierColors(tier, unlocked, alpha, cupCol, cupBorder, badgeBg);
+
+        // Medallion disc & outer ring
+        DrawAADisc(cx, cy, r, badgeBg, cupBorder, 0.11f);
+        if (unlocked) {
+            DrawAARing(cx, cy, r * 1.12f, std::max(1.5f, r * 0.07f),
+                       { cupBorder.r, cupBorder.g, cupBorder.b, 0.45f * alpha });
+        }
+
+        // Trophy Cup Handles (ring behind bowl)
+        DrawAARing(cx, cy - r * 0.10f, r * 0.44f, std::max(1.8f, r * 0.11f), cupCol);
+
+        // Trophy Cup Bowl
+        DrawRoundedRect(cx - r * 0.33f, cy - r * 0.44f, r * 0.66f, r * 0.52f, r * 0.18f, cupCol, cupBorder);
+
+        // Trophy Cup Top Rim
+        DrawRoundedRect(cx - r * 0.40f, cy - r * 0.48f, r * 0.80f, r * 0.14f, r * 0.06f, cupBorder, cupBorder);
+
+        // Trophy Stem & Pedestal Base
+        DrawRectSolid(cx - r * 0.09f, cy + r * 0.06f, r * 0.18f, r * 0.22f, cupCol);
+        DrawRoundedRect(cx - r * 0.32f, cy + r * 0.26f, r * 0.64f, r * 0.17f, r * 0.06f, cupBorder, cupBorder);
+
+        // Corner status badge if unlocked
+        if (unlocked) {
+            float br = r * 0.34f;
+            float bx = cx + r * 0.64f;
+            float by = cy + r * 0.64f;
+            DrawAADisc(bx, by, br, { 0.10f, 0.72f, 0.45f, alpha }, { 0.55f, 1.00f, 0.78f, alpha }, 0.14f);
+            DrawButtonLabel(bx, by, "✓", br * 1.25f, { 1.0f, 1.0f, 1.0f, alpha });
+        }
+    }
+
+    void RenderAchievementToast() {
+        if (m_toastQueue.empty()) return;
+        const auto& toast = m_toastQueue.front();
+        const float S = UiScale();
+
+        float slide = 1.0f;
+        if (toast.timer < 0.35f) {
+            float t = toast.timer / 0.35f;
+            slide = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+        } else if (toast.timer > toast.duration - 0.40f) {
+            float t = (toast.duration - toast.timer) / 0.40f;
+            slide = std::clamp(t * t, 0.0f, 1.0f);
+        }
+        if (slide <= 0.005f) return;
+
+        float toastW = std::min(float(m_width) * 0.90f, 520.0f * S);
+        float toastH = 86.0f * S;
+        float toastX = (float(m_width) - toastW) * 0.5f;
+        float targetY = 16.0f * S;
+        float toastY = -toastH + (targetY + toastH) * slide;
+
+        Color tierFill, tierBorder, tierBg;
+        GetTierColors(toast.tier, true, slide, tierFill, tierBorder, tierBg);
+
+        // Outer golden/tier glow & dark ocean glass panel
+        DrawRoundedRect(toastX - 2.0f * S, toastY - 2.0f * S, toastW + 4.0f * S, toastH + 4.0f * S, 16.0f * S,
+                        { 0.0f, 0.0f, 0.0f, 0.45f * slide },
+                        { tierBorder.r, tierBorder.g, tierBorder.b, 0.55f * slide });
+        DrawRoundedRect(toastX, toastY, toastW, toastH, 14.0f * S,
+                        { 0.024f, 0.092f, 0.132f, 0.96f * slide }, tierBorder);
+
+        // Left tier accent strip
+        DrawRoundedRect(toastX + 7.0f * S, toastY + 10.0f * S, 4.5f * S, toastH - 20.0f * S, 2.2f * S,
+                        tierFill, tierFill);
+
+        // Trophy Medallion
+        DrawTrophyIcon(toastX + 46.0f * S, toastY + toastH * 0.5f, 24.0f * S, toast.tier, true, slide);
+
+        // Text Lines
+        const char* hdr = (m_menuLang == 1) ? toast.header_en.c_str() : toast.header_es.c_str();
+        const char* ttl = (m_menuLang == 1) ? toast.title_en.c_str() : toast.title_es.c_str();
+        const char* dsc = (m_menuLang == 1) ? toast.desc_en.c_str() : toast.desc_es.c_str();
+
+        DrawText(toastX + 84.0f * S, toastY + 11.0f * S, hdr, 12.8f * S, tierBorder);
+        DrawText(toastX + 84.0f * S, toastY + 31.0f * S, ttl, 18.2f * S, { 1.0f, 1.0f, 1.0f, slide });
+        DrawText(toastX + 84.0f * S, toastY + 57.0f * S, dsc, 13.0f * S, { 0.65f, 0.86f, 0.92f, slide });
+    }
+
+    float RenderTabAchievements(float x, float y, float w, float S) {
+        float curY = y;
+        float gap = 14.0f * S;
+        const AchievementDef* defs = GetAchievementDefs();
+
+        int catTotal = 0;
+        int catUnlocked = 0;
+        int catEarnedPts = 0;
+        int catTotalPts = 0;
+        int villageUnlocked = 0;
+        int locLacUnlocked = 0;
+
+        for (int i = 0; i < kAchievementCount; ++i) {
+            if (defs[i].category == 0 && m_achievementUnlocked[i]) ++villageUnlocked;
+            if (defs[i].category == 1 && m_achievementUnlocked[i]) ++locLacUnlocked;
+
+            if (m_achievementCategory == 1 && defs[i].category != 0) continue;
+            if (m_achievementCategory == 2 && defs[i].category != 1) continue;
+            ++catTotal;
+            catTotalPts += defs[i].points;
+            if (m_achievementUnlocked[i]) {
+                ++catUnlocked;
+                catEarnedPts += defs[i].points;
+            }
+        }
+        int pct = (catTotal > 0) ? ((catUnlocked * 100) / catTotal) : 0;
+
+        // Summary Header Card (with 2 filter rows: Category + Status)
+        float sumH = 254.0f * S;
+        DrawRoundedRect(x, curY, w, sumH, 14.0f * S, { 0.032f, 0.118f, 0.168f, 0.96f }, { 0.98f, 0.78f, 0.16f, 0.85f });
+        DrawRoundedRect(x + 8.0f * S, curY + 12.0f * S, 4.5f * S, sumH - 24.0f * S, 2.2f * S,
+                        { 0.98f, 0.78f, 0.16f, 1.0f }, { 0.98f, 0.78f, 0.16f, 1.0f });
+
+        DrawTrophyIcon(x + 54.0f * S, curY + 50.0f * S, 27.0f * S, (catUnlocked == catTotal && catTotal > 0) ? 3 : 2, true);
+
+        char sumTitle[128];
+        if (!m_activeHunterName.empty()) {
+            std::snprintf(sumTitle, sizeof(sumTitle),
+                          Tr("Trofeos de Caza  •  Cazador: %s", "Hunting Trophies  •  Hunter: %s"),
+                          m_activeHunterName.c_str());
+        } else {
+            std::snprintf(sumTitle, sizeof(sumTitle), "%s",
+                          Tr("Trofeos y Logros de Monster Hunter Tri", "Monster Hunter Tri Trophies & Achievements"));
+        }
+        DrawText(x + 98.0f * S, curY + 15.0f * S, sumTitle, 21.0f * S, COL_WHITE);
+
+        char sumSub[160];
+        std::snprintf(sumSub, sizeof(sumSub),
+                      Tr("Desbloqueados: %d / %d (%d%%)   •   Puntos RA: %d / %d pts",
+                         "Unlocked: %d / %d (%d%%)   •   RA Points: %d / %d pts"),
+                      catUnlocked, catTotal, pct, catEarnedPts, catTotalPts);
+        DrawText(x + 98.0f * S, curY + 45.0f * S, sumSub, 15.0f * S, { 1.0f, 0.86f, 0.35f, 1.0f });
+
+        // Overall Progress Bar
+        float barX = x + 24.0f * S;
+        float barY = curY + 90.0f * S;
+        float barW = w - 48.0f * S;
+        float barH = 16.0f * S;
+        DrawRoundedRect(barX, barY, barW, barH, barH * 0.5f,
+                        { 0.015f, 0.055f, 0.085f, 0.95f }, { 0.12f, 0.38f, 0.48f, 0.90f });
+        float fillRatio = (catTotal > 0) ? std::clamp(float(catUnlocked) / float(catTotal), 0.0f, 1.0f) : 0.0f;
+        if (fillRatio > 0.0f) {
+            float fillW = std::max(barH, barW * fillRatio);
+            DrawRoundedRect(barX, barY, fillW, barH, barH * 0.5f,
+                            { 0.96f, 0.76f, 0.16f, 0.98f }, { 1.00f, 0.92f, 0.48f, 1.0f });
+        }
+
+        // Row 1: Category Filter (Todos 198 | Aldea 57 | Loc Lac 141)
+        float catY = curY + 120.0f * S;
+        float chipH = 46.0f * S;
+        float chipGap = 10.0f * S;
+        float catChipW = (w - 48.0f * S - chipGap * 2.0f) / 3.0f;
+
+        char cAll[64], cVil[64], cLoc[64];
+        std::snprintf(cAll, sizeof(cAll), Tr("Todos (%d / %d)", "All (%d / %d)"), villageUnlocked + locLacUnlocked, kAchievementCount);
+        std::snprintf(cVil, sizeof(cVil), Tr("Aldea de Moga (%d / %d)", "Moga Village (%d / %d)"), villageUnlocked, kVillageAchievementCount);
+        std::snprintf(cLoc, sizeof(cLoc), Tr("Ciudad Loc Lac (%d / %d)", "Loc Lac City (%d / %d)"), locLacUnlocked, kLocLacAchievementCount);
+
+        DrawInteractiveButton(barX + 0.0f * (catChipW + chipGap), catY, catChipW, chipH, S, cAll, (m_achievementCategory == 0), [this]() {
+            m_achievementCategory = 0;
+            m_menuScrollY = 0.0f;
+        }, 15.0f * S);
+        DrawInteractiveButton(barX + 1.0f * (catChipW + chipGap), catY, catChipW, chipH, S, cVil, (m_achievementCategory == 1), [this]() {
+            m_achievementCategory = 1;
+            m_menuScrollY = 0.0f;
+        }, 15.0f * S);
+        DrawInteractiveButton(barX + 2.0f * (catChipW + chipGap), catY, catChipW, chipH, S, cLoc, (m_achievementCategory == 2), [this]() {
+            m_achievementCategory = 2;
+            m_menuScrollY = 0.0f;
+        }, 15.0f * S);
+
+        // Row 2: Status Filter + Test Notification Button
+        float chipY = catY + chipH + 10.0f * S;
+        float chipW = (w - 48.0f * S - chipGap * 3.0f) / 4.0f;
+
+        char fAll[48], fUnl[48], fPen[48];
+        std::snprintf(fAll, sizeof(fAll), Tr("Ver Todos (%d)", "Show All (%d)"), catTotal);
+        std::snprintf(fUnl, sizeof(fUnl), Tr("Desbloqueados (%d)", "Unlocked (%d)"), catUnlocked);
+        std::snprintf(fPen, sizeof(fPen), Tr("Pendientes (%d)", "Locked (%d)"), catTotal - catUnlocked);
+
+        DrawInteractiveButton(barX + 0.0f * (chipW + chipGap), chipY, chipW, chipH, S, fAll, (m_achievementFilter == 0), [this]() {
+            m_achievementFilter = 0;
+            m_menuScrollY = 0.0f;
+        }, 14.5f * S);
+        DrawInteractiveButton(barX + 1.0f * (chipW + chipGap), chipY, chipW, chipH, S, fUnl, (m_achievementFilter == 1), [this]() {
+            m_achievementFilter = 1;
+            m_menuScrollY = 0.0f;
+        }, 14.5f * S);
+        DrawInteractiveButton(barX + 2.0f * (chipW + chipGap), chipY, chipW, chipH, S, fPen, (m_achievementFilter == 2), [this]() {
+            m_achievementFilter = 2;
+            m_menuScrollY = 0.0f;
+        }, 14.5f * S);
+        DrawInteractiveButton(barX + 3.0f * (chipW + chipGap), chipY, chipW, chipH, S,
+                              Tr("Probar Aviso", "Test Popup"), false, [this]() {
+            PollSaveAchievements(false);
+            const AchievementDef* d = GetAchievementDefs();
+            int pick = 16; // Fell the Lagiacrus
+            for (int i = kAchievementCount - 1; i >= 0; --i) {
+                if (m_achievementUnlocked[i]) { pick = i; break; }
+            }
+            QueueAchievementToast(d[pick]);
+        }, 14.5f * S, { 0.24f, 0.18f, 0.04f, 0.96f }, { 0.98f, 0.78f, 0.16f, 1.0f });
+
+        curY += sumH + gap;
+
+        // Render Filtered Achievement Cards (with viewport culling for 198 items!)
+        float cardH = 104.0f * S;
+        float viewTop = m_scrollAreaY - 24.0f * S;
+        float viewBot = m_scrollAreaY + m_scrollAreaH + 24.0f * S;
+        int shown = 0;
+
+        for (int i = 0; i < kAchievementCount; ++i) {
+            const auto& def = defs[i];
+            if (m_achievementCategory == 1 && def.category != 0) continue;
+            if (m_achievementCategory == 2 && def.category != 1) continue;
+            const bool unlocked = m_achievementUnlocked[i];
+            if (m_achievementFilter == 1 && !unlocked) continue;
+            if (m_achievementFilter == 2 && unlocked) continue;
+            ++shown;
+
+            if (curY + cardH >= viewTop && curY <= viewBot) {
+                Color tierFill, tierBorder, tierBg;
+                GetTierColors(def.tier, unlocked, 1.0f, tierFill, tierBorder, tierBg);
+
+                Color cardBg = unlocked ? Color{ 0.038f, 0.142f, 0.195f, 0.96f } : Color{ 0.025f, 0.090f, 0.128f, 0.90f };
+                Color cardBorder = unlocked ? tierBorder : COL_PANEL_BORDER;
+
+                DrawRoundedRect(x, curY, w, cardH, 13.0f * S, cardBg, cardBorder);
+                DrawRoundedRect(x + 8.0f * S, curY + 12.0f * S, 4.5f * S, cardH - 24.0f * S, 2.2f * S, tierFill, tierFill);
+
+                // Trophy Icon
+                DrawTrophyIcon(x + 52.0f * S, curY + cardH * 0.5f, 25.0f * S, def.tier, unlocked);
+
+                // Title & Description
+                const char* title = (m_menuLang == 1) ? def.title_en : def.title_es;
+                const char* desc  = (m_menuLang == 1) ? def.desc_en  : def.desc_es;
+                DrawText(x + 94.0f * S, curY + 12.0f * S, title, 19.0f * S, unlocked ? COL_WHITE : Color{ 0.72f, 0.84f, 0.88f, 0.92f });
+                DrawText(x + 94.0f * S, curY + 40.0f * S, desc,  14.0f * S, unlocked ? COL_CYAN  : COL_MUTED);
+
+                // Right Status & Area/Tier Pill
+                const char* areaTag = (def.category == 1) ? "LOC LAC" : Tr("ALDEA", "VILLAGE");
+                char badgeTxt[64];
+                if (unlocked) {
+                    std::snprintf(badgeTxt, sizeof(badgeTxt), "✓ %s  •  +%d pts", areaTag, def.points);
+                } else {
+                    std::snprintf(badgeTxt, sizeof(badgeTxt), "%s  •  +%d pts", areaTag, def.points);
+                }
+                float pillW = 195.0f * S;
+                float pillH = 28.0f * S;
+                float pillX = x + w - pillW - 18.0f * S;
+                float pillY = curY + 12.0f * S;
+                DrawRoundedRect(pillX, pillY, pillW, pillH, pillH * 0.5f, tierBg, tierBorder);
+                DrawButtonLabel(pillX + pillW * 0.5f, pillY + pillH * 0.5f, badgeTxt, 12.8f * S, unlocked ? tierBorder : COL_MUTED);
+
+                // Progress Bar inside Card
+                int curProg = unlocked ? def.target : std::clamp(m_achievementProgress[i], 0, def.target);
+                float pRatio = (def.target > 0) ? std::clamp(float(curProg) / float(def.target), 0.0f, 1.0f) : 0.0f;
+
+                float pBarX = x + 94.0f * S;
+                float pBarY = curY + 72.0f * S;
+                float pBarW = w - 94.0f * S - 150.0f * S;
+                float pBarH = 12.0f * S;
+                DrawRoundedRect(pBarX, pBarY, pBarW, pBarH, pBarH * 0.5f,
+                                { 0.015f, 0.055f, 0.080f, 0.95f }, { 0.10f, 0.30f, 0.38f, 0.85f });
+                if (pRatio > 0.0f) {
+                    float pFillW = std::max(pBarH, pBarW * pRatio);
+                    DrawRoundedRect(pBarX, pBarY, pFillW, pBarH, pBarH * 0.5f, tierFill, tierBorder);
+                }
+
+                char progStr[48];
+                std::snprintf(progStr, sizeof(progStr), "%d / %d (%d%%)", curProg, def.target, int(pRatio * 100.0f + 0.5f));
+                DrawButtonLabel(x + w - 76.0f * S, pBarY + pBarH * 0.5f, progStr, 13.0f * S, unlocked ? tierBorder : COL_WHITE);
+            }
+
+            curY += cardH + 10.0f * S;
+        }
+
+        if (shown == 0) {
+            float emptyH = 90.0f * S;
+            DrawRoundedRect(x, curY, w, emptyH, 12.0f * S, COL_PANEL_CARD, COL_PANEL_BORDER);
+            DrawButtonLabel(x + w * 0.5f, curY + emptyH * 0.5f,
+                            Tr("No hay logros en esta categoría todavía.", "No achievements in this filter yet."),
+                            16.5f * S, COL_MUTED);
+            curY += emptyH;
+        }
 
         return curY - y;
     }
@@ -4401,6 +5186,12 @@ private:
     int m_bloomLevel = 2; // 0: Desactivado, 1: Suave, 2: Original (Wii), 3: Intenso
     bool m_touchVisible = true;
     bool m_damageNumbersEnabled = true;
+    int m_presentX = 0;
+    int m_presentY = 0;
+    int m_presentW = 0;
+    int m_presentH = 0;
+    int m_presentDrawableW = 0;
+    int m_presentDrawableH = 0;
     std::vector<DamagePopup> m_damagePopups;
     std::mutex m_damageMutex;
     float m_buttonOpacity = 1.0f;
@@ -4449,6 +5240,15 @@ private:
     int m_listeningAction = -1;
     float m_gamepadMapScrollY = 0.0f;
     float m_gamepadMapMaxScrollY = 0.0f;
+
+    // Achievement System State
+    bool m_achievementUnlocked[kAchievementCount]{};
+    int m_achievementProgress[kAchievementCount]{};
+    int m_achievementCategory = 0; // 0: All (198), 1: Village (57), 2: Loc Lac (141)
+    int m_achievementFilter = 0;   // 0: All, 1: Unlocked, 2: Locked
+    float m_achievementPollTimer = 0.0f;
+    std::string m_activeHunterName;
+    std::vector<AchievementToastItem> m_toastQueue;
 
     // Scroll & Hit-Test State
     std::vector<HitZone> m_hitZones;
@@ -4607,6 +5407,10 @@ void TouchControls_UpdateSample(uint16_t* buttons, int16_t* leftX, int16_t* left
         return;
     }
     g_touchSettingsEngine.UpdateSample(buttons, leftX, leftY, rightX, rightY, triggerL, triggerR);
+}
+
+void TouchControls_SetPresentRect(int x, int y, int width, int height, int drawableWidth, int drawableHeight) {
+    g_touchSettingsEngine.SetPresentRect(x, y, width, height, drawableWidth, drawableHeight);
 }
 
 void TouchControls_RenderGL(int windowWidth, int windowHeight) {

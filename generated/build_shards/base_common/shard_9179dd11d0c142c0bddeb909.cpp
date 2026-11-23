@@ -1,6 +1,6 @@
 // Translator-owned content-addressed aggregate shard; do not edit.
 #include "abi_bridge.h"
-#include "shard_615d5aa187884c26b4ac7ec0_traits.h"
+#include "shard_9179dd11d0c142c0bddeb909_traits.h"
 #define MKW_STATIC_TRANSLATED_CALL(Target, Entry, Context) do { ApplyRuntimeCallOptions(Target, Context); Entry(Context); } while (false)
 #line 1 "func_803B6E50.cpp"
 #include <cstdint>
@@ -8380,7 +8380,7 @@ loc_803B87C8:
         ctx->fpr[1] = f1;
         ctx->fpr[2] = f2;
         ctx->cr = cr;
-        MKW_STATIC_TRANSLATED_CALL(0x803B83CCu, func_803B83CC, ctx);
+        InvokeDirectCpu<0x803B83CCu>(ctx);
         r0 = ctx->gpr[0];
         r1 = ctx->gpr[1];
         r3 = ctx->gpr[3];

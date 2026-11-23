@@ -2,6 +2,7 @@
 // snapshots; guest texture addresses are identities, never readback buffers.
 #include "abi_bridge.h"
 #include "fatal.h"
+#include "game_step.h"
 #include "guest_call.h"
 #include "native_frame_packet.h"
 #include "native_graphics.h"
@@ -575,7 +576,8 @@ extern "C" void MH3_NativeGrabScreen(CpuContext *cpu) {
     call.Call<0x80040354>({0x8066d2a0});
     call.Call<0x802AEA18>();
     call.Call<0x800591A0>({0x8066d178});
-    call.Call<0x8005921C>({0x8066d178});
+    for (uint32_t tick = 0, ticks = GameStep::Ticks(); tick < ticks; ++tick)
+        call.Call<0x8005921C>({0x8066d178});
 
     if (FlatRead8(0x8065b2c8) != 1)
         return;

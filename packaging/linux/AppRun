@@ -32,7 +32,7 @@ has_rom=0
 is_test=0
 for a in "$@"; do
   [[ $a == --rom ]] && has_rom=1
-  [[ $a == --self-test || $a == --audio-self-test || $a == --help || $a == -h ]] && is_test=1
+  [[ $a == --self-test || $a == --audio-self-test || $a == --list || $a == --help || $a == -h ]] && is_test=1
 done
 
 if [[ $is_test == 0 && $has_rom == 0 && ! -f "${DATA}/disc/disc-layout.txt" ]]; then
@@ -52,16 +52,16 @@ if [[ $is_test == 0 && $has_rom == 0 && ! -f "${DATA}/disc/disc-layout.txt" ]]; 
   )
   for dir in "${search_dirs[@]}"; do
     [[ -d "$dir" ]] || continue
-    rom="$(find "$dir" -maxdepth 2 -type f \( -iname '*.rvz' -o -iname '*.iso' -o -iname '*.wia' \) 2>/dev/null \
+    rom="$(find "$dir" -maxdepth 2 -type f -iname '*.rvz' 2>/dev/null \
             | grep -i -E 'monster|mh3|tri|rmhp' | head -n1)"
     [[ -n "$rom" ]] && break
   done
 
   if [[ -z "$rom" ]]; then
     if command -v kdialog >/dev/null 2>&1; then
-      rom="$(kdialog --title "Selecciona la ROM de Monster Hunter Tri (PAL)" --getopenfilename "$HOME" "*.rvz *.iso *.wia|ROM de Wii")"
+      rom="$(kdialog --title "Selecciona la ROM de Monster Hunter Tri (PAL)" --getopenfilename "$HOME" "*.rvz|ROM de Wii (.rvz)")"
     elif command -v zenity >/dev/null 2>&1; then
-      rom="$(zenity --file-selection --title="Selecciona la ROM de Monster Hunter Tri (PAL)" --file-filter="ROM de Wii | *.rvz *.iso *.wia")"
+      rom="$(zenity --file-selection --title="Selecciona la ROM de Monster Hunter Tri (PAL)" --file-filter="ROM de Wii (.rvz) | *.rvz")"
     fi
   fi
 
@@ -74,7 +74,7 @@ fi
 "${HERE}/usr/bin/MH3" "${args[@]}" 2>&1 | tee "${DATA}/MH3.log"
 status=${PIPESTATUS[0]}
 
-if [[ $status -ne 0 && $status -ne 130 ]]; then
+if [[ $is_test == 0 && $status -ne 0 && $status -ne 124 && $status -ne 130 && $status -ne 143 ]]; then
   show_error "El juego se cerró con un error (código ${status}).\n\nRevisa el registro en:\n${DATA}/MH3.log\ny ${DATA}/saves/crash.txt"
 fi
 exit $status

@@ -1,10 +1,23 @@
-# OceanTriRecomp Android 🦖📱
+# OceanTriRecomp Android & Linux 🦖📱🐧
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Platform: Android](https://img.shields.io/badge/Platform-Android%20ARM64-green.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android)
-[![Latest Release](https://img.shields.io/badge/Release-v1.6-brightgreen.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
+[![Platform: Android & Linux](https://img.shields.io/badge/Platform-Android%20ARM64%20%7C%20Linux%20x86__64-green.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android)
+[![Latest Release](https://img.shields.io/badge/Release-v1.6.5-brightgreen.svg)](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)
 
-Port nativo para **Android** de **Monster Hunter Tri** mediante recompilación estática de código (AOT - *Ahead-of-Time*), logrando rendimiento nativo en hardware ARM64 sin necesidad de emulación pesada.
+Port nativo para **Android (ARM64)** y **Linux (x86_64 AppImage)** de **Monster Hunter Tri** mediante recompilación estática de código (AOT - *Ahead-of-Time*), logrando rendimiento nativo sin necesidad de emulación pesada.
+
+---
+
+## ✨ Novedades Destacadas (v1.6.5)
+
+- **Sistema de Logros Nativo (198 Logros — 3.814 pts):**
+  - Integración completa de **57 logros de la Aldea de Moga** y **141 logros de la Ciudad de Loc Lac** (misiones clave/urgentes, estrellas 1★–6★, coronas de plata y oro, premios de Tarjeta del Gremio, metas de caza, RC/HR y Arena).
+  - Notificaciones emergentes animadas con trofeo vectorial en pantalla, sincronización automática con tu partida guardada y nueva pestaña **`Logros`** (`F1` / `⚙`) con filtros por región y estado.
+- **Cámara al ser agarrado por un monstruo:** Corregido el zoom e inclinación de cámara durante ataques de agarre (*pin attacks*) para evitar que la cámara quede torcida o bloqueada al liberarse.
+- **Golpe de escudo de la Lanza:** Corregido el comportamiento/registro del golpe de escudo (*shield bash*) con Lanza en combate.
+- **Números de daño flotantes (Android y Online):** Corregida la proyección 3D en pantallas Android (usando el rectángulo real de presentación y la matriz de perspectiva correcta `p14`) y corregida la visualización inmediata para clientes no-host en multijugador online.
+- **Físicas y temporizadores a 90 / 120 FPS:** Corregida la aceleración del reloj de misión offline, *hit-stop*, destello de bomba de luz (*Flash Bomb*) y navegación en la caja de objetos/suministros al jugar por encima de 60 FPS.
+- **Compatibilidad Linux AppImage (Debian 11 / glibc 2.31):** El AppImage ahora se compila sobre Debian 11 para garantizar compatibilidad con distribuciones Linux más antiguas.
 
 ---
 
@@ -26,6 +39,15 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 > - **Parches de cliente**: [sepalani/MH3SP-patcher](https://github.com/sepalani/MH3SP-patcher)
 >
 > El archivo [`mh3sp_native_server.cpp`](runtime/src/mh3sp_native_server.cpp) es una adaptación nativa en C++ del servidor Python original de MH3SP. El código derivado se distribuye bajo la misma licencia AGPL-3.0 del proyecto original, como se indica en sus cabeceras. La conexión online por defecto apunta al servidor comunitario `mh3sp.com`.
+
+### Sistema de Logros: RetroAchievements.org
+
+> El catálogo de **198 logros** (57 de la Aldea de Moga y 141 de la Ciudad de Loc Lac) está basado e inspirado con profundo agradecimiento en el trabajo de **[RetroAchievements.org](https://retroachievements.org/)** y del desarrollador comunitario **Gudra**:
+>
+> - **Set Base — Aldea de Moga (57 logros)**: [Monster Hunter Tri (Game #208)](https://retroachievements.org/game/208)
+> - **Subset — Ciudad Loc Lac (141 logros)**: [Monster Hunter Tri — Loc Lac (Set #36536)](https://retroachievements.org/game/208?set=36536)
+>
+> Todo el mérito por el diseño, curación, títulos, descripciones y puntuación de estos desafíos pertenece a **RetroAchievements.org** y a su creador (**Gudra**). La integración en OceanTriRecomp es un rastreador **100 % local y offline** para conveniencia de los jugadores del port nativo; no está afiliado oficialmente con RetroAchievements ni envía/sincroniza puntuaciones con sus servidores. Si deseas competir en sus tablas oficiales, te animamos a apoyar y jugar también en [RetroAchievements.org](https://retroachievements.org/).
 
 ### Toolchain de Recompilación: WiiCompiled
 
@@ -55,11 +77,17 @@ Este proyecto se construye directamente sobre el trabajo de otros desarrolladore
 
 ## 📲 Instalación
 
+### Android (ARM64)
 1. Dirígete a la sección de **[Releases](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)**.
-2. Descarga el archivo `OceanTriRecomp-Android-v1.6-arm64.apk`.
+2. Descarga el archivo `OceanTriRecomp-Android-v1.6.5-arm64.apk`.
 3. Instálalo en tu dispositivo Android (permite fuentes desconocidas si tu navegador lo solicita).
 4. Abre **Monster Hunter Tri**. En la pantalla de bienvenida, selecciona tu copia legal de Monster Hunter Tri (`.iso` o `.rvz`, versión europea recomendada `RMHP08`).
 5. ¡A cazar!
+
+### Linux (x86_64 AppImage — compatible con glibc 2.31+)
+1. Descarga `OceanTriRecomp-Linux-v1.6.5-x86_64.AppImage` desde **[Releases](https://github.com/Kiridor123/OceanTriRecomp-Android/releases)**.
+2. Dale permisos de ejecución (`chmod +x OceanTriRecomp-Linux-v1.6.5-x86_64.AppImage`) y ejecútalo.
+3. Selecciona tu copia legal de Monster Hunter Tri (`.rvz` / `.iso` PAL `RMHP08`) cuando se solicite.
 
 ---
 
@@ -107,7 +135,7 @@ cmake --build build-android --target MH3 --parallel $(nproc)
 bash packaging/android/build_apk.sh
 ```
 
-El APK firmado se genera en `release/OceanTriRecomp-Android-v1.4.5-arm64.apk`.
+El APK firmado se genera en `release/OceanTriRecomp-Android-v1.6.5-arm64.apk`.
 
 ---
 

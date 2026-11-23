@@ -633,15 +633,26 @@ static void BindCameraPort(CpuContext* ctx) {
     const uint32_t cam = ctx->gpr[3], plw = ctx->gpr[4], ticks = GameStep::Ticks();
     const float fraction = float(GameStep::Fraction());
     static bool placed = false; // the last tick placed the eye and target
+    static bool hasSaved = false;
+    static uint8_t savedDistance = 2;
+    static float savedFov = 55.0f;
     static BindPlace last;
 
     const bool wasPlaced = placed;
+    const uint8_t preDistance = Memory::Read8(cam + kDistance);
+    const float preFov = F(cam + kFovA);
 
     for (uint32_t i = 0; i < ticks; ++i) {
         placed = BindTick(ctx, cam, plw);
 
-        if (placed)
+        if (placed) {
+            if (!hasSaved) {
+                hasSaved = true;
+                savedDistance = preDistance <= 4 ? preDistance : 2;
+                savedFov = (preFov > 0.0f && preFov <= 120.0f) ? preFov : 55.0f;
+            }
             last.Read(cam);
+        }
     }
 
     if (ticks == 0 || fraction > 0) {
@@ -659,8 +670,14 @@ static void BindCameraPort(CpuContext* ctx) {
 
         if (ticks == 0) {
             placed = next;
-            if (placed)
+            if (placed) {
+                if (!hasSaved) {
+                    hasSaved = true;
+                    savedDistance = preDistance <= 4 ? preDistance : 2;
+                    savedFov = (preFov > 0.0f && preFov <= 120.0f) ? preFov : 55.0f;
+                }
                 last.Read(cam);
+            }
         }
 
         if (placed && next) {
@@ -675,34 +692,39 @@ static void BindCameraPort(CpuContext* ctx) {
             const uint32_t yaw = game.Call<AngleBetween>({cam + kTarget, cam + kEye});
             W32(cam + kYawTarget, yaw);
             W32(cam + kYaw, yaw);
+        } else if (!placed && next) {
+            // Speculative lookahead crossed the hold's start delay before the
+            // real tick did: revert its writes (especially kDistance = 0x7C)
+            // so the next frame captures the true pre-hold kDistance and FOV.
+            now.Write(cam);
         } else {
-            // Neither placed nor next: hold is inactive.
-            // Do NOT overwrite cam with stale now.Write(cam), so func_802B8ED0's
-            // restored default FOV (55.0f) and player's kDistance (0x7C) are preserved.
+            // Hold ended or is inactive: do NOT overwrite cam with stale now.Write(cam),
+            // so func_802B8ED0's restored default FOV (55.0f) is preserved.
             placed = false;
         }
     }
 
-    // Safety: If hold just ended (was placed on previous frame, but no longer placed),
-    // ensure FOV is restored to standard 55.0f, camera twist/roll is zeroed (upright),
-    // and camera distance row is restored from Option 11
-    // so the camera never gets stuck zoomed in, tilted or too close after Rathian/monster pins.
-    if (wasPlaced && !placed) {
+    // Safety: If hold just ended (or had saved pre-hold state), restore the
+    // exact pre-hold FOV, upright twist/tilt, and camera distance/row so the
+    // camera never gets stuck zoomed in, tilted, or shifted to a wrong distance
+    // row (Option 11 is camera auto-follow, not camera distance).
+    if (hasSaved && !placed) {
+        hasSaved = false;
         float defaultFov = Memory::Contains(0x8079C9A8u, 4) ? Memory::ReadFloat32(0x8079C9A8u) : 55.0f;
-        if (defaultFov <= 0.0f || defaultFov > 120.0f) defaultFov = 55.0f;
-        WF(cam + kFovA, defaultFov);
+        if (defaultFov <= 0.0f || defaultFov > 120.0f)
+            defaultFov = 55.0f;
+        const float targetFov = (savedFov > 0.0f && savedFov <= 120.0f) ? savedFov : defaultFov;
+        WF(cam + kFovA, targetFov);
         WF(cam + kTwist, 0.0f);
         W32(cam + kTiltTarget, 0);
         W32(cam + kTilt, 0);
 
-        GuestCall game{ctx};
-        const uint8_t playerId = Memory::Read8(plw + kPlwPlayer);
-        uint32_t optDist = game.Call<OptionConfig>({playerId, 11}) & 0xFF;
-        if (optDist > 4) optDist = 2;
-        Memory::Write8(cam + kDistance, uint8_t(optDist));
+        const uint8_t restoreDist = savedDistance <= 4 ? savedDistance : 2;
+        Memory::Write8(cam + kDistance, restoreDist);
         const uint32_t rowBase = (Memory::Read8(plw + kPlwState) == 3) ? kRowsSwimming : kRows;
-        W32(cam + kRow, rowBase + optDist * 28);
+        W32(cam + kRow, rowBase + restoreDist * 28);
     }
+    (void)wasPlaced;
 }
 
 extern "C" void MH3_BindCamera(CpuContext* ctx) {

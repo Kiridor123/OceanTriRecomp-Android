@@ -1,0 +1,23 @@
+FROM docker.io/library/debian:11
+
+RUN cat >/etc/apt/sources.list <<'EOF'
+deb http://archive.debian.org/debian bullseye main contrib non-free
+deb http://archive.debian.org/debian-security bullseye-security main contrib non-free
+deb http://archive.debian.org/debian bullseye-updates main contrib non-free
+EOF
+RUN echo 'Acquire::Check-Valid-Until "false";' >/etc/apt/apt.conf.d/99no-check-valid-until
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    build-essential git wget curl ca-certificates \
+    python3 pkg-config patchelf file ninja-build \
+    libssl-dev libpng-dev zlib1g-dev libbz2-dev \
+    libgl-dev libgles-dev libegl-dev libdrm-dev libgbm-dev \
+    libx11-dev libxext-dev libxrandr-dev libxi-dev libxfixes-dev libxcursor-dev libxss-dev \
+    libwayland-dev libxkbcommon-dev wayland-protocols \
+    libasound2-dev libpulse-dev libdbus-1-dev libudev-dev libvulkan-dev \
+    libicu-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG CMAKE_VERSION=3.31.6
+RUN curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
+    | tar -xz --strip-components=1 -C /usr/local
