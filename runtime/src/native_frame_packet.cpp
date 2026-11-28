@@ -1164,7 +1164,9 @@ void RenderPackets() {
         renderCounters.revision.fetch_add(1, std::memory_order_release);
 #endif
         completed.store(p.sequence, std::memory_order_release);
+#if defined(__cpp_lib_atomic_wait)
         completed.notify_all();
+#endif
         takenSignal.Advance();
     }
 
@@ -1195,7 +1197,9 @@ void RenderLoop() {
 #endif
 
     completed.store(UINT64_MAX, std::memory_order_release);
+#if defined(__cpp_lib_atomic_wait)
     completed.notify_all();
+#endif
 #ifdef MH3_DEVELOPMENT
     renderCounters.thread.store(-1, std::memory_order_release);
 #endif
@@ -1855,6 +1859,8 @@ void BeginNativeFramePacket(bool render) {
 }
 
 bool NativeFramePacketRecording() {
+    if (NativeGraphicsLogicPhase())
+        return false;
     return recording && recording->render && !recording->canceled;
 }
 

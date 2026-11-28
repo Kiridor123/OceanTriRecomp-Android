@@ -1,6 +1,21 @@
 #include "settings_overlay.h"
 
-
+// Project Moga uses the unified cross-platform UI in touch_controls.cpp across
+// Android, Linux, and Windows. The legacy Win32 settings/FPS overlay from the
+// upstream Windows repo is intentionally disabled.
+namespace settings_overlay {
+void AttachWindow(SDL_Window*) noexcept {}
+void InitializeRuntimeSettings() noexcept {}
+void HandleEvents(const AuroraEvent*) noexcept {}
+void Pump() noexcept {}
+bool IsOpen() noexcept { return false; }
+void Draw() noexcept {}
+bool StartupScreenVisible() noexcept { return false; }
+void NotifyStrapInputAccepted() noexcept {}
+void AdvancePresentedFrame() noexcept {}
+void ReleaseControllers() noexcept {}
+} // namespace settings_overlay
+#if 0
 #include <cwchar>
 #include "mh3_mouse_look_sensitivity.h"
 #include "runtime_config.h"
@@ -1666,3 +1681,4 @@ void AdvancePresentedFrame() noexcept {}
 void ReleaseControllers() noexcept {}
 } // namespace settings_overlay
 #endif
+#endif // 0 (legacy Win32 settings overlay disabled)

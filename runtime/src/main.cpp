@@ -514,7 +514,7 @@ std::optional<std::filesystem::path> RunDiscLauncher(const std::filesystem::path
         MH3_THROW(std::runtime_error("Cannot create the MH3 launcher window"));
     }
 
-    state.window = CreateWindowExW(WS_EX_APPWINDOW, DiscLauncherClassName, L"Monster Hunter Tri Recomp - Launcher",
+    state.window = CreateWindowExW(WS_EX_APPWINDOW, DiscLauncherClassName, L"Project Moga - Launcher",
                                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT,
                                    DiscLauncherWidth, DiscLauncherHeight, nullptr, nullptr, wc.hInstance, nullptr);
     if (!state.window) {
@@ -1460,7 +1460,7 @@ int main(int argc, char** argv) {
         std::cerr << "MH3 runtime stopped: " << error.what() << '\n';
 #ifdef _WIN32
         CloseDiscLauncher();
-        MessageBoxA(nullptr, error.what(), "Monster Hunter Tri Recomp - Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+        MessageBoxA(nullptr, error.what(), "Project Moga - Error", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 #endif
         SystemBridge::DumpCpuState(&GetPersistentCpuContext());
         RuntimeCrash::AppendCrashLog(error.what(), &GetPersistentCpuContext());

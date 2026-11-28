@@ -27,6 +27,7 @@
 #include "guest_call.h"
 #include "port_check.h"
 #include "controller_host.h"
+#include "target_camera.h"
 
 #include <algorithm>
 #include <cmath>
@@ -125,6 +126,8 @@ static void CameraYawInputPort(CpuContext* ctx) {
     if (Memory::Read8(kSystem + kCameraFrozen) != 0)
         return;
 
+    TargetCamera::PollCycleInput();
+
     if (mouseDeltaX != 0 && game.Call<CameraUsable>({plw}) == 1) {
         const int32_t pixels = std::clamp<int32_t>(mouseDeltaX, -512, 512);
         int32_t angleDelta = pixels * kMouseLookAngleUnitsPerPixel;
@@ -205,7 +208,8 @@ static void CameraYawInputPort(CpuContext* ctx) {
 
         swingBack(kFloatZero);
     } else if (Command(plw, 0) && game.Call<CameraUsable>({plw}) == 1) {
-        SnapBehind(work, plw);
+        if (!TargetCamera::TrySnapCamera(work, plw))
+            SnapBehind(work, plw);
         snapped = 1;
     }
 

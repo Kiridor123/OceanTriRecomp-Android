@@ -36,8 +36,10 @@ inline std::map<int, std::string>& mh3_dirs() { static std::map<int, std::string
 inline std::mutex& mh3_dirs_lock() { static std::mutex m; return m; }
 inline int mh3_open(const char* path, int flags, int mode = 0) {
     (void)mode;
-    if (flags & O_DIRECTORY) {
-        DWORD a = GetFileAttributesA(path);
+    const bool wantDir = (flags & O_DIRECTORY) != 0;
+    const bool readOnly = (flags & (O_WRONLY | O_RDWR | O_CREAT)) == 0;
+    DWORD a = GetFileAttributesA(path);
+    if (wantDir || (readOnly && a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY))) {
         if (a == INVALID_FILE_ATTRIBUTES) { errno = ENOENT; return -1; }
         if (!(a & FILE_ATTRIBUTE_DIRECTORY)) { errno = ENOTDIR; return -1; }
         int fd = _open("NUL", _O_RDONLY);

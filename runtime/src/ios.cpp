@@ -1123,7 +1123,6 @@ extern "C" void MH3_IOSOpen(CpuContext* ctx) {
         return;
     }
 
-    // No USB host controller: the Wii Speak library (PMIC) finds no microphone.
     if (path.starts_with("/dev/usb/oh")) {
         ctx->gpr[3] = -6;
         return;
@@ -1140,7 +1139,8 @@ extern "C" void MH3_IOSOpen(CpuContext* ctx) {
 }
 REGISTER_NATIVE_FUNCTION(0x804BC500, MH3_IOSOpen);
 extern "C" void MH3_IOSClose(CpuContext* ctx) {
-    if (devices.erase(ctx->gpr[3])) {
+    if (const auto dev = devices.find(ctx->gpr[3]); dev != devices.end()) {
+        devices.erase(dev);
         if (eventHook && eventHook->fd == ctx->gpr[3])
             eventHook.reset();
 

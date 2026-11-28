@@ -12,7 +12,7 @@ ARCH=x86_64
 WORK_DIR="${PROJECT_ROOT}/packaging/linux/build"
 APPDIR="${WORK_DIR}/OceanTri.AppDir"
 TOOLS_DIR="${PROJECT_ROOT}/packaging/linux/tools"
-OUTPUT="${PROJECT_ROOT}/release/OceanTriRecomp-Linux-${APP_VERSION}-${ARCH}.AppImage"
+OUTPUT="${PROJECT_ROOT}/release/Project-Moga-Linux-${APP_VERSION}-${ARCH}.AppImage"
 
 rm -rf "${APPDIR}"
 mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/lib" "${APPDIR}/usr/share/applications" \

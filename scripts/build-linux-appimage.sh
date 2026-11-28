@@ -47,7 +47,7 @@ fi
 
 BUILD_DIR="${MH3_LINUX_BUILD:-$ROOT_DIR/build-linux-debian11-x86_64}"
 JOBS="${BUILD_JOBS:-$(nproc)}"
-APP_VERSION="${APP_VERSION:-v1.6.5}"
+APP_VERSION="${APP_VERSION:-v1.7}"
 mkdir -p "$ROOT_DIR/logs"
 
 echo "=== 0. Environment: $(ldd --version | head -n 1) ==="

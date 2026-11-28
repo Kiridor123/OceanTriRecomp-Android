@@ -347,25 +347,17 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
     config.allowTextureReplacements = true;
     // MH3_PERGAMINO_GRAPHICS_SETTINGS_BEGIN
     bool mh3UiVsyncAtStartup = true;
-    int mh3UiRenderer = 0; // 0 = Vulkan (ANGLE), 1 = OpenGL ES
     {
         int mh3UiMsaaSamples = 1;
         int mh3UiVsync = 1;
         int mh3UiRenderResolution = 0;
-#if defined(_WIN32)
-        wchar_t mh3UiModulePath[32768]{};
-        const DWORD mh3UiPathLength = GetModuleFileNameW(nullptr, mh3UiModulePath, 32768);
-        if (mh3UiPathLength > 0 && mh3UiPathLength < 32768) {
-            const std::filesystem::path mh3UiExePath(std::wstring(mh3UiModulePath, mh3UiPathLength));
-            std::ifstream mh3UiGraphicsFile(mh3UiExePath.parent_path() / L"MH3UI.graphics");
+        const char* userDirEnv = std::getenv("MH3_USER_DIR");
+        if (userDirEnv && *userDirEnv) {
+            std::ifstream mh3UiGraphicsFile(std::filesystem::path(userDirEnv) / "MH3UI.graphics");
             if (mh3UiGraphicsFile >> mh3UiMsaaSamples >> mh3UiVsync) {
                 mh3UiGraphicsFile >> mh3UiRenderResolution;
-                int mh3UiSavedFpsLimit = 60;
-                mh3UiGraphicsFile >> mh3UiSavedFpsLimit;
-                mh3UiGraphicsFile >> mh3UiRenderer;
             }
         }
-#endif
         mh3UiVsyncAtStartup = mh3UiVsync != 0;
         if (mh3UiMsaaSamples == 1 || mh3UiMsaaSamples == 4)
             config.msaa = static_cast<decltype(config.msaa)>(mh3UiMsaaSamples);
@@ -382,7 +374,7 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
     }
     // MH3_PERGAMINO_GRAPHICS_SETTINGS_END
 #if defined(AURORA_ANGLE_VULKAN) && defined(_WIN32)
-    config.desiredBackend = (mh3UiRenderer == 1) ? BACKEND_OPENGLES : BACKEND_VULKAN;
+    config.desiredBackend = BACKEND_VULKAN; // Auto-falls back to ANGLE Direct3D 11 -> OpenGL if unavailable
 #endif
     if (const char* fs = std::getenv("MH3_START_FULLSCREEN")) {
         if (fs && fs[0] == '1') {
@@ -411,8 +403,8 @@ void InitializeGraphics(int argc, char** argv, bool loadNativeAssets = true) {
             // Keep the game running on that fallback rather than aborting startup.
             config.desiredBackend = info.backend;
             MessageBoxW(nullptr,
-                L"Vulkan could not be initialized. Monster Hunter Tri will continue using ANGLE/OpenGL ES via Direct3D 11. See MH3.log for the EGL error.",
-                L"Monster Hunter Tri - Vulkan fallback",
+                L"Vulkan could not be initialized. Project Moga will continue using ANGLE/OpenGL ES via Direct3D 11. See MH3.log for the EGL error.",
+                L"Project Moga - Vulkan fallback",
                 MB_OK | MB_ICONWARNING);
         } else
 #endif

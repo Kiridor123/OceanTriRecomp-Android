@@ -1,4 +1,6 @@
 #include "touch_controls.h"
+#include "layered_armor.h"
+#include "target_camera.h"
 #include "android_keyboard.h"
 #include "droid_sans_atlas.h"
 #include "language.h"
@@ -78,6 +80,16 @@ const char* Gamepad_GetActionName(int action, int lang);
 const char* Gamepad_GetActionDesc(int action, int lang);
 const char* Gamepad_GetInputName(int inputCode, int layout, int lang);
 bool Gamepad_IsConnected();
+int Keyboard_GetActionCount();
+int Keyboard_GetBinding(int action);
+void Keyboard_SetBinding(int action, int scancode);
+void Keyboard_ResetToDefaults();
+void Keyboard_SaveConfig();
+void Keyboard_LoadConfig();
+int Keyboard_DetectPressedKey();
+const char* Keyboard_GetActionName(int action, int lang);
+const char* Keyboard_GetActionDesc(int action, int lang);
+const char* Keyboard_GetKeyName(int scancode);
 }
 
 namespace aurora::gfx::texture_replacement {
@@ -221,11 +233,30 @@ public:
     }
     bool IsDamageNumbersEnabled() const { return m_damageNumbersEnabled; }
 
-    bool IsMenuOpen() const { return m_menuOpen || m_langSubmenuOpen; }
+    void ResetActiveTouches() {
+        m_latchedMask.store(0, std::memory_order_relaxed);
+        for (auto& btn : m_buttons) {
+            btn.isPressed = false;
+            btn.fingerId = -1;
+        }
+        m_leftFingerId = -1;
+        m_leftStickPos = m_leftStickCenter;
+        m_leftX = 0;
+        m_leftY = 0;
+        m_cameraFingerId = -1;
+        m_cameraTouchActive = false;
+        m_pointerFingerId = -1;
+        PointerControls::SetHoldingB(false);
+        PointerControls::SetTouchActive(false);
+    }
+
+    bool IsMenuOpen() const { return m_menuOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen(); }
     void ToggleMenu() { SetMenuOpen(!m_menuOpen); }
     void SetMenuOpen(bool open) {
         m_menuOpen = open;
-        if (!open) {
+        if (open) {
+            ResetActiveTouches();
+        } else {
             m_langSubmenuOpen = false;
         }
         NoteTouchActivity();
@@ -450,7 +481,7 @@ public:
             return;
         }
 
-        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen) {
+        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_keyboardMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen()) {
             BeginUiPointerDown(int(id), px, py);
             return;
         }
@@ -465,6 +496,9 @@ public:
         }
 
         // Gameplay: Check Gear button tap
+        if (TryTapTargetBadge(px, py)) {
+            return;
+        }
         float gdx = px - m_gearPos.x;
         float gdy = py - m_gearPos.y;
         if (gdx * gdx + gdy * gdy <= (m_gearRadius * 1.8f) * (m_gearRadius * 1.8f)) {
@@ -567,7 +601,7 @@ public:
             return;
         }
 
-        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen) {
+        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_keyboardMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen()) {
             UpdateUiPointerMove(int(id), px, py);
             return;
         }
@@ -625,16 +659,12 @@ public:
             return;
         }
 
-        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || m_uiPointerId == int(id)) {
-            EndUiPointerUp(int(id));
-            return;
-        }
-
+        // Always release any gameplay touch state bound to this finger so buttons never
+        // stay stuck if a modal (e.g. Transmog or Settings) opened while a finger was down.
         if (int(id) == m_pointerFingerId) {
             m_pointerFingerId = -1;
             PointerControls::SetTouchActive(false);
         }
-
         for (auto& btn : m_buttons) {
             if (btn.fingerId == int(id)) {
                 btn.isPressed = false;
@@ -645,17 +675,20 @@ public:
                 }
             }
         }
-
         if (int(id) == m_leftFingerId) {
             m_leftFingerId = -1;
             m_leftStickPos = m_leftStickCenter;
             m_leftX = 0;
             m_leftY = 0;
         }
-
         if (int(id) == m_cameraFingerId) {
             m_cameraFingerId = -1;
             m_cameraTouchActive = false;
+        }
+
+        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_keyboardMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen() || m_uiPointerId == int(id)) {
+            EndUiPointerUp(int(id));
+            return;
         }
     }
 
@@ -667,7 +700,7 @@ public:
             HandleEditModeTouchDown(1, px, py);
             return;
         }
-        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen) {
+        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_keyboardMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen()) {
             BeginUiPointerDown(-99, px, py);
             return;
         }
@@ -678,6 +711,9 @@ public:
                 BeginUiPointerDown(-99, px, py);
                 return;
             }
+        }
+        if (TryTapTargetBadge(px, py)) {
+            return;
         }
         float gdx = px - m_gearPos.x;
         float gdy = py - m_gearPos.y;
@@ -695,7 +731,7 @@ public:
             m_editFingerId = -1;
             return;
         }
-        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || m_uiPointerId == -99) {
+        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_keyboardMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen() || m_uiPointerId == -99) {
             EndUiPointerUp(-99);
             return;
         }
@@ -713,7 +749,7 @@ public:
             }
             return;
         }
-        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen) {
+        if (m_skinEditMode || m_menuOpen || m_gamepadMappingOpen || m_keyboardMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen()) {
             UpdateUiPointerMove(-99, px, py);
         } else if (IsTitleOptionsMenuActive()) {
             float bx, by, bw, bh;
@@ -725,8 +761,12 @@ public:
     void HandleMouseWheel(float wheelY) {
         if (!m_enabled) return;
         float step = 64.0f * std::clamp(float(m_height) / 720.0f, 0.85f, 2.2f);
-        if (m_gamepadMappingOpen) {
+        if (LayeredArmor::IsMenuOpen()) {
+            m_layeredScrollY = std::clamp(m_layeredScrollY - wheelY * step, 0.0f, m_layeredMaxScrollY);
+        } else if (m_gamepadMappingOpen) {
             m_gamepadMapScrollY = std::clamp(m_gamepadMapScrollY - wheelY * step, 0.0f, m_gamepadMapMaxScrollY);
+        } else if (m_keyboardMappingOpen) {
+            m_keyboardMapScrollY = std::clamp(m_keyboardMapScrollY - wheelY * step, 0.0f, m_keyboardMapMaxScrollY);
         } else if (m_skinEditMode && m_pngPickerOpen) {
             m_pngPickerScrollY = std::clamp(m_pngPickerScrollY - wheelY * step, 0.0f, m_pngPickerMaxScrollY);
         } else if (m_menuOpen) {
@@ -802,7 +842,7 @@ public:
     void UpdateSample(uint16_t* buttons, int16_t* leftX, int16_t* leftY,
                       int16_t* rightX, int16_t* rightY,
                       uint8_t* triggerL, uint8_t* triggerR) {
-        if (!m_enabled || m_menuOpen || m_editMode || m_skinEditMode || m_gamepadMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen) return;
+        if (!m_enabled || m_menuOpen || m_editMode || m_skinEditMode || m_gamepadMappingOpen || m_keyboardMappingOpen || m_ipEditModalOpen || m_langSubmenuOpen || LayeredArmor::IsMenuOpen()) return;
 
         uint32_t latched = m_latchedMask.exchange(0, std::memory_order_relaxed);
         *buttons |= uint16_t(latched);
@@ -1176,6 +1216,7 @@ public:
         if (frameDt < 0.0f || frameDt > 0.25f) frameDt = 1.0f / 60.0f;
 
         UpdateAchievements(frameDt);
+        LayeredArmor::SyncActiveCharacter();
 
         static uint64_t lastCount = MH3FrameRateControl::LogicalFrameCount();
         static auto lastStamp = now;
@@ -1240,6 +1281,8 @@ public:
             RenderSkinEditMode();
         } else if (m_gamepadMappingOpen) {
             RenderGamepadMappingModal();
+        } else if (m_keyboardMappingOpen) {
+            RenderKeyboardMappingModal();
         } else if (m_menuOpen) {
             RenderSettingsMenu();
             if (m_ipEditModalOpen) {
@@ -1247,6 +1290,7 @@ public:
             }
         } else if (AndroidKeyboard_IsImeShowing()) {
             RenderFpsHud();
+            RenderTargetCameraBadges();
         } else {
             RenderDamageNumbers();
 
@@ -1267,10 +1311,12 @@ public:
                 }
 
                 RenderFpsHud();
+                RenderTargetCameraBadges();
             }
         }
 
         RenderTitleLanguageOption();
+        RenderLayeredArmorModal();
         RenderAchievementToast();
 
         FlushVerts();
@@ -1811,6 +1857,171 @@ private:
         DrawButtonLabel(pillX + pillW * 0.5f, pillY + pillH * 0.5f, hudStr, pillH * 0.52f, COL_CYAN);
     }
 
+    struct TargetBadgeHit {
+        float x, y, w, h;
+        uint32_t work;
+    };
+
+    bool TryTapTargetBadge(float px, float py) {
+        for (const auto& b : m_targetBadgeHits) {
+            if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) {
+                TargetCamera::SelectOrToggleWork(b.work);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Monster Hunter Rise-style pulsing cyan/blue capturable monster skull icon.
+    void DrawCaptureSkullIcon(float cx, float cy, float r, float pulse) {
+        const float glowA = 0.24f + 0.22f * pulse;
+        const float rimA  = 0.78f + 0.22f * pulse;
+
+        // Soft pulsing outer cyan aura
+        DrawAARing(cx, cy, r * (1.28f + 0.08f * pulse), r * 0.16f, { 0.22f, 0.88f, 1.00f, glowA });
+
+        // Dark circular medallion backing for contrast over any terrain
+        DrawAADisc(cx, cy, r * 1.16f,
+                   { 0.025f, 0.075f, 0.135f, 0.90f },
+                   { 0.28f, 0.90f, 1.00f, rimA },
+                   0.11f);
+
+        const Color skullCol{
+            0.30f + 0.18f * pulse,
+            0.88f + 0.10f * pulse,
+            1.00f,
+            1.00f
+        };
+        const Color darkCol{ 0.025f, 0.070f, 0.125f, 0.98f };
+
+        // Upper cranium dome
+        DrawAADisc(cx, cy - r * 0.14f, r * 0.56f, skullCol, skullCol, 0.0f);
+
+        // Cheekbone flares (classic MH monster skull contour)
+        DrawAADisc(cx - r * 0.39f, cy + r * 0.05f, r * 0.23f, skullCol, skullCol, 0.0f);
+        DrawAADisc(cx + r * 0.39f, cy + r * 0.05f, r * 0.23f, skullCol, skullCol, 0.0f);
+
+        // Lower jaw / teeth block
+        DrawRoundedRect(cx - r * 0.34f, cy + r * 0.16f, r * 0.68f, r * 0.40f, r * 0.13f, skullCol, skullCol);
+
+        // Dark eye sockets
+        DrawAADisc(cx - r * 0.22f, cy - r * 0.05f, r * 0.165f, darkCol, darkCol, 0.0f);
+        DrawAADisc(cx + r * 0.22f, cy - r * 0.05f, r * 0.165f, darkCol, darkCol, 0.0f);
+
+        // Subtle brow highlight over eyes (fierce MH skull look)
+        DrawRectSolid(cx - r * 0.36f, cy - r * 0.25f, r * 0.72f, r * 0.09f, skullCol);
+
+        // Nose cavity
+        DrawAADisc(cx, cy + r * 0.15f, r * 0.075f, darkCol, darkCol, 0.0f);
+
+        // Teeth notches along bottom of jaw
+        const float notchW = std::max(1.5f, r * 0.085f);
+        const float notchH = r * 0.20f;
+        const float notchY = cy + r * 0.37f;
+        DrawRectSolid(cx - r * 0.18f - notchW * 0.5f, notchY, notchW, notchH, darkCol);
+        DrawRectSolid(cx - notchW * 0.5f,             notchY, notchW, notchH, darkCol);
+        DrawRectSolid(cx + r * 0.18f - notchW * 0.5f, notchY, notchW, notchH, darkCol);
+    }
+
+    void RenderTargetCameraBadges() {
+        m_targetBadgeHits.clear();
+        if (!m_targetCameraEnabled || !TargetCamera::IsEnabled()) return;
+
+        const auto targets = TargetCamera::GetActiveTargets();
+        if (targets.empty()) return;
+
+        const uint32_t focusedWork = TargetCamera::GetFocusedWork();
+        const float pillH = m_unit * 0.052f;
+        const float margin = m_unit * 0.025f;
+        const float gap = m_unit * 0.012f;
+
+        float startX = margin;
+        if (m_showFpsHud) {
+            const float temp = GetDeviceTemperature();
+            const float fpsW = (temp > 0.0f) ? (m_unit * 0.22f) : (m_unit * 0.16f);
+            startX = margin + fpsW + gap;
+        }
+        const float badgeY = float(m_height) - pillH - margin;
+        const float fontSize = pillH * 0.48f;
+        const float iconR = pillH * 0.34f;
+        float curX = startX;
+
+        const bool isSpanish = (m_menuLang == 0);
+        const int maxShow = std::min<int>(int(targets.size()), 3);
+
+        // Smooth pulse for MH Rise-style capturable skull alert (0..1)
+        const double nowSec = std::chrono::duration<double>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        const float capturePulse = 0.5f + 0.5f * std::sin(static_cast<float>(nowSec * 4.8));
+
+        for (int i = 0; i < maxShow; ++i) {
+            const auto& t = targets[i];
+            const bool isFocused = (t.work == focusedWork);
+            const char* name = isSpanish ? t.nameEs : t.nameEn;
+
+            // Compute compact pill width based on monster name length
+            const float textW = MeasureText(name, fontSize);
+            const float badgeW = iconR * 2.0f + textW + pillH * 0.72f;
+            if (curX + badgeW > float(m_width) - margin) break;
+
+            const float ar = float((t.accentRgb >> 16) & 0xFFu) / 255.0f;
+            const float ag = float((t.accentRgb >> 8) & 0xFFu) / 255.0f;
+            const float ab = float(t.accentRgb & 0xFFu) / 255.0f;
+
+            const Color bg = isFocused ? Color{ 0.055f, 0.145f, 0.205f, 0.92f }
+                                       : Color{ 0.028f, 0.078f, 0.112f, 0.72f };
+            const Color border = isFocused ? Color{ 1.00f, 0.82f, 0.22f, 0.98f }
+                                           : (t.capturable ? Color{ 0.28f, 0.88f, 1.00f, 0.78f + 0.22f * capturePulse }
+                                                           : Color{ ar * 0.7f, ag * 0.7f, ab * 0.7f, 0.55f });
+
+            DrawRoundedRect(curX, badgeY, badgeW, pillH, pillH * 0.5f, bg, border);
+
+            // MH Rise-style pulsing blue skull alert directly above the monster badge when capturable
+            if (t.capturable) {
+                const float skullR = pillH * 0.44f;
+                const float skullCx = curX + badgeW * 0.5f;
+                const float skullCy = badgeY - skullR * 1.32f - pillH * 0.14f;
+                DrawCaptureSkullIcon(skullCx, skullCy, skullR, capturePulse);
+            }
+
+            // Monster color emblem + crosshair ring when focused
+            const float cx = curX + pillH * 0.52f;
+            const float cy = badgeY + pillH * 0.5f;
+            DrawAADisc(cx, cy, iconR,
+                       { ar * (isFocused ? 0.85f : 0.45f), ag * (isFocused ? 0.85f : 0.45f), ab * (isFocused ? 0.85f : 0.45f), isFocused ? 0.95f : 0.70f },
+                       isFocused ? Color{ 1.00f, 0.92f, 0.42f, 1.0f } : Color{ ar, ag, ab, 0.80f },
+                       isFocused ? 0.24f : 0.12f);
+
+            if (isFocused) {
+                // Crisp target crosshair center dot
+                DrawAADisc(cx, cy, iconR * 0.34f,
+                           { 1.00f, 0.94f, 0.45f, 1.0f }, { 1.00f, 0.94f, 0.45f, 1.0f }, 0.0f);
+            }
+
+            const Color textCol = isFocused ? Color{ 1.00f, 0.94f, 0.55f, 1.0f }
+                                            : Color{ 0.76f, 0.84f, 0.88f, 0.80f };
+            DrawText(curX + pillH * 0.52f + iconR + pillH * 0.18f,
+                     badgeY + (pillH - fontSize) * 0.5f,
+                     name, fontSize, textCol);
+
+            m_targetBadgeHits.push_back({ curX, badgeY, badgeW, pillH, t.work });
+            curX += badgeW + gap * 0.75f;
+        }
+
+        // Show subtle [L+<>] hint pill when 2+ large monsters are in the area
+        if (maxShow >= 2) {
+            const char* hint = "L+<>";
+            const float hintFont = pillH * 0.40f;
+            const float hintW = MeasureText(hint, hintFont) + pillH * 0.45f;
+            if (curX + hintW <= float(m_width) - margin) {
+                DrawRoundedRect(curX, badgeY + pillH * 0.12f, hintW, pillH * 0.76f, pillH * 0.38f,
+                                { 0.025f, 0.085f, 0.120f, 0.78f }, { 0.25f, 0.72f, 0.84f, 0.65f });
+                DrawButtonLabel(curX + hintW * 0.5f, badgeY + pillH * 0.5f, hint, hintFont,
+                                { 0.72f, 0.92f, 0.98f, 0.90f });
+            }
+        }
+    }
+
     void GetDpadBounds(Vec2& outCenter, float& outRadius, bool& outAnyPressed) const {
         float minX = 99999.0f, minY = 99999.0f;
         float maxX = -99999.0f, maxY = -99999.0f;
@@ -1923,6 +2134,7 @@ private:
 
         // 6. FPS HUD Pill (if enabled)
         RenderFpsHud();
+        RenderTargetCameraBadges();
     }
 
     inline const char* Tr(const char* es, const char* en) const {
@@ -2299,6 +2511,28 @@ private:
         });
         curY += cDmgH + gap;
 
+        // Card: Cámara Objetivo (Target Camera, L)
+        float cTgtH = 138.0f * S;
+        DrawModernCard(x, curY, w, cTgtH, S,
+                       Tr("Cámara Objetivo (L) estilo MH3U/4U", "Target Camera (L) MH3U/4U Style"),
+                       Tr("Pulsa L para girar hacia el monstruo grande • Doble L centra detrás • L+Izq/Der cambia objetivo",
+                          "Tap L to face large monster • Double-tap L centers behind • L+Left/Right cycles target"));
+        DrawInteractiveButton(x + 24.0f * S, curY + 74.0f * S, dmgHalfW, btnH, S,
+                              Tr("Cámara Objetivo: ACTIVADA", "Target Camera: ENABLED"),
+                              m_targetCameraEnabled, [this]() {
+            m_targetCameraEnabled = true;
+            TargetCamera::SetEnabled(true);
+            SaveLayoutConfig();
+        });
+        DrawInteractiveButton(x + 24.0f * S + dmgHalfW + 14.0f * S, curY + 74.0f * S, dmgHalfW, btnH, S,
+                              Tr("Cámara Objetivo: DESACTIVADA", "Target Camera: DISABLED"),
+                              !m_targetCameraEnabled, [this]() {
+            m_targetCameraEnabled = false;
+            TargetCamera::SetEnabled(false);
+            SaveLayoutConfig();
+        });
+        curY += cTgtH + gap;
+
         // Card 4: Restart Action Card
         float c3H = 140.0f * S;
         DrawModernCard(x, curY, w, c3H, S,
@@ -2362,7 +2596,10 @@ private:
         float curY = y;
         float gap = 16.0f * S;
         float btnH = 48.0f * S;
+        float halfW = (w - 48.0f * S - 14.0f * S) / 2.0f;
+        float qChipW = (w - 48.0f * S - 36.0f * S) / 4.0f;
 
+#if defined(__ANDROID__)
         // Card 1: Personalización y Diseño de Botones (.PNG) y Posición
         float cSkinH = 202.0f * S;
         DrawModernCard(x, curY, w, cSkinH, S,
@@ -2416,7 +2653,6 @@ private:
                        Tr("Muestra los botones táctiles o escóndelos si juegas con un mando físico",
                           "Show on-screen touch buttons or hide them when playing with a controller"));
 
-        float halfW = (w - 48.0f * S - 14.0f * S) / 2.0f;
         DrawInteractiveButton(x + 24.0f * S, curY + 74.0f * S, halfW, btnH, S,
                               Tr("Botones táctiles: VISIBLES", "Touch buttons: VISIBLE"),
                               m_touchVisible, [this]() {
@@ -2440,7 +2676,6 @@ private:
 
         const char* opLabels[] = { "25%", "50%", "75%", "100%" };
         const float opValues[] = { 0.25f, 0.50f, 0.75f, 1.00f };
-        float qChipW = (w - 48.0f * S - 36.0f * S) / 4.0f;
         for (int i = 0; i < 4; ++i) {
             float ox = x + 24.0f * S + float(i) * (qChipW + 12.0f * S);
             float val = opValues[i];
@@ -2510,8 +2745,9 @@ private:
                               m_macro4Enabled ? Tr("M4 (A+B): SÍ", "M4 (A+B): ON") : Tr("M4 (A+B): NO", "M4 (A+B): OFF"),
                               m_macro4Enabled, [this]() { m_macro4Enabled = !m_macro4Enabled; SaveLayoutConfig(); });
         curY += cMacH + gap;
+#endif // __ANDROID__ (touch-only controls hidden on Linux & Windows)
 
-        // Card 6: Mando Gamepad físico
+        // Card: Mando Gamepad físico
         float cGpH = 252.0f * S;
         DrawModernCard(x, curY, w, cGpH, S,
                        Tr("Distribución de Botones del Mando (Gamepad)", "Physical Gamepad Button Layout"),
@@ -2550,6 +2786,53 @@ private:
             m_gamepadMapScrollY = 0.0f;
         }, 16.5f * S, { 0.10f, 0.32f, 0.42f, 0.95f }, { 0.25f, 0.75f, 0.92f, 1.0f });
         curY += cGpH;
+
+#if !defined(__ANDROID__)
+        // Card: Distribución del Teclado (Desktop: Linux & Windows)
+        curY += gap;
+        float cKbH = 196.0f * S;
+        DrawModernCard(x, curY, w, cKbH, S,
+                       Tr("Distribución del Teclado (PC)", "Keyboard Key Bindings (PC)"),
+                       Tr("Personaliza las teclas de movimiento, combate, cámara y menús (ratón: cámara y ataques)",
+                          "Customize movement, combat, camera, and menu keys (mouse: camera and attacks)"));
+
+        // Live compact summary of key bindings
+        char kbSummary[256];
+        std::snprintf(kbSummary, sizeof(kbSummary),
+                      "%s: %s/%s/%s/%s  •  A: %s  •  B: %s  •  Y: %s  •  L: %s  •  R: %s",
+                      Tr("Mover", "Move"),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(0)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(2)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(1)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(3)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(4)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(5)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(7)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(8)),
+                      Keyboard_GetKeyName(Keyboard_GetBinding(9)));
+        DrawRoundedRect(x + 24.0f * S, curY + 72.0f * S, w - 48.0f * S, 40.0f * S, 8.0f * S,
+                        { 0.02f, 0.075f, 0.115f, 0.92f }, COL_PANEL_BORDER);
+        DrawText(x + 36.0f * S, curY + 83.0f * S, kbSummary, 14.0f * S, COL_CYAN);
+
+        float kbEditW = (w - 48.0f * S - 14.0f * S) * 0.66f;
+        float kbRstW  = (w - 48.0f * S - 14.0f * S) * 0.34f;
+        float kbBtnY  = curY + 124.0f * S;
+        DrawInteractiveButton(x + 24.0f * S, kbBtnY, kbEditW, btnH, S,
+                              Tr("⌨ Personalizar Teclas del Teclado...", "⌨ Customize Keyboard Keys..."),
+                              false, [this]() {
+            m_keyboardMappingOpen = true;
+            m_kbListeningAction = -1;
+            m_keyboardMapScrollY = 0.0f;
+        }, 16.5f * S, { 0.10f, 0.32f, 0.42f, 0.95f }, { 0.25f, 0.75f, 0.92f, 1.0f });
+
+        DrawInteractiveButton(x + 24.0f * S + kbEditW + 14.0f * S, kbBtnY, kbRstW, btnH, S,
+                              Tr("↺ Restablecer", "↺ Reset"),
+                              false, [this]() {
+            Keyboard_ResetToDefaults();
+            Keyboard_SaveConfig();
+        }, 16.0f * S, { 0.38f, 0.14f, 0.18f, 0.92f }, { 0.88f, 0.34f, 0.40f, 1.0f });
+        curY += cKbH;
+#endif
 
         return curY - y;
     }
@@ -3971,6 +4254,161 @@ private:
         }
     }
 
+    void RenderKeyboardMappingModal() {
+        const float S = UiScale();
+
+        if (m_kbListeningAction >= 0) {
+            int detected = Keyboard_DetectPressedKey();
+            if (detected == -2) {
+                // ESC cancels listening
+                m_kbListeningAction = -1;
+            } else if (detected > 0) {
+                Keyboard_SetBinding(m_kbListeningAction, detected);
+                m_kbListeningAction = -1;
+            }
+        }
+
+        DrawRectSolid(0, 0, float(m_width), float(m_height), { 0.0f, 0.0f, 0.0f, 0.82f });
+
+        float padX = float(m_width) * 0.05f;
+        float padY = float(m_height) * 0.04f;
+        float panW = float(m_width) - padX * 2.0f;
+        float panH = float(m_height) - padY * 2.0f;
+
+        DrawRoundedRect(padX, padY, panW, panH, 18.0f * S, COL_BG_DARK, COL_CYAN);
+
+        DrawText(padX + 24.0f * S, padY + 16.0f * S,
+                 Tr("⌨ Distribución del Teclado", "⌨ Keyboard Key Bindings"),
+                 24.0f * S, COL_WHITE);
+
+        const char* statusSub = (m_kbListeningAction >= 0)
+            ? Tr("▶ ¡PRESIONA UNA TECLA EN TU TECLADO AHORA! (ESC o clic para cancelar)",
+                 "▶ PRESS ANY KEY ON YOUR KEYBOARD NOW! (ESC or click to cancel)")
+            : Tr("Haz clic en cualquier acción y presiona la nueva tecla para asignarla",
+                 "Click any action from the list and press the desired key to rebind it");
+        Color subCol = (m_kbListeningAction >= 0) ? Color{ 1.0f, 0.85f, 0.25f, 1.0f } : COL_MUTED;
+        DrawText(padX + 24.0f * S, padY + 46.0f * S, statusSub, 14.5f * S, subCol);
+
+        float closeS = 42.0f * S;
+        float closeX = padX + panW - closeS - 20.0f * S;
+        float closeY = padY + 14.0f * S;
+        DrawInteractiveButton(closeX, closeY, closeS, closeS, S, "✕", false,
+                              [this]() {
+            m_keyboardMappingOpen = false;
+            m_kbListeningAction = -1;
+            Keyboard_SaveConfig();
+        }, 20.0f * S, { 0.38f, 0.14f, 0.18f, 0.95f }, { 0.88f, 0.34f, 0.40f, 1.0f });
+
+        float divY = padY + 70.0f * S;
+        DrawRectSolid(padX + 20.0f * S, divY, panW - 40.0f * S, 1.5f * S, COL_PANEL_BORDER);
+
+        float bBarH = 50.0f * S;
+        float bBarY = padY + panH - bBarH - 16.0f * S;
+        float bBarGap = 14.0f * S;
+        float bBarW = (panW - 44.0f * S - bBarGap) / 2.0f;
+
+        DrawInteractiveButton(padX + 22.0f * S, bBarY, bBarW, bBarH, S,
+                              Tr("↺ Restablecer Por Defecto (WASD)", "↺ Reset to Defaults (WASD)"), false, [this]() {
+            Keyboard_ResetToDefaults();
+            Keyboard_SaveConfig();
+            m_kbListeningAction = -1;
+        }, 15.5f * S, { 0.08f, 0.22f, 0.30f, 0.95f }, COL_CHIP_BORDER);
+
+        DrawInteractiveButton(padX + 22.0f * S + bBarW + bBarGap, bBarY, bBarW, bBarH, S,
+                              Tr("✓ Guardar y Salir", "✓ Save & Close"), false, [this]() {
+            m_keyboardMappingOpen = false;
+            m_kbListeningAction = -1;
+            Keyboard_SaveConfig();
+        }, 15.5f * S, { 0.10f, 0.36f, 0.46f, 0.95f }, COL_CYAN);
+
+        float listTop = divY + 10.0f * S;
+        float listBottom = bBarY - 12.0f * S;
+        float listH = std::max(60.0f * S, listBottom - listTop);
+        float listX = padX + 22.0f * S;
+        float listW = panW - 44.0f * S - 14.0f * S;
+
+        m_scrollAreaX = padX;
+        m_scrollAreaY = listTop;
+        m_scrollAreaW = panW;
+        m_scrollAreaH = listH;
+
+        const int count = Keyboard_GetActionCount();
+        const int cols = 2;
+        const int totalRows = (count + cols - 1) / cols;
+        float itemGapX = 14.0f * S;
+        float itemGapY = 8.0f * S;
+        float itemW = (listW - itemGapX) / 2.0f;
+        float itemH = 56.0f * S;
+        float totalListH = float(totalRows) * (itemH + itemGapY);
+
+        m_keyboardMapMaxScrollY = std::max(0.0f, totalListH - listH + 8.0f * S);
+        m_keyboardMapScrollY = std::clamp(m_keyboardMapScrollY, 0.0f, m_keyboardMapMaxScrollY);
+
+        SetScissorClip(padX + 6.0f * S, listTop, panW - 12.0f * S, listH);
+
+        for (int i = 0; i < count; ++i) {
+            int col = i % cols;
+            int row = i / cols;
+            float ix = listX + float(col) * (itemW + itemGapX);
+            float iy = listTop - m_keyboardMapScrollY + float(row) * (itemH + itemGapY);
+
+            if (iy + itemH < listTop || iy > listBottom) continue;
+
+            bool isListening = (m_kbListeningAction == i);
+            int currentSc = Keyboard_GetBinding(i);
+
+            Color rowFill = isListening ? Color{ 0.18f, 0.32f, 0.46f, 0.98f } : Color{ 0.04f, 0.12f, 0.18f, 0.92f };
+            Color rowBorder = isListening ? Color{ 0.95f, 0.85f, 0.25f, 1.0f } : COL_PANEL_BORDER;
+
+            DrawRoundedRect(ix, iy, itemW, itemH, 10.0f * S, rowFill, rowBorder);
+
+            const char* actName = Keyboard_GetActionName(i, m_menuLang);
+            const char* actDesc = Keyboard_GetActionDesc(i, m_menuLang);
+            DrawText(ix + 14.0f * S, iy + 10.0f * S, actName, 15.5f * S, isListening ? Color{ 0.95f, 0.85f, 0.25f, 1.0f } : COL_WHITE);
+            DrawText(ix + 14.0f * S, iy + 32.0f * S, actDesc, 12.0f * S, COL_MUTED);
+
+            float chipW = itemW * 0.38f;
+            float chipH = 36.0f * S;
+            float chipX = ix + itemW - chipW - 10.0f * S;
+            float chipY = iy + (itemH - chipH) * 0.5f;
+
+            if (isListening) {
+                DrawRoundedRect(chipX, chipY, chipW, chipH, 8.0f * S,
+                                { 0.30f, 0.40f, 0.10f, 0.95f }, { 1.0f, 0.85f, 0.25f, 1.0f });
+                DrawButtonLabel(chipX + chipW * 0.5f, chipY + chipH * 0.5f,
+                                Tr("¡PULSA TECLA!", "PRESS KEY!"), 13.0f * S, { 1.0f, 0.95f, 0.40f, 1.0f });
+            } else {
+                const char* keyName = Keyboard_GetKeyName(currentSc);
+                DrawRoundedRect(chipX, chipY, chipW, chipH, 8.0f * S,
+                                { 0.02f, 0.07f, 0.11f, 0.90f }, COL_CYAN);
+                DrawButtonLabel(chipX + chipW * 0.5f, chipY + chipH * 0.5f,
+                                keyName, 13.0f * S, COL_CYAN);
+            }
+
+            RegisterHitZone(ix, iy, itemW, itemH, [this, i]() {
+                if (m_kbListeningAction == i) {
+                    m_kbListeningAction = -1;
+                } else {
+                    m_kbListeningAction = i;
+                }
+            });
+        }
+
+        ClearScissorClip();
+
+        if (m_keyboardMapMaxScrollY > 1.0f) {
+            float sbX = padX + panW - 16.0f * S;
+            float sbW = 6.0f * S;
+            DrawRoundedRect(sbX, listTop, sbW, listH, sbW * 0.5f,
+                            { 0.02f, 0.07f, 0.10f, 0.80f }, { 0.08f, 0.25f, 0.32f, 0.60f });
+            float thumbRatio = std::clamp(listH / (listH + m_keyboardMapMaxScrollY), 0.15f, 0.90f);
+            float thumbH = listH * thumbRatio;
+            float scrollNorm = std::clamp(m_keyboardMapScrollY / m_keyboardMapMaxScrollY, 0.0f, 1.0f);
+            float thumbY = listTop + scrollNorm * (listH - thumbH);
+            DrawRoundedRect(sbX, thumbY, sbW, thumbH, sbW * 0.5f, COL_CYAN, COL_CYAN);
+        }
+    }
+
     // -------------------------------------------------------------
     // Unified UI Pointer & Drag-Scroll Handling
     // -------------------------------------------------------------
@@ -3997,8 +4435,12 @@ private:
         }
 
         if (m_uiDraggingScroll) {
-            if (m_gamepadMappingOpen) {
+            if (LayeredArmor::IsMenuOpen()) {
+                m_layeredScrollY = std::clamp(m_layeredScrollY - stepDy, 0.0f, m_layeredMaxScrollY);
+            } else if (m_gamepadMappingOpen) {
                 m_gamepadMapScrollY = std::clamp(m_gamepadMapScrollY - stepDy, 0.0f, m_gamepadMapMaxScrollY);
+            } else if (m_keyboardMappingOpen) {
+                m_keyboardMapScrollY = std::clamp(m_keyboardMapScrollY - stepDy, 0.0f, m_keyboardMapMaxScrollY);
             } else if (m_skinEditMode && m_pngPickerOpen) {
                 m_pngPickerScrollY = std::clamp(m_pngPickerScrollY - stepDy, 0.0f, m_pngPickerMaxScrollY);
             } else if (m_menuOpen) {
@@ -4416,7 +4858,11 @@ private:
         const char* sfx = suffixes[choice];
 
         SetLanguageSetting(sys);
+#if defined(_WIN32)
+        _putenv_s("MH3_LANGUAGE", codes[choice]);
+#else
         setenv("MH3_LANGUAGE", codes[choice], 1);
+#endif
         SaveLanguage();
 
         if (Memory::Contains(0x8065AA61, 1)) {
@@ -4518,8 +4964,344 @@ private:
         lastB = b;
     }
 
+    void PollLayeredArmorInput(int totalItems, float itemH, float listH, bool justOpened) {
+        static bool lastUp = false, lastDown = false, lastLeft = false, lastRight = false;
+        static bool lastL = false, lastR = false, lastA = false, lastB = false, lastY = false;
+
+        bool up = false, down = false, left = false, right = false;
+        bool lb = false, rb = false, a = false, b = false, yBtn = false;
+
+        // Keyboard support
+        int numKeys = 0;
+        const bool* keys = SDL_GetKeyboardState(&numKeys);
+        if (keys && numKeys > SDL_SCANCODE_ESCAPE) {
+            if (keys[SDL_SCANCODE_UP] || keys[SDL_SCANCODE_W]) up = true;
+            if (keys[SDL_SCANCODE_DOWN] || keys[SDL_SCANCODE_S]) down = true;
+            if (keys[SDL_SCANCODE_LEFT] || keys[SDL_SCANCODE_A]) left = true;
+            if (keys[SDL_SCANCODE_RIGHT] || keys[SDL_SCANCODE_D]) right = true;
+            if (keys[SDL_SCANCODE_Q]) lb = true;
+            if (keys[SDL_SCANCODE_E]) rb = true;
+            if (keys[SDL_SCANCODE_RETURN] || keys[SDL_SCANCODE_SPACE]) a = true;
+            if (keys[SDL_SCANCODE_ESCAPE] || keys[SDL_SCANCODE_BACKSPACE]) b = true;
+            if (keys[SDL_SCANCODE_H]) yBtn = true;
+        }
+
+        // Gamepad support (Nintendo layout matching MH3: EAST = A/Confirm = PS Circle, SOUTH = B/Cancel = PS Cross)
+        int count = 0;
+        SDL_JoystickID* gamepads = SDL_GetGamepads(&count);
+        if (gamepads) {
+            for (int i = 0; i < count; ++i) {
+                if (SDL_Gamepad* pad = SDL_GetGamepadFromID(gamepads[i])) {
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP)) up = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN)) down = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT)) left = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) right = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)) lb = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) rb = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST)) a = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH)) b = true;
+                    if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST) ||
+                        SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH)) yBtn = true;
+
+                    int16_t stickY = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
+                    int16_t stickX = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX);
+                    if (stickY < -18000) up = true;
+                    if (stickY > 18000) down = true;
+                    if (stickX < -22000) left = true;
+                    if (stickX > 22000) right = true;
+                    break;
+                }
+            }
+            SDL_free(gamepads);
+        }
+
+        // Ignore the confirm press that opened the modal on the very first frame
+        if (justOpened) {
+            lastUp = up; lastDown = down; lastLeft = left; lastRight = right;
+            lastL = lb; lastR = rb; lastA = a; lastB = b; lastY = yBtn;
+            return;
+        }
+
+        // Tab order in UI: [Head(4), Chest(0), Arms(1), Waist(2), Legs(3)]
+        static constexpr int kTabOrder[5] = { 4, 0, 1, 2, 3 };
+        int tabIdx = 0;
+        for (int i = 0; i < 5; ++i) {
+            if (kTabOrder[i] == m_layeredTab) { tabIdx = i; break; }
+        }
+
+        if ((left && !lastLeft) || (lb && !lastL)) {
+            tabIdx = (tabIdx + 4) % 5;
+            m_layeredTab = kTabOrder[tabIdx];
+            m_layeredCursor = 0;
+            m_layeredScrollY = 0.0f;
+            m_layeredCacheSlot = -1;
+        } else if ((right && !lastRight) || (rb && !lastR)) {
+            tabIdx = (tabIdx + 1) % 5;
+            m_layeredTab = kTabOrder[tabIdx];
+            m_layeredCursor = 0;
+            m_layeredScrollY = 0.0f;
+            m_layeredCacheSlot = -1;
+        } else if (down && !lastDown && totalItems > 0) {
+            m_layeredCursor = (m_layeredCursor + 1) % totalItems;
+            float itemTop = float(m_layeredCursor) * itemH;
+            if (itemTop + itemH > m_layeredScrollY + listH) {
+                m_layeredScrollY = std::clamp(itemTop + itemH - listH, 0.0f, m_layeredMaxScrollY);
+            } else if (itemTop < m_layeredScrollY) {
+                m_layeredScrollY = std::clamp(itemTop, 0.0f, m_layeredMaxScrollY);
+            }
+        } else if (up && !lastUp && totalItems > 0) {
+            m_layeredCursor = (m_layeredCursor + totalItems - 1) % totalItems;
+            float itemTop = float(m_layeredCursor) * itemH;
+            if (itemTop < m_layeredScrollY) {
+                m_layeredScrollY = std::clamp(itemTop, 0.0f, m_layeredMaxScrollY);
+            } else if (itemTop + itemH > m_layeredScrollY + listH) {
+                m_layeredScrollY = std::clamp(itemTop + itemH - listH, 0.0f, m_layeredMaxScrollY);
+            }
+        } else if (a && !lastA && totalItems > 0) {
+            if (m_layeredCursor == 0) {
+                LayeredArmor::SetLayeredId(m_layeredTab, 0);
+            } else if (m_layeredCursor - 1 < int(m_layeredCache.size())) {
+                LayeredArmor::SetLayeredId(m_layeredTab, m_layeredCache[m_layeredCursor - 1].id);
+            }
+        } else if (yBtn && !lastY) {
+            LayeredArmor::SetHideHelmet(!LayeredArmor::GetHideHelmet());
+        } else if (b && !lastB) {
+            LayeredArmor::CloseMenu();
+        }
+
+        lastUp = up; lastDown = down; lastLeft = left; lastRight = right;
+        lastL = lb; lastR = rb; lastA = a; lastB = b; lastY = yBtn;
+    }
+
+    void RenderLayeredArmorModal() {
+        const bool isOpen = LayeredArmor::IsMenuOpen();
+        const bool justOpened = (isOpen && !m_layeredWasOpen);
+        if (isOpen != m_layeredWasOpen) {
+            m_layeredWasOpen = isOpen;
+            ResetActiveTouches();
+            if (isOpen) {
+                m_layeredCacheSlot = -1;
+                m_layeredCursor = 0;
+                m_layeredScrollY = 0.0f;
+#if !defined(__ANDROID__)
+                if (SDL_Window* win = aurora_get_window()) {
+                    SDL_ShowCursor();
+                    SDL_SetWindowRelativeMouseMode(win, false);
+                }
+#endif
+            } else {
+#if !defined(__ANDROID__)
+                if (!m_menuOpen && !m_langSubmenuOpen) {
+                    if (SDL_Window* win = aurora_get_window()) {
+                        SDL_HideCursor();
+                        SDL_SetWindowRelativeMouseMode(win, true);
+                    }
+                }
+#endif
+            }
+        }
+        if (!isOpen) return;
+
+        // Refresh crafted armor list for the active slot
+        if (m_layeredCacheSlot != m_layeredTab) {
+            m_layeredCache = LayeredArmor::GetCraftedArmorsForSlot(m_layeredTab);
+            m_layeredCacheSlot = m_layeredTab;
+            // Highlight currently active layered armor if any
+            const uint16_t curId = LayeredArmor::GetLayeredId(m_layeredTab);
+            m_layeredCursor = 0;
+            for (int i = 0; i < int(m_layeredCache.size()); ++i) {
+                if (m_layeredCache[i].id == curId) {
+                    m_layeredCursor = i + 1;
+                    break;
+                }
+            }
+        }
+
+        const float S = UiScale();
+        // Right-side sleek panel (44% width) so the Item Box and 3D hunter remain clearly visible on the left!
+        const float margin = 20.0f * S;
+        const float panW = std::clamp(float(m_width) * 0.44f, 340.0f * S, 600.0f * S);
+        const float padX = float(m_width) - panW - margin;
+        const float padY = margin;
+        const float panH = float(m_height) - padY * 2.0f;
+
+        // Subtle dark vignette only behind the panel, leaving the 3D hunter bright and clear
+        DrawRoundedRect(padX, padY, panW, panH, 16.0f * S,
+                        { 0.025f, 0.075f, 0.115f, 0.94f }, { 0.20f, 0.72f, 0.84f, 0.90f });
+
+        // Header
+        float curY = padY + 18.0f * S;
+        const float innerX = padX + 18.0f * S;
+        const float innerW = panW - 36.0f * S;
+
+        DrawText(innerX, curY,
+                 Tr("Armadura Superpuesta (Transmog)", "Layered Armor (Transmog)"),
+                 21.0f * S, { 1.0f, 0.86f, 0.32f, 1.0f });
+
+        // Close button [B]
+        const float closeW = 104.0f * S;
+        const float closeH = 34.0f * S;
+        DrawInteractiveButton(padX + panW - closeW - 18.0f * S, curY - 4.0f * S, closeW, closeH, S,
+                              Tr("Cerrar [B]", "Close [B]"), false, []() {
+            LayeredArmor::CloseMenu();
+        }, 14.0f * S);
+
+        curY += 32.0f * S;
+        DrawText(innerX, curY,
+                 Tr("Solo armaduras en tu baúl • Estadísticas originales intactas",
+                    "Equipment Box armors only • Real armor stats remain unchanged"),
+                 13.5f * S, { 0.72f, 0.88f, 0.94f, 0.92f });
+        curY += 26.0f * S;
+
+        // 5 Slot Tabs: Head(4), Chest(0), Arms(1), Waist(2), Legs(3)
+        static constexpr int kTabSlots[5] = { 4, 0, 1, 2, 3 };
+        const char* tabLabelsEs[5] = { "Casco", "Pecho", "Brazos", "Cintura", "Piernas" };
+        const char* tabLabelsEn[5] = { "Head",  "Chest", "Arms",   "Waist",   "Legs" };
+        const float tabGap = 6.0f * S;
+        const float tabW = (innerW - tabGap * 4.0f) / 5.0f;
+        const float tabH = 38.0f * S;
+        for (int i = 0; i < 5; ++i) {
+            const int slot = kTabSlots[i];
+            const float tx = innerX + float(i) * (tabW + tabGap);
+            const bool active = (m_layeredTab == slot);
+            const bool hasLayered = (LayeredArmor::GetLayeredId(slot) != 0) || (slot == 4 && LayeredArmor::GetHideHelmet());
+            std::string lbl = Tr(tabLabelsEs[i], tabLabelsEn[i]);
+            if (hasLayered) lbl += " *";
+            DrawInteractiveButton(tx, curY, tabW, tabH, S, lbl.c_str(), active, [this, slot]() {
+                m_layeredTab = slot;
+                m_layeredCursor = 0;
+                m_layeredScrollY = 0.0f;
+                m_layeredCacheSlot = -1;
+            }, 13.5f * S);
+        }
+        curY += tabH + 10.0f * S;
+
+        // Real equipped vs Layered status bar
+        const std::string realName = LayeredArmor::GetEquippedArmorName(m_layeredTab);
+        const uint16_t activeLayeredId = LayeredArmor::GetLayeredId(m_layeredTab);
+        const bool hideHelm = LayeredArmor::GetHideHelmet();
+        std::string activeLayeredName;
+        if (m_layeredTab == 4 && hideHelm) {
+            activeLayeredName = Tr("[Casco Oculto]", "[Helmet Hidden]");
+        } else if (activeLayeredId != 0) {
+            char tmp[128];
+            std::snprintf(tmp, sizeof(tmp), "%s  #%u",
+                          LayeredArmor::GetArmorName(m_layeredTab, activeLayeredId).c_str(),
+                          unsigned(activeLayeredId));
+            activeLayeredName = tmp;
+        } else {
+            activeLayeredName = Tr("Ninguna (Original)", "None (Original)");
+        }
+
+        const float infoH = 48.0f * S;
+        DrawRoundedRect(innerX, curY, innerW, infoH, 10.0f * S,
+                        { 0.015f, 0.050f, 0.080f, 0.90f }, { 0.14f, 0.44f, 0.56f, 0.75f });
+        char line1[160], line2[160];
+        std::snprintf(line1, sizeof(line1), Tr("Equipada real: %s", "Real equipped: %s"),
+                      realName.empty() ? Tr("Sin armadura", "None") : realName.c_str());
+        std::snprintf(line2, sizeof(line2), Tr("Apariencia actual: %s", "Layered look: %s"),
+                      activeLayeredName.c_str());
+        DrawText(innerX + 12.0f * S, curY + 6.0f * S, line1, 13.5f * S, { 0.78f, 0.88f, 0.92f, 1.0f });
+        DrawText(innerX + 12.0f * S, curY + 25.0f * S, line2, 14.0f * S, { 1.0f, 0.88f, 0.38f, 1.0f });
+        curY += infoH + 10.0f * S;
+
+        // Footer actions (Hide Helmet + Clear All)
+        const float footerH = 44.0f * S;
+        const float footerY = padY + panH - footerH - 14.0f * S;
+        const float listTop = curY;
+        const float listH = std::max(80.0f * S, footerY - listTop - 10.0f * S);
+
+        const int totalItems = 1 + int(m_layeredCache.size()); // index 0 = None/Original
+        const float rowH = 44.0f * S;
+        const float rowGap = 6.0f * S;
+        const float rowStride = rowH + rowGap;
+        const float contentH = float(totalItems) * rowStride;
+        m_layeredMaxScrollY = std::max(0.0f, contentH - listH);
+        m_layeredScrollY = std::clamp(m_layeredScrollY, 0.0f, m_layeredMaxScrollY);
+
+        // Register scroll area for touch-drag scrolling
+        m_scrollAreaX = innerX;
+        m_scrollAreaY = listTop;
+        m_scrollAreaW = innerW;
+        m_scrollAreaH = listH;
+
+        PollLayeredArmorInput(totalItems, rowStride, listH, justOpened);
+
+        // Scrollable crafted armor list
+        SetScissorClip(innerX, listTop, innerW, listH);
+        for (int i = 0; i < totalItems; ++i) {
+            const float ry = listTop + float(i) * rowStride - m_layeredScrollY;
+            if (ry + rowH < listTop - 4.0f || ry > listTop + listH + 4.0f) continue;
+
+            const bool isCursor = (i == m_layeredCursor);
+            bool isEquippedLayered = false;
+            std::string label;
+            uint16_t targetId = 0;
+
+            if (i == 0) {
+                label = Tr("Sin superposición (Original)", "None (Original Armor)");
+                isEquippedLayered = (activeLayeredId == 0 && !(m_layeredTab == 4 && hideHelm));
+                targetId = 0;
+            } else {
+                const auto& entry = m_layeredCache[i - 1];
+                char rowBuf[128];
+                std::snprintf(rowBuf, sizeof(rowBuf), "%s  #%u", entry.name.c_str(), unsigned(entry.id));
+                label = rowBuf;
+                isEquippedLayered = (activeLayeredId == entry.id && !(m_layeredTab == 4 && hideHelm));
+                targetId = entry.id;
+            }
+
+            Color bg = isCursor ? Color{ 0.14f, 0.48f, 0.62f, 0.96f }
+                     : (isEquippedLayered ? Color{ 0.10f, 0.32f, 0.40f, 0.92f }
+                                          : Color{ 0.035f, 0.105f, 0.155f, 0.90f });
+            Color border = isCursor ? Color{ 1.0f, 0.85f, 0.30f, 1.0f }
+                         : (isEquippedLayered ? Color{ 0.35f, 0.92f, 0.96f, 0.90f }
+                                              : Color{ 0.14f, 0.36f, 0.48f, 0.65f });
+
+            DrawRoundedRect(innerX, ry, innerW, rowH, 10.0f * S, bg, border);
+            DrawText(innerX + 14.0f * S, ry + (rowH - 16.0f * S) * 0.5f, label.c_str(), 15.5f * S,
+                     isEquippedLayered ? Color{ 1.0f, 0.92f, 0.45f, 1.0f } : COL_WHITE);
+
+            if (isEquippedLayered) {
+                const char* badge = Tr("ACTIVA", "ACTIVE");
+                DrawText(innerX + innerW - 76.0f * S, ry + (rowH - 13.0f * S) * 0.5f,
+                         badge, 13.0f * S, { 0.35f, 0.98f, 0.68f, 1.0f });
+            }
+
+            const int rowIndex = i;
+            const int slot = m_layeredTab;
+            RegisterHitZone(innerX, ry, innerW, rowH, [this, rowIndex, slot, targetId]() {
+                m_layeredCursor = rowIndex;
+                LayeredArmor::SetLayeredId(slot, targetId);
+            });
+        }
+        ClearScissorClip();
+
+        if (m_layeredCache.empty()) {
+            DrawText(innerX + 14.0f * S, listTop + rowStride + 10.0f * S,
+                     Tr("Forja armaduras en la herrería para desbloquear su apariencia aquí.",
+                        "Craft armor at the Smithy to unlock its layered look here."),
+                     14.0f * S, { 0.72f, 0.82f, 0.88f, 0.90f });
+        }
+
+        // Footer buttons
+        const float fBtnW = (innerW - 10.0f * S) * 0.5f;
+        DrawInteractiveButton(innerX, footerY, fBtnW, footerH, S,
+                              hideHelm ? Tr("Ocultar Casco: SÍ [Y]", "Hide Helmet: ON [Y]")
+                                       : Tr("Ocultar Casco: NO [Y]", "Hide Helmet: OFF [Y]"),
+                              hideHelm, []() {
+            LayeredArmor::SetHideHelmet(!LayeredArmor::GetHideHelmet());
+        }, 14.0f * S);
+
+        DrawInteractiveButton(innerX + fBtnW + 10.0f * S, footerY, fBtnW, footerH, S,
+                              Tr("Quitar Todo", "Clear All"), false, [this]() {
+            LayeredArmor::ClearAll();
+            m_layeredCursor = 0;
+        }, 14.0f * S);
+    }
+
     void RenderTitleLanguageOption() {
-        if (m_menuOpen || m_gamepadMappingOpen || m_skinEditMode || m_editMode) {
+        if (m_menuOpen || m_gamepadMappingOpen || m_keyboardMappingOpen || m_skinEditMode || m_editMode) {
             return;
         }
         if (!IsTitleOptionsMenuActive()) {
@@ -4688,6 +5470,7 @@ private:
         out << "VERSION 1\n";
         out << "TOUCH_VISIBLE " << (m_touchVisible ? 1 : 0) << '\n';
         out << "DAMAGE_NUMBERS " << (m_damageNumbersEnabled ? 1 : 0) << '\n';
+        out << "TARGET_CAMERA " << (m_targetCameraEnabled ? 1 : 0) << '\n';
         out << "OPACITY " << m_buttonOpacity << '\n';
         out << "GEAR_AUTOHIDE " << m_gearAutoHideSec << '\n';
         out << "MACRO1 " << (m_macro1Enabled ? 1 : 0) << '\n';
@@ -4722,6 +5505,7 @@ private:
             if (!(iss >> tag)) continue;
             if (tag == "TOUCH_VISIBLE") { int v; iss >> v; m_touchVisible = (v != 0); }
             else if (tag == "DAMAGE_NUMBERS") { int v; iss >> v; m_damageNumbersEnabled = (v != 0); }
+            else if (tag == "TARGET_CAMERA") { int v; iss >> v; m_targetCameraEnabled = (v != 0); TargetCamera::SetEnabled(m_targetCameraEnabled); }
             else if (tag == "OPACITY") { iss >> m_buttonOpacity; m_buttonOpacity = std::clamp(m_buttonOpacity, 0.10f, 1.0f); }
             else if (tag == "GEAR_AUTOHIDE") { int v = 0; iss >> v; m_gearAutoHideSec = std::clamp(v, 0, 60); }
             else if (tag == "MACRO1") { int v; iss >> v; m_macro1Enabled = (v != 0); }
@@ -5186,6 +5970,8 @@ private:
     int m_bloomLevel = 2; // 0: Desactivado, 1: Suave, 2: Original (Wii), 3: Intenso
     bool m_touchVisible = true;
     bool m_damageNumbersEnabled = true;
+    bool m_targetCameraEnabled = true;
+    std::vector<TargetBadgeHit> m_targetBadgeHits;
     int m_presentX = 0;
     int m_presentY = 0;
     int m_presentW = 0;
@@ -5240,6 +6026,21 @@ private:
     int m_listeningAction = -1;
     float m_gamepadMapScrollY = 0.0f;
     float m_gamepadMapMaxScrollY = 0.0f;
+
+    // Keyboard Custom Mapping Modal State (Desktop: Linux & Windows)
+    bool m_keyboardMappingOpen = false;
+    int m_kbListeningAction = -1;
+    float m_keyboardMapScrollY = 0.0f;
+    float m_keyboardMapMaxScrollY = 0.0f;
+
+    // Layered Armor / Transmog UI State
+    int m_layeredTab = 4; // Default to Head (4=Head, 0=Chest, 1=Arms, 2=Waist, 3=Legs)
+    int m_layeredCursor = 0;
+    float m_layeredScrollY = 0.0f;
+    float m_layeredMaxScrollY = 0.0f;
+    bool m_layeredWasOpen = false;
+    int m_layeredCacheSlot = -1;
+    std::vector<LayeredArmor::CraftedArmorEntry> m_layeredCache;
 
     // Achievement System State
     bool m_achievementUnlocked[kAchievementCount]{};

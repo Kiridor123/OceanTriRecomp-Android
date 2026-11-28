@@ -19,6 +19,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#ifdef MH3_HAS_OPENSSL
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/provider.h>
+#endif
+#endif
 #include <mutex>
 #include <string_view>
 #include <thread>
@@ -640,6 +650,164 @@ const std::string& Lookup::Name() const {
     return state_->name;
 }
 
+#ifdef MH3_HAS_OPENSSL
+namespace {
+std::string TimeText(ASN1_TIME* time) {
+    BIO* text = BIO_new(BIO_s_mem());
+    char* data = nullptr;
+    if (!text) return "?";
+    ASN1_TIME_print(text, time);
+    const long length = BIO_get_mem_data(text, &data);
+    std::string result(data && length > 0 ? data : "", data && length > 0 ? size_t(length) : 0);
+    BIO_free(text);
+    return result;
+}
+
+int LogRefusedCertificate(int ok, X509_STORE_CTX* store) {
+    if (ok) return ok;
+    X509* certificate = X509_STORE_CTX_get_current_cert(store);
+    char subject[256] = "?";
+    std::string from = "?", to = "?";
+    if (certificate) {
+        X509_NAME_oneline(X509_get_subject_name(certificate), subject, sizeof(subject));
+        from = TimeText(X509_get_notBefore(certificate));
+        to = TimeText(X509_get_notAfter(certificate));
+    }
+    const time_t now = std::time(nullptr);
+    tm utc{};
+    char clock[32] = "?";
+    if (gmtime_s(&utc, &now) == 0)
+        std::strftime(clock, sizeof(clock), "%Y-%m-%d %H:%M:%S", &utc);
+    std::fprintf(stderr, "MH3 net: TLS certificate %s at depth %d refused: %s (valid %s to %s; now %s UTC)\n",
+                 subject, X509_STORE_CTX_get_error_depth(store),
+                 X509_verify_cert_error_string(X509_STORE_CTX_get_error(store)),
+                 from.c_str(), to.c_str(), clock);
+    return ok;
+}
+
+class OpenSslTls final : public Tls {
+  public:
+    OpenSslTls(const std::string& hostname, bool verify) : hostname_(hostname), verify_(verify) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+        static std::once_flag providersLoaded;
+        std::call_once(providersLoaded, [] {
+            _putenv_s("OPENSSL_ENABLE_SHA1_SIGNATURES", "1");
+            OSSL_PROVIDER_load(nullptr, "default");
+            OSSL_PROVIDER_load(nullptr, "legacy");
+        });
+#endif
+        context_ = SSL_CTX_new(TLS_client_method());
+        // Wii / MH3SP servers use SHA-1 and 1024-bit RSA certificates.
+        SSL_CTX_set_security_level(context_, 0);
+        SSL_CTX_set_cipher_list(context_, "DEFAULT:@SECLEVEL=0:ALL");
+        SSL_CTX_set_verify(context_, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE,
+                           verify ? LogRefusedCertificate : nullptr);
+        session_ = SSL_new(context_);
+        if (verify && !hostname.empty())
+            X509_VERIFY_PARAM_set1_host(SSL_get0_param(session_), hostname.c_str(), 0);
+    }
+
+    ~OpenSslTls() override {
+        SSL_free(session_);
+        SSL_CTX_free(context_);
+    }
+
+    bool AddRootCa(const uint8_t* der, size_t size) override {
+        const unsigned char* cursor = der;
+        X509* certificate = d2i_X509(nullptr, &cursor, long(size));
+        if (!certificate) return false;
+        int ret = X509_STORE_add_cert(SSL_CTX_get_cert_store(context_), certificate);
+        unsigned long err = ERR_peek_last_error();
+        const bool added = (ret == 1) || (ERR_GET_REASON(err) == X509_R_CERT_ALREADY_IN_HASH_TABLE);
+        if (ret != 1) ERR_clear_error();
+        X509_free(certificate);
+        return added;
+    }
+
+    void Attach(int handle) override { SSL_set_fd(session_, handle); }
+
+    int32_t Handshake() override {
+        const int result = SSL_connect(session_);
+        if (result == 1) return kOk;
+        const int32_t error = Failure(result);
+        if (error != kFailed || !verify_) return error;
+        switch (SSL_get_verify_result(session_)) {
+        case X509_V_OK:
+            return kFailed;
+        case X509_V_ERR_HOSTNAME_MISMATCH:
+            return kVerifyCommonName;
+        case X509_V_ERR_CERT_HAS_EXPIRED:
+        case X509_V_ERR_CERT_NOT_YET_VALID:
+            return kVerifyDate;
+        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+        case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+        case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+            return kVerifyRootCa;
+        default:
+            return kVerifyChain;
+        }
+    }
+
+    int32_t Write(const uint8_t* data, size_t size) override {
+        const int result = SSL_write(session_, data, int(size));
+        return result > 0 ? result : Failure(result);
+    }
+
+    int32_t Read(uint8_t* data, size_t size) override {
+        const int result = SSL_read(session_, data, int(size));
+        return result > 0 ? result : Failure(result);
+    }
+
+    void Close() override { SSL_shutdown(session_); }
+
+    bool PeerSignedBy(const uint8_t* der, size_t size) override {
+        const unsigned char* cursor = der;
+        X509* ca = d2i_X509(nullptr, &cursor, long(size));
+        EVP_PKEY* key = ca ? X509_get_pubkey(ca) : nullptr;
+        STACK_OF(X509)* chain = SSL_get_peer_cert_chain(session_);
+        bool signed_by = false;
+        for (int i = 0; key && chain && i < sk_X509_num(chain) && !signed_by; ++i)
+            signed_by = X509_verify(sk_X509_value(chain, i), key) == 1;
+        EVP_PKEY_free(key);
+        X509_free(ca);
+        ERR_clear_error();
+        return signed_by;
+    }
+
+  private:
+    int32_t Failure(int result) {
+        const int error = SSL_get_error(session_, result);
+        ERR_clear_error();
+        switch (error) {
+        case SSL_ERROR_WANT_READ:
+            return kWantRead;
+        case SSL_ERROR_WANT_WRITE:
+            return kWantWrite;
+        case SSL_ERROR_ZERO_RETURN:
+            return kZero;
+        case SSL_ERROR_SYSCALL:
+            return result == 0 ? kZero : kSyscall;
+        default:
+            return kFailed;
+        }
+    }
+
+    SSL_CTX* context_ = nullptr;
+    SSL* session_ = nullptr;
+    std::string hostname_;
+    bool verify_;
+};
+} // namespace
+
+std::unique_ptr<Tls> Tls::Create(const std::string& hostname, bool verify) {
+    return std::make_unique<OpenSslTls>(hostname, verify);
+}
+
+bool HasTls() {
+    return true;
+}
+#else
 std::unique_ptr<Tls> Tls::Create(const std::string&, bool) {
     return nullptr;
 }
@@ -647,4 +815,5 @@ std::unique_ptr<Tls> Tls::Create(const std::string&, bool) {
 bool HasTls() {
     return false;
 }
+#endif
 } // namespace NetHost

@@ -9,6 +9,7 @@
 #include "os_alarm.h"
 #include "controller_host.h"
 #include "village_boot.h"
+#include "game_step.h"
 #include "self_test.h"
 #include <array>
 #include <algorithm>
@@ -44,7 +45,12 @@ extern "C" void MH3_IOSIoctlAsync(CpuContext*);
 extern "C" void MH3_IOSIoctl(CpuContext*);
 extern "C" void MH3_IOSIoctlv(CpuContext*);
 extern "C" void MH3_IOSIoctlvAsync(CpuContext*);
+extern "C" void InitializeDataSections();
 extern "C" void MH3_IOSOpenAsync(CpuContext*);
+extern "C" void MH3_MHcharFrameCheck(CpuContext*);
+extern "C" void MH3_ComboTable(CpuContext*);
+extern "C" void func_8026BFFC(CpuContext*);
+extern "C" void func_8026CCE0(CpuContext*);
 void RunSleepSelfTests(CpuContext*);
 void RunRsoOverlaySelfTests(CpuContext*);
 void RunGxPanicSelfTests(CpuContext*);
@@ -1824,6 +1830,112 @@ void RunDeviceSelfTests(CpuContext* cpu) {
 
     if (alarmCallbacks != (CheckRejections ? 4 : 3))
         MH3_THROW(std::runtime_error("Alarm service remained locked after exception"));
+
+    {
+        // Regression test: Lance Guard Advance -> Shield Bash (0x805EA9F8:
+        // f16=36, f18=36, w20=20) under variable-step 60fps timing.
+        InitializeDataSections();
+        const GameStep::State stepSaved = GameStep::Save();
+        const bool wasVariable = GameStep::Variable();
+        constexpr uint32_t kPlw = 0x80016000;
+        constexpr uint32_t kMhchar = 0x80016604;
+        constexpr uint32_t kZeroAddr = 0x807988F8;
+        constexpr uint32_t kMasterModeAddr = 0x8065AA85;
+        std::array<uint8_t, 0x800> savedMem{};
+        std::memcpy(savedMem.data(), Memory::GetPointer(kPlw, 0x800), savedMem.size());
+        const uint32_t savedZero = Memory::Read32(kZeroAddr);
+        const uint8_t savedMaster = Memory::Read8(kMasterModeAddr);
+        const uint32_t savedR2 = cpu->gpr[2];
+        const uint32_t savedR13 = cpu->gpr[13];
+
+        std::memset(Memory::GetPointer(kPlw, 0x800), 0, 0x800);
+        cpu->gpr[1] = 0x817FF000;
+        cpu->gpr[2] = 0x8079FF60;
+        cpu->gpr[13] = 0x8079B2E0;
+        Memory::WriteFloat32(kZeroAddr, 0.0f);
+        Memory::Write8(kMasterModeAddr, 2); // PlMaster(plw) == true
+        Memory::Write32(kPlw + 0x13C, kMhchar - 4); // 0x8026A378 adds +4 (channel 1)
+
+        // Initialize MHchar fields.
+        Memory::WriteFloat32(kMhchar + 0x44, 0.0f);  // kBlendLeft
+        Memory::Write32(kMhchar + 0x4C, 0);          // kFlags
+        Memory::WriteFloat32(kMhchar + 0x5C, 2.0f);  // kRate (speed 1.0 * 2.0)
+        Memory::WriteFloat32(kMhchar + 0xA4, 72.0f); // kEndFrame (w03_0117 numFrame=73 -> 72.0)
+        Memory::WriteFloat32(kMhchar + 0xBC, -1.0f); // kLoopFrame
+
+        auto frameCheck = [&](uint32_t mode, float frame, float end) {
+            cpu->gpr[3] = kMhchar;
+            cpu->gpr[4] = mode;
+            cpu->gpr[5] = 0; // ahead = true
+            cpu->fpr[1].d = frame;
+            cpu->fpr[2].d = end;
+            MH3_MHcharFrameCheck(cpu);
+            return cpu->gpr[3];
+        };
+
+        // Fixed 30fps step: exact landing on 36.0 then stepping past it.
+        GameStep::SetVariable(false);
+        GameStep::Begin(1.0);
+        Memory::WriteFloat32(kMhchar + 0x74, 34.0f);
+        if (frameCheck(7, 16.0f, 36.0f) != 1 || frameCheck(7, 36.0f, 36.0f) != 1)
+            MH3_THROW(std::runtime_error("Fixed-step FrameCheck failed at boundary frame 36.0"));
+        Memory::WriteFloat32(kMhchar + 0x74, 36.0f);
+        if (frameCheck(7, 16.0f, 36.0f) != 0 || frameCheck(7, 36.0f, 36.0f) != 0)
+            MH3_THROW(std::runtime_error("Fixed-step FrameCheck stayed active after frame 36.0"));
+
+        // Variable 60fps step crossing 36.0 (35.04 -> 36.044).
+        GameStep::SetVariable(true);
+        GameStep::Begin(0.502);
+        Memory::WriteFloat32(kMhchar + 0x74, 35.04f);
+        if (frameCheck(7, 16.0f, 36.0f) != 1 || frameCheck(7, 36.0f, 36.0f) != 1 ||
+            frameCheck(3, 16.0f, 36.0f) != 1 || frameCheck(4, 16.0f, 36.0f) != 1) {
+            MH3_THROW(std::runtime_error("Variable-step FrameCheck missed crossing of combo end frame 36.0"));
+        }
+
+        Memory::WriteFloat32(kMhchar + 0x74, 36.04f); // past 36.0 -> 37.044
+        if (frameCheck(7, 16.0f, 36.0f) != 0 || frameCheck(7, 36.0f, 36.0f) != 0 ||
+            frameCheck(3, 16.0f, 36.0f) != 0 || frameCheck(4, 16.0f, 36.0f) != 0) {
+            MH3_THROW(std::runtime_error("Variable-step FrameCheck stayed active after crossing end frame 36.0"));
+        }
+
+        // Verify real Lance Classic Type 2 R+X -> bit 15 -> 0x805EA9F8 buffer plw[802] = 1,
+        // both when X is held through the 2-tick chord window (0x8026C0C4) and on 35.04 -> 36.044.
+        Memory::Write8(kPlw + 0x02, 3);             // weapon type: Lance
+        Memory::Write32(kPlw + 0x318, 0x805EA9F8);  // Guard Advance -> Shield Bash table
+        Memory::Write8(kPlw + 0x313, 0);
+        Memory::Write8(kPlw + 0x322, 0);            // plw[802] = 0
+        Memory::Write8(kPlw + 1477, 1);             // Classic Type 2
+        Memory::Write8(kPlw + 184 + 112, 2);        // Classic Controller
+        Memory::Write16(kPlw + 184 + 0, 0x0180);    // R + X held
+        Memory::Write16(kPlw + 184 + 4, 0x0100);    // X triggered
+        Memory::WriteFloat32(kMhchar + 0x74, 32.0f); // inside [16, 36], < 36 trigger
+
+        cpu->gpr[3] = kPlw;
+        func_8026BFFC(cpu); // starts 2-tick chord window (+184+125 = 1, +184+127 = 2)
+        Memory::Write16(kPlw + 184 + 4, 0); // X stays held (0x0180), no new edge
+        while (Memory::Read8(kPlw + 184 + 125) != 0) {
+            GameStep::Begin(0.502);
+            cpu->gpr[3] = kPlw;
+            func_8026BFFC(cpu);
+        }
+        std::memset(Memory::GetPointer(kPlw + 240, 16), 0, 16);
+        cpu->gpr[3] = kPlw;
+        func_8026CCE0(cpu);
+        Memory::WriteFloat32(kMhchar + 0x74, 34.0f);
+        cpu->gpr[3] = kPlw;
+        MH3_ComboTable(cpu);
+
+        if ((Memory::Read32(kPlw + 240) & 0x8000u) == 0 || Memory::Read8(kPlw + 0x322) != 1)
+            MH3_THROW(std::runtime_error("Lance Guard Advance X follow-up was not buffered into plw[802]"));
+
+        Memory::Write32(kZeroAddr, savedZero);
+        std::memcpy(Memory::GetPointer(kPlw, 0x800), savedMem.data(), savedMem.size());
+        Memory::Write8(kMasterModeAddr, savedMaster);
+        cpu->gpr[2] = savedR2;
+        cpu->gpr[13] = savedR13;
+        GameStep::SetVariable(wasVariable);
+        GameStep::Restore(stepSaved);
+    }
 
     *cpu = alarmSaved;
 }

@@ -55,4 +55,16 @@ const char* Gamepad_GetActionName(int action, int lang);
 const char* Gamepad_GetActionDesc(int action, int lang);
 const char* Gamepad_GetInputName(int inputCode, int layout, int lang);
 bool Gamepad_IsConnected();
+
+// Custom Keyboard Remapping (Desktop: Linux & Windows)
+int Keyboard_GetActionCount();
+int Keyboard_GetBinding(int action);
+void Keyboard_SetBinding(int action, int scancode);
+void Keyboard_ResetToDefaults();
+void Keyboard_SaveConfig();
+void Keyboard_LoadConfig();
+int Keyboard_DetectPressedKey(); // returns SDL_Scancode (>0), -2 if Escape (cancel), -1 if none
+const char* Keyboard_GetActionName(int action, int lang);
+const char* Keyboard_GetActionDesc(int action, int lang);
+const char* Keyboard_GetKeyName(int scancode);
 }

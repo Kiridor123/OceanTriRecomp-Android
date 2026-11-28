@@ -164,7 +164,7 @@ void PublishPrimitiveMaterial(bool textured) {
 }
 
 void DrawVertices(mh3_ui_primitive primitive, const mh3_ui_vertex* vertices, uint32_t count, bool textured, float width = 1) {
-    if (!NativeGraphicsFrameShouldRender())
+    if (!NativeGraphicsFrameShouldRender() || NativeGraphicsLogicPhase())
         return;
 
     if (uiStages != 1)
@@ -334,7 +334,7 @@ void DrawBeta(CpuContext* cpu, bool textured) {
     GuestCall call{cpu};
     const auto position = frame.Arg(3), size = frame.Arg(4), color = frame.Arg(5), texture = frame.Arg(6);
 
-    if (!NativeGraphicsFrameShouldRender())
+    if (!NativeGraphicsFrameShouldRender() || NativeGraphicsLogicPhase())
         return;
 
     if (textured)

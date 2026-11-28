@@ -136,6 +136,148 @@ void Gamepad_SaveConfig() {
     }
 }
 
+// ============================================================================
+// Custom Keyboard Remapping (Desktop: Linux & Windows)
+// ============================================================================
+namespace {
+constexpr int kKeyboardActionCount = 18;
+int g_keyboardBindings[kKeyboardActionCount] = {
+    SDL_SCANCODE_W,      // 0: Move Up
+    SDL_SCANCODE_S,      // 1: Move Down
+    SDL_SCANCODE_A,      // 2: Move Left
+    SDL_SCANCODE_D,      // 3: Move Right
+    SDL_SCANCODE_F,      // 4: A (Accept / Attack)
+    SDL_SCANCODE_SPACE,  // 5: B (Dodge / Cancel)
+    SDL_SCANCODE_V,      // 6: X (Draw / Attack)
+    SDL_SCANCODE_E,      // 7: Y (Use Item / Sheathe)
+    SDL_SCANCODE_Q,      // 8: L (Camera / Target)
+    SDL_SCANCODE_LSHIFT, // 9: R (Sprint / Guard)
+    SDL_SCANCODE_Z,      // 10: ZL
+    SDL_SCANCODE_C,      // 11: ZR
+    SDL_SCANCODE_RETURN, // 12: + (Menu / Pause)
+    SDL_SCANCODE_TAB,    // 13: - (Signal / Chat)
+    SDL_SCANCODE_UP,     // 14: D-Pad Up
+    SDL_SCANCODE_DOWN,   // 15: D-Pad Down
+    SDL_SCANCODE_LEFT,   // 16: D-Pad Left
+    SDL_SCANCODE_RIGHT,  // 17: D-Pad Right
+};
+bool g_keyboardConfigLoaded = false;
+} // namespace
+
+int Keyboard_GetActionCount() { return kKeyboardActionCount; }
+
+void Keyboard_ResetToDefaults() {
+    static constexpr int kDefaults[kKeyboardActionCount] = {
+        SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_A, SDL_SCANCODE_D,
+        SDL_SCANCODE_F, SDL_SCANCODE_SPACE, SDL_SCANCODE_V, SDL_SCANCODE_E,
+        SDL_SCANCODE_Q, SDL_SCANCODE_LSHIFT, SDL_SCANCODE_Z, SDL_SCANCODE_C,
+        SDL_SCANCODE_RETURN, SDL_SCANCODE_TAB,
+        SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT,
+    };
+    for (int i = 0; i < kKeyboardActionCount; ++i) g_keyboardBindings[i] = kDefaults[i];
+}
+
+void Keyboard_LoadConfig() {
+    if (g_keyboardConfigLoaded) return;
+    g_keyboardConfigLoaded = true;
+    Keyboard_ResetToDefaults();
+    const char* user = std::getenv("MH3_USER_DIR");
+    std::string dir = (user && *user) ? user : "saves";
+    std::ifstream in(dir + "/keyboard.cfg");
+    if (in) {
+        for (int i = 0; i < kKeyboardActionCount; ++i) {
+            int sc = 0;
+            if (in >> sc && sc > 0 && sc < SDL_SCANCODE_COUNT) {
+                g_keyboardBindings[i] = sc;
+            }
+        }
+    }
+}
+
+void Keyboard_SaveConfig() {
+    const char* user = std::getenv("MH3_USER_DIR");
+    std::string dir = (user && *user) ? user : "saves";
+    std::ofstream out(dir + "/keyboard.cfg", std::ios::trunc);
+    if (out) {
+        for (int i = 0; i < kKeyboardActionCount; ++i) {
+            if (i > 0) out << ' ';
+            out << g_keyboardBindings[i];
+        }
+        out << '\n';
+    }
+}
+
+int Keyboard_GetBinding(int action) {
+    Keyboard_LoadConfig();
+    if (action < 0 || action >= kKeyboardActionCount) return 0;
+    return g_keyboardBindings[action];
+}
+
+void Keyboard_SetBinding(int action, int scancode) {
+    Keyboard_LoadConfig();
+    if (action < 0 || action >= kKeyboardActionCount) return;
+    if (scancode <= 0 || scancode >= SDL_SCANCODE_COUNT) return;
+    g_keyboardBindings[action] = scancode;
+    Keyboard_SaveConfig();
+}
+
+int Keyboard_DetectPressedKey() {
+    int numKeys = 0;
+    const bool* keys = SDL_GetKeyboardState(&numKeys);
+    if (!keys) return -1;
+    if (keys[SDL_SCANCODE_ESCAPE]) return -2;
+    const int limit = std::min(numKeys, int(SDL_SCANCODE_COUNT));
+    for (int sc = 4; sc < limit; ++sc) {
+        if (sc == SDL_SCANCODE_ESCAPE || sc == SDL_SCANCODE_F1) continue;
+        if (keys[sc]) return sc;
+    }
+    return -1;
+}
+
+const char* Keyboard_GetActionName(int action, int lang) {
+    static const char* kEs[kKeyboardActionCount] = {
+        "Mover Arriba", "Mover Abajo", "Mover Izquierda", "Mover Derecha",
+        "Botón A", "Botón B", "Botón X", "Botón Y",
+        "Botón L", "Botón R", "Botón ZL", "Botón ZR",
+        "Botón + (Menú)", "Botón - (Señal)",
+        "Cruceta Arriba", "Cruceta Abajo", "Cruceta Izquierda", "Cruceta Derecha"
+    };
+    static const char* kEn[kKeyboardActionCount] = {
+        "Move Up", "Move Down", "Move Left", "Move Right",
+        "A Button", "B Button", "X Button", "Y Button",
+        "L Button", "R Button", "ZL Button", "ZR Button",
+        "+ Button (Menu)", "- Button (Signal)",
+        "D-Pad Up", "D-Pad Down", "D-Pad Left", "D-Pad Right"
+    };
+    if (action < 0 || action >= kKeyboardActionCount) return "";
+    return (lang == 1) ? kEn[action] : kEs[action];
+}
+
+const char* Keyboard_GetActionDesc(int action, int lang) {
+    static const char* kEs[kKeyboardActionCount] = {
+        "Stick Izquierdo Arriba", "Stick Izquierdo Abajo", "Stick Izquierdo Izq.", "Stick Izquierdo Der.",
+        "Aceptar / Ataque / Recoger", "Esquivar / Cancelar", "Desenvainar / Ataque (o Click Izq.)", "Usar Objeto / Guardar Arma",
+        "Centrar Cámara / Objetivo", "Correr / Bloquear / Especial", "Cámara / Acción ZL", "Cámara / Acción ZR",
+        "Menú de Pausa", "Señal / Gestos / Chat",
+        "Cámara / Menú Arriba", "Cámara / Menú Abajo", "Cámara / Objetivo Izq.", "Cámara / Objetivo Der."
+    };
+    static const char* kEn[kKeyboardActionCount] = {
+        "Left Stick Up", "Left Stick Down", "Left Stick Left", "Left Stick Right",
+        "Confirm / Attack / Gather", "Dodge / Cancel", "Draw / Attack (or Left Click)", "Use Item / Sheathe",
+        "Center Camera / Target", "Sprint / Guard / Special", "Camera / ZL Action", "Camera / ZR Action",
+        "Pause Menu", "Signal / Gestures / Chat",
+        "Camera / Menu Up", "Camera / Menu Down", "Camera / Target Left", "Camera / Target Right"
+    };
+    if (action < 0 || action >= kKeyboardActionCount) return "";
+    return (lang == 1) ? kEn[action] : kEs[action];
+}
+
+const char* Keyboard_GetKeyName(int scancode) {
+    if (scancode <= 0 || scancode >= SDL_SCANCODE_COUNT) return "---";
+    const char* name = SDL_GetScancodeName(static_cast<SDL_Scancode>(scancode));
+    return (name && *name) ? name : "---";
+}
+
 int Gamepad_GetLayout() {
     Gamepad_LoadConfig();
     return g_gamepadLayout;
@@ -180,6 +322,7 @@ int Gamepad_DetectPressedInput() {
     if (!pad) return -1;
 
     for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b) {
+        if (b == 20 || b == 21) continue; // 20/21 reserved for Left/Right analog triggers (LT/RT)
         if (SDL_GetGamepadButton(pad, (SDL_GamepadButton)b)) {
             return b;
         }
@@ -556,21 +699,32 @@ ClassicControllerSample ReadLiveController() {
     const bool* keys = SDL_GetKeyboardState(nullptr);
 
     if (focusedWindow && !AndroidKeyboard_IsActive()) {
-        static const struct {
-            SDL_Scancode key;
-            uint16_t button;
-        } bindings[] = {
-            {SDL_SCANCODE_F, MH3_CL_A},           {SDL_SCANCODE_SPACE, MH3_CL_B},    {SDL_SCANCODE_BACKSPACE, MH3_CL_B},
-            {SDL_SCANCODE_E, MH3_CL_Y},            {SDL_SCANCODE_Q, MH3_CL_L},        {SDL_SCANCODE_LSHIFT, MH3_CL_R},
-            {SDL_SCANCODE_RSHIFT, MH3_CL_R},       {SDL_SCANCODE_R, MH3_CL_R},       {SDL_SCANCODE_Z, MH3_CL_ZL},
-            {SDL_SCANCODE_C, MH3_CL_ZR},           {SDL_SCANCODE_RETURN, MH3_CL_PLUS}, {SDL_SCANCODE_TAB, MH3_CL_MINUS},
-            {SDL_SCANCODE_ESCAPE, MH3_CL_PLUS},    {SDL_SCANCODE_HOME, MH3_CL_PLUS}, {SDL_SCANCODE_UP, MH3_CL_UP},
-            {SDL_SCANCODE_DOWN, MH3_CL_DOWN},      {SDL_SCANCODE_LEFT, MH3_CL_LEFT}, {SDL_SCANCODE_RIGHT, MH3_CL_RIGHT},
+        Keyboard_LoadConfig();
+        static constexpr uint16_t kKbMasks[14] = {
+            MH3_CL_A,     // 4
+            MH3_CL_B,     // 5
+            MH3_CL_X,     // 6
+            MH3_CL_Y,     // 7
+            MH3_CL_L,     // 8
+            MH3_CL_R,     // 9
+            MH3_CL_ZL,    // 10
+            MH3_CL_ZR,    // 11
+            MH3_CL_PLUS,  // 12
+            MH3_CL_MINUS, // 13
+            MH3_CL_UP,    // 14
+            MH3_CL_DOWN,  // 15
+            MH3_CL_LEFT,  // 16
+            MH3_CL_RIGHT, // 17
         };
 
-        for (const auto& binding : bindings)
-            if (keys[binding.key])
-                sample.buttons |= binding.button;
+        for (int i = 0; i < 14; ++i) {
+            const int sc = g_keyboardBindings[4 + i];
+            if (sc > 0 && sc < SDL_SCANCODE_COUNT && keys[sc])
+                sample.buttons |= kKbMasks[i];
+        }
+        // Keep convenient secondary keys
+        if (keys[SDL_SCANCODE_BACKSPACE]) sample.buttons |= MH3_CL_B;
+        if (keys[SDL_SCANCODE_ESCAPE] || keys[SDL_SCANCODE_HOME]) sample.buttons |= MH3_CL_PLUS;
 #if !defined(__ANDROID__)
         if (mouseButtons & SDL_BUTTON_MASK(SDL_BUTTON_RIGHT))
             sample.buttons |= MH3_CL_A;
@@ -580,8 +734,12 @@ ClassicControllerSample ReadLiveController() {
             sample.buttons |= MH3_CL_R;
 #endif
 
-        sample.leftX = int16_t((int(keys[SDL_SCANCODE_D]) - int(keys[SDL_SCANCODE_A])) * 511);
-        sample.leftY = int16_t((int(keys[SDL_SCANCODE_W]) - int(keys[SDL_SCANCODE_S])) * 511);
+        const int kbUp    = (g_keyboardBindings[0] > 0 && keys[g_keyboardBindings[0]]) ? 1 : 0;
+        const int kbDown  = (g_keyboardBindings[1] > 0 && keys[g_keyboardBindings[1]]) ? 1 : 0;
+        const int kbLeft  = (g_keyboardBindings[2] > 0 && keys[g_keyboardBindings[2]]) ? 1 : 0;
+        const int kbRight = (g_keyboardBindings[3] > 0 && keys[g_keyboardBindings[3]]) ? 1 : 0;
+        sample.leftX = int16_t((kbRight - kbLeft) * 511);
+        sample.leftY = int16_t((kbUp - kbDown) * 511);
         // The mouse controls yaw/pitch through relative deltas, not a held virtual stick.
     }
 
@@ -643,12 +801,12 @@ const double mh3MouseLookSensitivity = mh3_mouse_look_sensitivity::GetSensitivit
             int code = g_gamepadBindings[i];
             if (code < 0) continue;
             bool pressed = false;
-            if (code >= 0 && code < SDL_GAMEPAD_BUTTON_COUNT) {
-                pressed = SDL_GetGamepadButton(pad, (SDL_GamepadButton)code);
-            } else if (code == 20) {
-                pressed = (axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 0.5f);
+            if (code == 20) {
+                pressed = (axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 0.25f);
             } else if (code == 21) {
-                pressed = (axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 0.5f);
+                pressed = (axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 0.25f);
+            } else if (code >= 0 && code < SDL_GAMEPAD_BUTTON_COUNT) {
+                pressed = SDL_GetGamepadButton(pad, (SDL_GamepadButton)code);
             }
             if (pressed) {
                 sample.buttons |= s_actionMasks[i];

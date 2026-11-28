@@ -21,6 +21,11 @@
 #else
 #include <condition_variable>
 #include <mutex>
+#if !defined(__cpp_lib_atomic_wait) && defined(__linux__)
+#include <linux/futex.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #endif
 
 class SpinSignal {
@@ -38,7 +43,11 @@ class SpinSignal {
         sceKernelSignalSema(sema_, 1);
         return true;
 #else
+#if defined(__cpp_lib_atomic_wait)
         value_.notify_one();
+#elif defined(__linux__)
+        syscall(SYS_futex, reinterpret_cast<uint32_t*>(&value_), FUTEX_WAKE_PRIVATE, 1, nullptr, nullptr, 0);
+#endif
 
         // A wait with a time limit parks on the condition variable.
         if (sleeping_.load(std::memory_order_seq_cst) && sleeping_.exchange(false, std::memory_order_seq_cst)) {
@@ -63,7 +72,17 @@ class SpinSignal {
             if (now != seen)
                 return now;
 
+#if defined(__cpp_lib_atomic_wait)
             value_.wait(seen, std::memory_order_acquire);
+#elif defined(__linux__)
+            syscall(SYS_futex, reinterpret_cast<uint32_t*>(&value_), FUTEX_WAIT_PRIVATE, seen, nullptr, nullptr, 0);
+#else
+            std::unique_lock lock(mutex_);
+            sleeping_.store(true, std::memory_order_seq_cst);
+            if (value_.load(std::memory_order_seq_cst) == seen)
+                wake_.wait(lock);
+            sleeping_.store(false, std::memory_order_relaxed);
+#endif
         }
 #endif
     }
